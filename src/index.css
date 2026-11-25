@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-fundo: #f3f0ea;
+  --color-fundo-2: #e9e5dd;
+  --color-papel: #ffffff;
+  --color-tinta: #1c1b19;
+  --color-tinta-2: #383631;
+  --color-suave: #5d5850;
+  --color-tenue: #8d877c;
+  --color-cinza: #b2aca1;
+  --color-linha: #e1dcd2;
+  --color-linha-forte: #cdc6b9;
+
+  --color-ouro: #d6ad2f;
+  --color-ouro-escuro: #a6841d;
+  --color-ouro-fraco: #fbf3dc;
+  --color-ouro-texto: #7d6311;
+
+  --color-verde: #2e7b4e;
+  --color-verde-fraco: #e9f3ed;
+  --color-verde-borda: #c4ddcd;
+  --color-ambar: #98620f;
+  --color-ambar-fraco: #fbf1de;
+  --color-ambar-borda: #eed6a6;
+  --color-vermelho: #a6433a;
+  --color-vermelho-fraco: #f7e9e7;
+  --color-vermelho-borda: #eac8c3;
+  --color-azul: #2e5d9c;
+  --color-azul-fraco: #eaf0f8;
+  --color-azul-borda: #c8d6ea;
+
+  /* cores da folha (formato das fichas da fábrica) */
+  --color-folha-cab: #1f4e79;
+  --color-folha-faixa: #dbe5f1;
+  --color-folha-titulo: #a3201a;
+
+  --radius-cartao: 12px;
+  --radius-painel: 16px;
+  --radius-controlo: 8px;
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: var(--color-fundo);
+  color: var(--color-tinta);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---- impressão / PDF das folhas ---- */
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  body { background: #fff; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .no-print { display: none !important; }
+  .print-area { box-shadow: none !important; border: none !important; }
+  main { overflow: visible !important; padding: 0 !important; }
+  .print-break { break-after: page; }
+}
