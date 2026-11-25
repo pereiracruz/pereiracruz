@@ -56,10 +56,20 @@ Uma página por modelo, sempre o mesmo formato ("FICHA TÉCNICA"):
 - **Acessórios vazios** no tech pack → vêm dos dados mestre (acessórios por cliente) ou das fichas anteriores; se não houver, ficam assinalados.
 - As cores dos desenhos são ilustrativas (não são as variantes).
 
+### Respostas da Pereira & Cruz (ficha da 1033350)
+
+| Pergunta | Resposta | Na ficha |
+|---|---|---|
+| Acessórios | Os da ficha do produto da Pereira & Cruz | Linha (Realfio, pronto a tingir, sem consumo), fecho (Botifechos), etiqueta de composição (Fibratex), botão (Louropel), autocolante (Staples), saco (Plasbritos). Etiqueta de marca Patachou e hangtag **a confirmar** (a ficha enviada era da Imprevu) |
+| Tingimento | **Clothius**, sem código | Folha de lavandaria para a Clothius; código «Sem código» |
+| Bordado | **Hugo Gomes** (a posição exata não interessa) | Operação de bordado para o Hugo Gomes |
+| Sarja PPT | **Compra-se pronta a tingir** | Tecido «Sarja PPT · 97% CO 3% EL», 0,40 m, cor PPT; fornecedor a confirmar |
+
+A ficha da **PAP/CAL1033350** (tech pack 1033350 «Mini Boy Soft Blue») fica gerada para aprovação: `E26-081-1`.
+
 ### Perguntas em aberto
 
-1. As quantidades escritas junto ao desenho (12M = 15, 24M = 15, 4 anos = 1, 6 anos = 1) são **amostras / protótipos**? Devem aparecer em algum lado (folha de amostras)?
-2. Que **acessórios** leva habitualmente uma calça Patachou (botão, etiquetas de marca, composição, tamanho, cuidados, hangtag, saco)? Para preencher "Acessórios por cliente".
-3. O tingimento é feito por quem (Clothius ou outro)? Há códigos de cor/receita para White, Light blue, Brown, Ocean green, Bege, Marine, Multicolor?
-4. "Bordado a 1.5": 1,5 cm de quê (da borda do bolso)? Quem borda (Hugo Gomes)?
-5. A Pereira & Cruz compra a Sarja PPT ou tem um equivalente próprio (tabela de equivalências)?
+1. As quantidades escritas no tech pack, por baixo do desenho («TAMANHO 12 M = 15 PEÇAS…»): para que servem?
+2. Quem fornece a Sarja PPT?
+3. Etiqueta de marca e hangtag da Patachou: quem fornece (a Longratex envia?) e quantas por peça?
+4. Peças por caixa nos modelos de criança.

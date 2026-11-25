@@ -24,6 +24,8 @@ export const fornecedores: Fornecedor[] = [
   { id: 'f15', nome: 'Hugo Gomes', tipo: 'Serviço externo', fornece: 'Bordados' },
   { id: 'f16', nome: 'Neivacor', tipo: 'Serviço externo', fornece: 'Estampados' },
   { id: 'f17', nome: 'Sidogras', tipo: 'Tecido', fornece: 'Denim e veludo (indicados pela Imprevu)' },
+  { id: 'f18', nome: 'Botifechos', tipo: 'Acessórios', fornece: 'Fechos' },
+  { id: 'f19', nome: 'Staples', tipo: 'Embalagem', fornece: 'Autocolantes' },
 ]
 
 export const tecidos: Tecido[] = [
@@ -40,6 +42,7 @@ export const tecidos: Tecido[] = [
   { id: 't11', nome: 'PECO P705 washed B', fornecedor: 'Sidogras', composicao: 'A confirmar', larguraUtil: 'A confirmar' },
   { id: 't12', nome: 'PCRL P707 1045 washed', fornecedor: 'Sidogras', composicao: 'A confirmar', larguraUtil: 'A confirmar' },
   { id: 't13', nome: 'PCRL P2019-00 50', fornecedor: 'Sidogras', composicao: 'A confirmar', larguraUtil: 'A confirmar' },
+  { id: 't14', nome: 'Sarja PPT', fornecedor: 'A confirmar', composicao: '97% CO 3% EL', larguraUtil: 'A confirmar' },
 ]
 
 export const equivalencias: Equivalencia[] = [
@@ -60,6 +63,8 @@ export const lavagens: Lavagem[] = [
   { id: 'l10', sufixo: '—', nome: 'Off White', cliente: 'Dr. Collectors', codigo: 'Lavagem vintage 100001.26' },
   { id: 'l11', sufixo: '—', nome: 'Terracotta', cliente: 'Dr. Collectors', codigo: 'M701493/KX01 opção A' },
   { id: 'l12', sufixo: '—', nome: 'Steel', cliente: 'Dr. Collectors', codigo: 'M503810/KX01 opção A' },
+  ...([['000', 'White'], ['313', 'Light blue'], ['852', 'Brown'], ['656', 'Ocean green'], ['120', 'Bege'], ['360', 'Marine'], ['391', 'Multicolor']] as const)
+    .map(([c, n], i) => ({ id: `l${13 + i}`, sufixo: c, nome: `Tingimento ${n}`, cliente: 'Longratex', codigo: 'Sem código (tingimento na Clothius)' })),
 ]
 
 export const acessoriosCliente: AcessorioCliente[] = [
@@ -356,6 +361,47 @@ function drc(): Encomenda {
   }
 }
 
+// ======================= Ficha Longratex 1033350 (tech pack FW 27 «Mini Boy Soft Blue») =======================
+/**
+ * Ficha gerada a partir do tech pack da coleção + regras confirmadas pela Pereira & Cruz:
+ * tecido Sarja PPT comprado pronto a tingir; cor por tingimento da peça na Clothius (sem código);
+ * bordado Hugo Gomes; acessórios gerais da ficha do produto da Pereira & Cruz (os de marca ficam a confirmar).
+ */
+export function fichaLongratex1033350(m: Modelo): Modelo {
+  const hoje = '2026-11-25'
+  return {
+    ...m,
+    techPack: true, estado: 'rascunho', descricao: 'CALÇA', tecido: 'Sarja PPT', lavagem: 'Tingimento da peça (PPT)', caixaMax: 20,
+    variantes: m.variantes.map((v) => ({ ...v, fichaGerada: true, codigoLavagem: 'Sem código' })),
+    materiais: [
+      mat({ ref: 'Sarja PPT · 97% CO 3% EL', fornecedor: 'A confirmar', obs: 'Exterior · pronto a tingir', consumo: 0.4, unidade: 'm', cor: 'PPT', largura: 'A confirmar', folha: 'tecido' }),
+      mat({ ref: 'Linha', fornecedor: 'Realfio', obs: 'Pronto a tingir', consumo: null, semConsumo: true, cor: 'PPT', folha: 'confecao' }),
+      mat({ ref: 'Fecho', fornecedor: 'Botifechos', obs: '', consumo: 1, cor: 'PPT', folha: 'confecao' }),
+      mat({ ref: 'Etiqueta de composição', fornecedor: 'Fibratex', obs: 'Costura lateral · 97% CO 3% EA', consumo: 1, cor: 'Cetim', folha: 'confecao' }),
+      mat({ ref: 'Botão', fornecedor: 'Louropel', obs: 'Confirmar referência para a Patachou', consumo: 1, cor: 'A confirmar', folha: 'confecao' }),
+      mat({ ref: 'Etiqueta de marca Patachou', fornecedor: 'A confirmar', obs: 'Confirmar com a Longratex', consumo: null, cor: 'A confirmar', folha: 'confecao' }),
+      mat({ ref: 'Hangtag', fornecedor: 'A confirmar', obs: 'Confirmar com a Longratex', consumo: null, cor: 'A confirmar', folha: 'embalamento' }),
+      mat({ ref: 'Autocolante', fornecedor: 'Staples', obs: 'Colado no saco', consumo: 1, cor: 'Branco', folha: 'embalamento' }),
+      mat({ ref: 'Saco plástico', fornecedor: 'Plasbritos', obs: '', consumo: 1, cor: 'Transparente', folha: 'embalamento' }),
+    ],
+    operacoes: [{ id: 'o1', tipo: 'Bordado', posicao: 'Bolso', medidas: 'Logótipo Patachou · 2 cm', fornecedor: 'Hugo Gomes', cor: 'Ver tech pack' }],
+    observacoes: [
+      'Seguir o tech pack FW 27 · ref. 1033350 (Mini Boy Soft Blue) · fabricação externa.',
+      'Tecido e linha prontos a tingir: a cor sai do tingimento da peça na Clothius (sem código).',
+      'Composição: 97% CO 3% EA.',
+      'Cuidados: lavar a 30° · não usar lixívia · passar a ferro a baixa temperatura · limpeza a seco P · não secar na máquina.',
+      'Cabide: seguir a regra geral.',
+      'Tamanhos do tech pack: 24M = 2Y · 36M = 3Y · 48M = 4Y.',
+      'Respeitar as normas Oeko-Tex e Reach: artigos de bebé e criança.',
+      'Contraste com branco e cores claras: atenção à solidez da cor.',
+      'Artigos para bebé com menos de 3 anos: isentos de formaldeídos (OEKO-TEX®).',
+    ],
+    novasObservacoes: [],
+    medidas: [],
+    versoes: [{ n: 1, titulo: 'gerada da encomenda e do tech pack da coleção', descricao: 'Sarja PPT, tingimento Clothius, bordado Hugo Gomes; acessórios de marca a confirmar.', data: hoje }],
+  }
+}
+
 // ======================= Encomenda Longratex (PDF Macwin, lida e conferida) =======================
 /** Requisição FRQM2026/0130. A mesma cor partida em várias linhas junta-se numa só variante. */
 export function encomendaLongratex(): Encomenda {
@@ -381,11 +427,11 @@ export function encomendaLongratex(): Encomenda {
     ],
     totaisDocumento: { pecas: 1030, valor: 13044.85, porTamanho: [27, 21, 61, 75, 164, 148, 164, 111, 138, 121] },
     modelos: [
-      mod('P261273', 'PAP/CAL1033350', 'Calça vaqueiro 3933311 · Básicos Patachou', 'Calças', [
+      fichaLongratex1033350(mod('P261273', 'PAP/CAL1033350', 'Calça vaqueiro 3933311 · Básicos Patachou', 'Calças', [
         cor('000', 'White', [[0, 0, 1, 1, 3, 5, 5, 2, 5, 5]], 12.95),
         cor('313', 'Light blue', [[7, 6, 9, 11, 53, 52, 54, 47, 51, 49]], 12.95),
         cor('852', 'Brown', [[9, 2, 11, 9, 10, 5, 9, 5, 6, 5]], 12.95),
-      ]),
+      ])),
       mod('P261274', 'PAP/CAL1033370', 'Calção vaqueiro de rapaz · Boy Hamptons', 'Calções', [
         cor('000', 'White', [[2, 1, 0, 3, 6, 7, 8, 5, 7, 5]], 11.9),
         cor('313', 'Light blue', [[0, 0, 3, 6, 10, 11, 11, 3, 8, 5]], 11.9),

@@ -128,7 +128,7 @@ export const useDb = create<Estado>()(
       repor: () => { set(dadosIniciais()); get().log('Dados repostos', 'Dados de exemplo repostos') },
     }),
     {
-      name: 'pc-fichas-v1', version: 4,
+      name: 'pc-fichas-v1', version: 5,
       migrate: (antigo, versao) => {
         const a = antigo as Estado
         // v1 → v2: novos dados de exemplo; repõe os dados, mantém a sessão e a palavra-passe
@@ -143,6 +143,11 @@ export const useDb = create<Estado>()(
             ...e, numeroInterno: e.numeroInterno ?? (e.id === 'dr-collectors-ss27' ? 70 : e.id.startsWith('longratex') ? 81 : ++n + 1),
             modelos: e.modelos.map((m) => ({ ...m, materiais: m.materiais.map((l) => (/^linha$/i.test(l.ref.trim()) ? { ...l, semConsumo: true, consumo: null } : l)) })),
           })).reverse() }
+        }
+        // v4 → v5: ficha Longratex 1033350, Botifechos/Staples, Sarja PPT, tingimentos Longratex
+        if (versao < 5) {
+          b = { ...b, fornecedores: juntar(b.fornecedores, seed.fornecedores), tecidos: juntar(b.tecidos, seed.tecidos), lavagens: juntar(b.lavagens, seed.lavagens),
+            encomendas: b.encomendas.map((e) => (!e.id.startsWith('longratex') ? e : { ...e, modelos: e.modelos.map((m) => (m.refCliente === 'PAP/CAL1033350' && m.estado === 'sem-ficha' ? seed.fichaLongratex1033350(m) : m)) })) }
         }
         return b
       },
