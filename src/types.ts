@@ -49,6 +49,7 @@ export interface Variante {
   qtd: number[] // na ficha (deve igualar a encomenda)
   preco: number // preço por peça na encomenda
   fichaGerada: boolean
+  qtdStock?: number[] // parte das quantidades que é stock (incluída em qtdEncomenda)
   linhasOrigem?: number // nº de linhas da encomenda juntadas (mesma cor partida em várias linhas)
 }
 

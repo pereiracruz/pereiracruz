@@ -3,14 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import { AlertTriangle, Check, ChevronDown, CircleCheck, FilePlus2, FileSpreadsheet, FileText, Pencil, X } from 'lucide-react'
 import { useDb } from '../../store/db'
-import { Botao, Cabecalho, Cartao, Confianca, Etiqueta, EtiquetaIA, Passos, Seletor, aviso } from '../../components/ui'
+import { Botao, Cabecalho, Campo, Cartao, Confianca, Entrada, Etiqueta, EtiquetaIA, Passos, Seletor, aviso } from '../../components/ui'
+import { colecaoDosFicheiros, encomendaDaLeitura, lerEncomendaExcel, type LeituraExcel } from '../../lib/lerEncomendaExcel'
 import { TechPack } from '../../components/TechPack'
 import { encomendaImprevu, gerarFichaJanet, leituraShirtMao, type DecisaoIA } from '../../data/seed'
 import { pecasModelo, referenciasEncomenda, valorEncomenda } from '../../lib/calc'
 import { eur, int } from '../../lib/format'
 import type { ModoServico } from '../../types'
 
-type Ficheiro = { nome: string; tamanho: string; tipo: 'excel' | 'pdf' | 'outro'; url?: string; exemplo?: boolean }
+type Ficheiro = { nome: string; tamanho: string; tipo: 'excel' | 'pdf' | 'outro'; url?: string; exemplo?: boolean; file?: File }
 type Escolha = { estado: 'pendente' | 'aceite' | 'alterada'; valor?: string }
 
 const PASSOS = ['Carregar', 'A IA lê', 'Ligação', 'Rever e gerar']
@@ -18,7 +19,7 @@ const ETAPAS = ['Encomenda', 'Tech pack', 'Ligação', 'Fichas']
 
 export default function NovaEncomenda() {
   const nav = useNavigate()
-  const { encomendas, tecidos, adicionarEncomenda, log } = useDb()
+  const { encomendas, tecidos, clientes, adicionarEncomenda, log } = useDb()
   const [passo, setPasso] = useState(0)
   const [ficheiros, setFicheiros] = useState<Ficheiro[]>([])
   const [modo, setModo] = useState<ModoServico>('Produto acabado')
@@ -30,9 +31,16 @@ export default function NovaEncomenda() {
   const [escolhas, setEscolhas] = useState<Record<DecisaoIA['id'], Escolha>>({ tecido: { estado: 'pendente' }, botoes: { estado: 'pendente' }, variante: { estado: 'pendente' } })
   const [porque, setPorque] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [leitura, setLeitura] = useState<LeituraExcel | null>(null)
+  const [cliente, setCliente] = useState('')
+  const [colecao, setColecao] = useState('')
+  const [erroLeitura, setErroLeitura] = useState('')
 
   const exemplo = ficheiros.some((f) => f.exemplo)
-  const enc = useMemo(() => encomendaImprevu(), [])
+  const real = !exemplo && ficheiros.some((f) => f.tipo === 'excel')
+  const enc = useMemo(() => (leitura?.ok ? encomendaDaLeitura(leitura, cliente || '—', colecao, modo, ficheiros.map((f) => f.nome)) : encomendaImprevu()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [leitura])
   const pdf = ficheiros.find((f) => f.tipo === 'pdf')
   const pendentes = Object.values(escolhas).filter((e) => e.estado === 'pendente').length
 
@@ -42,10 +50,12 @@ export default function NovaEncomenda() {
     setEtapa(0)
     const t = [700, 1500, 2300, 3000].map((ms, i) => setTimeout(() => setEtapa(i + 1), ms))
     const fim = setTimeout(() => {
-      setLigacoes(Object.fromEntries(enc.modelos.map((m) => [m.id, m.techPack ? 'SHIRT MAO.pdf' : ''])))
+      const pdfs = ficheiros.filter((f) => f.tipo === 'pdf')
+      setLigacoes(Object.fromEntries(enc.modelos.map((m) => [m.id, real ? (pdfs.length === 1 ? pdfs[0].nome : '') : m.techPack ? 'SHIRT MAO.pdf' : ''])))
       setPasso(2)
     }, 3400)
     return () => { t.forEach(clearTimeout); clearTimeout(fim) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passo, enc])
 
   const adicionar = (fl: FileList | null) => {
@@ -55,14 +65,40 @@ export default function NovaEncomenda() {
       tamanho: f.size > 1e6 ? `${(f.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1e3))} KB`,
       tipo: /\.(xlsx?|csv)$/i.test(f.name) ? 'excel' : /\.pdf$/i.test(f.name) ? 'pdf' : 'outro',
       url: /\.pdf$/i.test(f.name) ? URL.createObjectURL(f) : undefined,
+      file: f,
     }))
-    setFicheiros((a) => [...a.filter((x) => !x.exemplo), ...novos])
+    setFicheiros((a) => {
+      const todos = [...a.filter((x) => !x.exemplo), ...novos]
+      if (!colecao) setColecao(colecaoDosFicheiros(todos.map((x) => x.nome)))
+      return todos
+    })
+    setLeitura(null); setErroLeitura('')
   }
 
   const usarExemplo = () => setFicheiros([
     { nome: 'PEREIRACRUZ_SS27.xlsx', tamanho: '21 KB', tipo: 'excel', exemplo: true },
     { nome: 'SHIRT MAO.pdf', tamanho: '991 KB', tipo: 'pdf', exemplo: true },
   ])
+
+  const preparar = async () => {
+    setErroLeitura('')
+    if (real) {
+      const f = ficheiros.find((x) => x.tipo === 'excel' && x.file)!
+      const l = lerEncomendaExcel(await f.file!.arrayBuffer(), encomendas.filter((e) => e.cliente === cliente).flatMap((e) => e.modelos.map((m) => m.nome)))
+      if (!l.ok) { setErroLeitura(l.erro ?? 'Não consegui ler o ficheiro.'); return }
+      setLeitura(l)
+    }
+    setPasso(1)
+  }
+
+  const criar = useCallback(() => {
+    if (!leitura) return
+    const nova = { ...enc, cliente, colecao: colecao || '—', modoServico: modo, modelos: enc.modelos.map((m) => ({ ...m, techPack: !!ligacoes[m.id] })) }
+    adicionarEncomenda(nova)
+    log('Encomenda carregada', `${nova.cliente} · ${nova.colecao} · ${int(nova.preEncomenda + nova.stock)} peças (Excel lido)`)
+    aviso('Encomenda criada a partir do Excel.')
+    nav(`/fichas/${nova.id}`)
+  }, [leitura, enc, cliente, colecao, modo, ligacoes, adicionarEncomenda, log, nav])
 
   const escolher = (id: DecisaoIA['id'], e: Escolha) => setEscolhas((s) => ({ ...s, [id]: e }))
 
@@ -89,14 +125,17 @@ export default function NovaEncomenda() {
 
   useEffect(() => {
     if (passo !== 3) return
-    const f = (e: KeyboardEvent) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) gerar() }
+    const f = (e: KeyboardEvent) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) (leitura ? criar() : gerar()) }
     window.addEventListener('keydown', f); return () => window.removeEventListener('keydown', f)
-  }, [passo, gerar])
+  }, [passo, gerar, criar, leitura])
 
   return (
     <>
       <Cabecalho migalhas={[{ rotulo: 'Encomendas', para: '/fichas' }, { rotulo: 'Nova encomenda' }]} sobre="Fichas de produção" titulo="Nova encomenda"
-        acoes={passo === 3 && <>
+        acoes={passo === 3 && leitura ? <>
+          <Botao variante="fantasma" onClick={() => nav('/fichas')}>Descartar</Botao>
+          <Botao variante="primario" icone={<CircleCheck size={16} />} onClick={criar}>Criar encomenda <kbd className="text-[11px] opacity-60 ml-1">⌘↵</kbd></Botao>
+        </> : passo === 3 && <>
           <Botao variante="fantasma" onClick={() => nav('/fichas')}>Descartar</Botao>
           <Botao variante="primario" icone={<CircleCheck size={16} />} onClick={gerar}>
             {pendentes ? 'Aceitar tudo e gerar fichas' : 'Gerar fichas'} <kbd className="text-[11px] opacity-60 ml-1">⌘↵</kbd>
@@ -135,12 +174,19 @@ export default function NovaEncomenda() {
               <button onClick={usarExemplo} className="flex items-center gap-2 text-[14px] text-suave hover:text-tinta"><FileText size={15} />Usar o exemplo da Imprevu</button>
               <div className="flex items-center gap-3">
                 <Seletor className="w-48" valor={modo} onChange={(v) => setModo(v as ModoServico)} opcoes={['Produto acabado', 'A feitio']} />
-                <Botao variante="primario" disabled={!ficheiros.length} onClick={() => setPasso(1)} icone={<EtiquetaIA />}>Preparar fichas</Botao>
+                <Botao variante="primario" disabled={!ficheiros.length || (real && !cliente)} onClick={preparar} icone={<EtiquetaIA />}>{real ? 'Ler encomenda' : 'Preparar fichas'}</Botao>
               </div>
             </div>
+            {real && (
+              <div className="grid grid-cols-2 gap-4 mt-5">
+                <Campo rotulo="Cliente"><Seletor valor={cliente} onChange={setCliente} vazio="Escolher o cliente…" opcoes={clientes.map((c) => c.nome)} /></Campo>
+                <Campo rotulo="Coleção" ajuda="Sugerida a partir dos nomes dos ficheiros."><Entrada value={colecao} onChange={(e) => setColecao(e.target.value)} placeholder="ex.: FW26" /></Campo>
+              </div>
+            )}
+            {erroLeitura && <p className="mt-4 text-[13px] text-vermelho bg-vermelho-fraco border border-vermelho-borda rounded-controlo px-3 py-2">{erroLeitura}</p>}
             {ficheiros.length > 0 && !exemplo && (
-              <p className="mt-4 text-[13px] text-ambar bg-ambar-fraco border border-ambar-borda rounded-controlo px-3 py-2">
-                A leitura automática de documentos reais fica ativa quando ligarmos o servidor e a IA. Até lá, o resultado mostrado é o do exemplo da Imprevu.
+              <p className="mt-4 text-[13px] text-suave bg-papel border border-linha rounded-controlo px-3 py-2">
+                {real ? 'A encomenda em Excel é lida já, sem IA. ' : 'Para ler a encomenda junte o Excel. '}A leitura de PDF (encomendas e tech packs) entra com o servidor e a IA.
               </p>
             )}
           </div>
@@ -174,9 +220,9 @@ export default function NovaEncomenda() {
                   <span className={i <= etapa ? 'text-tinta' : 'text-tenue'}>{e}</span>
                   <span className="ml-auto text-[13px] text-suave">
                     {i === 0 && etapa > 0 && `${referenciasEncomenda(enc)} referências em ${enc.modelos.length} modelos`}
-                    {i === 1 && etapa > 1 && '6 campos · 7 páginas'}
-                    {i === 2 && etapa > 2 && '1 modelo com tech pack'}
-                    {i === 3 && etapa > 3 && '3 decisões'}
+                    {i === 1 && etapa > 1 && (leitura ? 'leitura com IA na fase do servidor' : '6 campos · 7 páginas')}
+                    {i === 2 && etapa > 2 && (leitura ? `${enc.modelos.length} modelos` : '1 modelo com tech pack')}
+                    {i === 3 && etapa > 3 && (leitura ? `${leitura.perguntas.length} perguntas do cliente` : '3 decisões')}
                   </span>
                 </li>
               ))}
@@ -214,8 +260,11 @@ export default function NovaEncomenda() {
         </div>
       )}
 
+      {/* ---------- 4. Rever (Excel real) ---------- */}
+      {passo === 3 && leitura && <RevisaoExcel l={leitura} enc={enc} ligacoes={ligacoes} />}
+
       {/* ---------- 4. Rever e gerar ---------- */}
-      {passo === 3 && (
+      {passo === 3 && !leitura && (
         <div className="grid grid-cols-[1fr_1.15fr] gap-5 items-start">
           <TechPack nome={pdf?.nome ?? 'SHIRT MAO.pdf'} url={exemplo ? undefined : pdf?.url} pagina={pagina} setPagina={setPagina} destaque={destaque} />
           <div className="space-y-4">
@@ -327,5 +376,57 @@ function ResumoEncomenda({ enc, ligacoes }: { enc: ReturnType<typeof encomendaIm
         </div>
       )}
     </Cartao>
+  )
+}
+
+function RevisaoExcel({ l, enc, ligacoes }: { l: LeituraExcel; enc: ReturnType<typeof encomendaImprevu>; ligacoes: Record<string, string> }) {
+  const tam = l.tamanhos
+  const ok = (b: boolean, t: string) => <li className={clsx('flex items-center gap-2 text-[13px]', b ? 'text-verde' : 'text-ambar')}>{b ? <Check size={14} /> : <AlertTriangle size={14} />}{t}</li>
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-[1fr_1fr] gap-4">
+        <Cartao className="p-5">
+          <h3 className="font-semibold mb-1">Leitura do Excel</h3>
+          <p className="text-[13px] text-suave mb-3">Folha «{l.folha}», cabeçalho na linha {l.linhaCabecalho} · tamanhos {tam.join(' · ')}</p>
+          <ul className="space-y-1.5">
+            {ok(true, `${l.linhasLidas} linhas lidas · ${enc.modelos.length} modelos · ${enc.modelos.reduce((n, m) => n + m.variantes.length, 0)} referências`)}
+            {ok(l.linhasComDiferenca.length === 0, l.linhasComDiferenca.length ? `${l.linhasComDiferenca.length} linhas com a soma diferente da coluna de quantidade` : 'Soma dos tamanhos igual à coluna de quantidade em todas as linhas')}
+            {ok(true, `${int(l.preEncomenda)} pré-encomenda + ${int(l.stock)} stock = ${int(l.preEncomenda + l.stock)} peças`)}
+            {ok(l.temPrecos, l.temPrecos ? 'Preços lidos' : 'A encomenda não traz preços')}
+            {ok(false, 'Data de entrega: confirmar no email')}
+          </ul>
+          {l.linhasComDiferenca.map((d) => <p key={d.linha} className="text-[12px] text-vermelho mt-1">Linha {d.linha} ({d.ref}): soma {d.lida}, ficheiro diz {d.ficheiro}</p>)}
+        </Cartao>
+        <Cartao className="p-5">
+          <h3 className="font-semibold mb-1">Perguntas e notas do cliente</h3>
+          <p className="text-[13px] text-suave mb-3">Texto livre das colunas {l.colunasExtra.map((c) => `«${c}»`).join(', ') || '—'}. As perguntas ficam por responder na encomenda.</p>
+          {l.perguntas.length === 0 && Object.keys(l.notasPorRef).length === 0 && <p className="text-[13px] text-tenue">Sem notas.</p>}
+          <ul className="space-y-2">
+            {l.perguntas.map((p) => <li key={p.ref + p.texto} className="text-[13px] rounded-controlo bg-ambar-fraco border border-ambar-borda px-3 py-2"><span className="font-mono text-[12px] text-ambar">{p.ref}</span> · {p.texto}</li>)}
+            {Object.entries(l.notasPorRef).map(([ref, ns]) => <li key={ref} className="text-[13px]"><span className="font-mono text-[12px] text-suave">{ref}</span> · {ns.join(' · ')}</li>)}
+          </ul>
+        </Cartao>
+      </div>
+      <Cartao>
+        <div className="px-5 pt-5 pb-3"><h3 className="font-semibold">Modelos e referências</h3><p className="text-[13px] text-suave">Referências agrupadas por modelo pelo código (o último carácter é a variante). As linhas «stock» somam à referência.</p></div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead><tr className="text-[11px] uppercase tracking-wider text-suave border-y border-linha bg-fundo/40">
+              <th className="text-left px-5 py-2">Modelo / referência</th><th className="text-left px-2">Variante</th>{tam.map((t) => <th key={t} className="px-2 text-right">{t}</th>)}<th className="px-2 text-right">Stock</th><th className="px-5 text-right">Total</th></tr></thead>
+            <tbody>
+              {enc.modelos.map((m) => m.variantes.map((v, i) => (
+                <tr key={v.id} className={clsx('border-b border-linha', i === 0 && 'border-t-2 border-t-linha-forte')}>
+                  <td className="px-5 py-2">{i === 0 && <p className="font-medium">{m.nome} {ligacoes[m.id] ? <Etiqueta tom="verde">Tech pack</Etiqueta> : <Etiqueta>Sem tech pack</Etiqueta>}</p>}<p className="font-mono text-[12px] text-tenue">{v.ref}</p></td>
+                  <td className="px-2">{v.nome}<span className="text-tenue"> · {v.refCor}</span></td>
+                  {v.qtdEncomenda.map((q, k) => <td key={k} className="px-2 text-right num">{q || ''}</td>)}
+                  <td className="px-2 text-right num text-suave">{v.qtdStock ? v.qtdStock.reduce((a, b) => a + b, 0) : ''}</td>
+                  <td className="px-5 text-right font-semibold num">{v.qtdEncomenda.reduce((a, b) => a + b, 0)}</td>
+                </tr>
+              )))}
+            </tbody>
+          </table>
+        </div>
+      </Cartao>
+    </div>
   )
 }

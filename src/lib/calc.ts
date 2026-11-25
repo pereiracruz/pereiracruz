@@ -83,7 +83,7 @@ export function verificarEncomenda(e: Encomenda): Verificacao[] {
       out.push({ ok: iguais, texto: iguais ? 'Totais por tamanho iguais ao documento' : 'Totais por tamanho diferentes do documento', detalhe: iguais ? undefined : `Lidos: ${lidas.join(' · ')}` })
     }
     const valor = Math.round(valorEncomenda(e) * 100) / 100
-    out.push({ ok: Math.abs(valor - doc.valor) < 0.005, texto: Math.abs(valor - doc.valor) < 0.005 ? 'Valor igual ao documento' : 'Valor diferente do documento' })
+    if (doc.valor > 0) out.push({ ok: Math.abs(valor - doc.valor) < 0.005, texto: Math.abs(valor - doc.valor) < 0.005 ? 'Valor igual ao documento' : 'Valor diferente do documento' })
   }
   return out
 }
