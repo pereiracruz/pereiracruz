@@ -123,11 +123,14 @@ export const useDb = create<Estado>()(
       repor: () => { set(dadosIniciais()); get().log('Dados repostos', 'Dados de exemplo repostos') },
     }),
     {
-      name: 'pc-fichas-v1', version: 2,
-      // novos dados de exemplo: repõe os dados, mantém a sessão e a palavra-passe
-      migrate: (antigo) => {
-        const a = antigo as Partial<Estado>
-        return { ...dadosIniciais(), sessao: a.sessao ?? null, passHash: a.passHash ?? PASS_INICIAL_HASH, nomeUtilizador: a.nomeUtilizador ?? 'Admin' } as Estado
+      name: 'pc-fichas-v1', version: 3,
+      migrate: (antigo, versao) => {
+        const a = antigo as Estado
+        // v1 → v2: novos dados de exemplo; repõe os dados, mantém a sessão e a palavra-passe
+        if (versao < 2) return { ...dadosIniciais(), sessao: a.sessao ?? null, passHash: a.passHash ?? PASS_INICIAL_HASH, nomeUtilizador: a.nomeUtilizador ?? 'Admin' } as Estado
+        // v2 → v3: acrescenta dados mestre novos (Sidogras) sem apagar o que existe
+        const juntar = <T extends { id: string }>(atual: T[], novos: T[]) => [...atual, ...novos.filter((n) => !atual.some((x) => x.id === n.id))]
+        return { ...a, fornecedores: juntar(a.fornecedores, seed.fornecedores), tecidos: juntar(a.tecidos, seed.tecidos) }
       },
     },
   ),

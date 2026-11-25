@@ -23,6 +23,7 @@ export const fornecedores: Fornecedor[] = [
   { id: 'f14', nome: 'Clothius', tipo: 'Serviço externo', fornece: 'Lavandaria e tingimento' },
   { id: 'f15', nome: 'Hugo Gomes', tipo: 'Serviço externo', fornece: 'Bordados' },
   { id: 'f16', nome: 'Neivacor', tipo: 'Serviço externo', fornece: 'Estampados' },
+  { id: 'f17', nome: 'Sidogras', tipo: 'Tecido', fornece: 'Denim e veludo (indicados pela Imprevu)' },
 ]
 
 export const tecidos: Tecido[] = [
@@ -35,6 +36,10 @@ export const tecidos: Tecido[] = [
   { id: 't7', nome: 'Cânhamo', fornecedor: 'FJ Magalhães', composicao: '100% CA', larguraUtil: '148 cm' },
   { id: 't8', nome: 'Fleeming Ecru', fornecedor: 'FJ Magalhães', composicao: '100% CO', larguraUtil: '150 cm', precoM: 4.5 },
   { id: 't9', nome: 'Forro 65% / 35%', fornecedor: 'Traços Reguilas', composicao: '65% PES 35% CO', larguraUtil: '150 cm' },
+  { id: 't10', nome: 'PCRL P707 1020 washed', fornecedor: 'Sidogras', composicao: 'A confirmar', larguraUtil: 'A confirmar' },
+  { id: 't11', nome: 'PECO P705 washed B', fornecedor: 'Sidogras', composicao: 'A confirmar', larguraUtil: 'A confirmar' },
+  { id: 't12', nome: 'PCRL P707 1045 washed', fornecedor: 'Sidogras', composicao: 'A confirmar', larguraUtil: 'A confirmar' },
+  { id: 't13', nome: 'PCRL P2019-00 50', fornecedor: 'Sidogras', composicao: 'A confirmar', larguraUtil: 'A confirmar' },
 ]
 
 export const equivalencias: Equivalencia[] = [

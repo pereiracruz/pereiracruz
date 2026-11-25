@@ -40,19 +40,20 @@ Testado com este ficheiro: 13 linhas, 0 diferenças.
 | ST1 | Denim Stevie Medium Grey | «Find fabric with EA (ref. Epheusus Bob)» → pedido à Pereira & Cruz |
 | SV9 | Denim Swiggy Velvet Brown | Sidogras PCRL P2019-00 50 |
 
+### Respostas da Pereira & Cruz
+
+| Pergunta | Resposta |
+|---|---|
+| Tecidos Sidogras | **Compram-se à Sidogras** (fornecedor e tecidos acrescentados aos dados mestre). Quando a cliente indica o fornecedor do tecido, usa-se esse tecido; a tabela de equivalências aplica-se quando o tecido é de um fornecedor a que a Pereira & Cruz não compra. |
+| «Bicolore» | **É tudo o mesmo tecido**: muda só **mais uma operação na confeção** (faixa lateral). Não é um segundo tecido. |
+| Modelo que já existia noutra coleção | **Ficha nova**: os tecidos podem ser diferentes. Não se parte da ficha anterior. |
+| Perguntas da cliente | Ficam registadas **na encomenda**. |
+
 ### O que isto pede à leitura
 
 - **Ligação pelo código** (8H260801JU1…) entre tech pack e Excel: todas as 9 referências do Excel estão no tech pack.
 - **Texto dentro de imagens** (etiqueta do tecido do RO9) → precisa de leitura com visão (IA).
-- **Modelos repetidos de outras coleções**: Lexi, Roxy e Swiggy já existiam na SS27 → propor a ficha anterior do
-  mesmo modelo como ponto de partida (materiais, acessórios, observações).
-- **Pedidos ao fornecedor/produção** escritos no tech pack («find fabric with EA») → decisão a tomar, não um campo.
-- Tecidos com fornecedor indicado pela cliente (Sidogras não está nos fornecedores) → confirmar se se compra
-  ao fornecedor indicado ou se se usa equivalente da Pereira & Cruz.
-
-### Perguntas em aberto
-
-1. Os tecidos Sidogras compram-se mesmo à Sidogras (acrescentar aos fornecedores) ou há equivalente vosso?
-2. «Bicolore»: são dois tecidos (corpo + faixa lateral)? Qual é o segundo tecido do LE1/LE2?
-3. As fichas da Imprevu partem da ficha anterior do mesmo modelo quando existe (Lexi, Roxy, Swiggy)?
-4. Como respondem hoje às perguntas do cliente (quantidade mínima, tecido parecido)? Basta ficarem registadas na encomenda?
+- **Tecido indicado com fornecedor** → passa para a ficha com esse fornecedor; só sem fornecedor conhecido se propõe equivalente.
+- **«Bicolore» no nome** → acrescentar uma operação de confeção (faixa lateral), sem novo tecido.
+- **Pedidos à Pereira & Cruz** escritos no tech pack («find fabric with EA») → decisão a tomar, não um campo.
+- Cada coleção tem **ficha nova**, mesmo para modelos repetidos (Lexi, Roxy, Swiggy).
