@@ -9,7 +9,7 @@ import { slug } from '../lib/format'
 export const fornecedores: Fornecedor[] = [
   { id: 'f1', nome: 'Troficolor', tipo: 'Tecido', fornece: 'Hempcot, Rustic, Adair, Dinant, Adotrec' },
   { id: 'f2', nome: 'Somelos', tipo: 'Tecido', fornece: 'Varadero' },
-  { id: 'f3', nome: 'FJ Magalhães', tipo: 'Tecido', fornece: 'Cânhamo, Fleeming Ecru' },
+  { id: 'f3', nome: 'FJ Magalhães', tipo: 'Tecido', fornece: 'Cânhamo, Fleeming Ecru, Foster, Gigio, Sarja PPT' },
   { id: 'f4', nome: 'Traços Reguilas', tipo: 'Forro', fornece: 'Forro 65% / 35%' },
   { id: 'f5', nome: 'Realfio / Crafil', tipo: 'Acessórios', fornece: 'Linha' },
   { id: 'f6', nome: 'Paulo Araújo', tipo: 'Acessórios', fornece: 'Elástico, botões, cordões, terminais' },
@@ -42,7 +42,7 @@ export const tecidos: Tecido[] = [
   { id: 't11', nome: 'PECO P705 washed B', fornecedor: 'Sidogras', composicao: 'A confirmar', larguraUtil: 'A confirmar' },
   { id: 't12', nome: 'PCRL P707 1045 washed', fornecedor: 'Sidogras', composicao: 'A confirmar', larguraUtil: 'A confirmar' },
   { id: 't13', nome: 'PCRL P2019-00 50', fornecedor: 'Sidogras', composicao: 'A confirmar', larguraUtil: 'A confirmar' },
-  { id: 't14', nome: 'Sarja PPT', fornecedor: 'A confirmar', composicao: '97% CO 3% EL', larguraUtil: 'A confirmar' },
+  { id: 't14', nome: 'Sarja PPT', fornecedor: 'FJ Magalhães', composicao: '97% CO 3% EL', larguraUtil: 'A confirmar' },
 ]
 
 export const equivalencias: Equivalencia[] = [
@@ -371,16 +371,16 @@ export function fichaLongratex1033350(m: Modelo): Modelo {
   const hoje = '2026-11-25'
   return {
     ...m,
-    techPack: true, estado: 'rascunho', descricao: 'CALÇA', tecido: 'Sarja PPT', lavagem: 'Tingimento da peça (PPT)', caixaMax: 20,
+    techPack: true, estado: 'rascunho', descricao: 'CALÇA', tecido: 'Sarja PPT', lavagem: 'Tingimento da peça (PPT)', caixaMax: 40,
     variantes: m.variantes.map((v) => ({ ...v, fichaGerada: true, codigoLavagem: 'Sem código' })),
     materiais: [
-      mat({ ref: 'Sarja PPT · 97% CO 3% EL', fornecedor: 'A confirmar', obs: 'Exterior · pronto a tingir', consumo: 0.4, unidade: 'm', cor: 'PPT', largura: 'A confirmar', folha: 'tecido' }),
+      mat({ ref: 'Sarja PPT · 97% CO 3% EL', fornecedor: 'FJ Magalhães', obs: 'Exterior · pronto a tingir', consumo: 0.4, unidade: 'm', cor: 'PPT', largura: 'A confirmar', folha: 'tecido' }),
       mat({ ref: 'Linha', fornecedor: 'Realfio', obs: 'Pronto a tingir', consumo: null, semConsumo: true, cor: 'PPT', folha: 'confecao' }),
       mat({ ref: 'Fecho', fornecedor: 'Botifechos', obs: '', consumo: 1, cor: 'PPT', folha: 'confecao' }),
       mat({ ref: 'Etiqueta de composição', fornecedor: 'Fibratex', obs: 'Costura lateral · 97% CO 3% EA', consumo: 1, cor: 'Cetim', folha: 'confecao' }),
       mat({ ref: 'Botão', fornecedor: 'Louropel', obs: 'Confirmar referência para a Patachou', consumo: 1, cor: 'A confirmar', folha: 'confecao' }),
-      mat({ ref: 'Etiqueta de marca Patachou', fornecedor: 'A confirmar', obs: 'Confirmar com a Longratex', consumo: null, cor: 'A confirmar', folha: 'confecao' }),
-      mat({ ref: 'Hangtag', fornecedor: 'A confirmar', obs: 'Confirmar com a Longratex', consumo: null, cor: 'A confirmar', folha: 'embalamento' }),
+      mat({ ref: 'Etiqueta de marca Patachou', fornecedor: 'Enviada pela cliente', obs: 'Ver amostra física', consumo: 1, cor: 'N/A', folha: 'confecao' }),
+      mat({ ref: 'Hangtag', fornecedor: 'Enviada pela cliente', obs: 'Ver amostra física', consumo: 1, cor: 'N/A', folha: 'embalamento' }),
       mat({ ref: 'Autocolante', fornecedor: 'Staples', obs: 'Colado no saco', consumo: 1, cor: 'Branco', folha: 'embalamento' }),
       mat({ ref: 'Saco plástico', fornecedor: 'Plasbritos', obs: '', consumo: 1, cor: 'Transparente', folha: 'embalamento' }),
     ],
@@ -398,7 +398,7 @@ export function fichaLongratex1033350(m: Modelo): Modelo {
     ],
     novasObservacoes: [],
     medidas: [],
-    versoes: [{ n: 1, titulo: 'gerada da encomenda e do tech pack da coleção', descricao: 'Sarja PPT, tingimento Clothius, bordado Hugo Gomes; acessórios de marca a confirmar.', data: hoje }],
+    versoes: [{ n: 1, titulo: 'gerada da encomenda e do tech pack da coleção', descricao: 'Sarja PPT (FJ Magalhães), tingimento Clothius, bordado Hugo Gomes; etiqueta de marca e hangtag enviados pela cliente.', data: hoje }],
   }
 }
 
@@ -411,7 +411,7 @@ export function encomendaLongratex(): Encomenda {
     id: slug(`${codigo}-${nome}`), linhasOrigem: linhas.length,
   })
   const mod = (linha: string, ref: string, nome: string, tipoPeca: string, variantes: Variante[]): Modelo => ({
-    ...modeloVazio({ nome, tipoPeca, descricao: tipoPeca.toUpperCase(), escala: BEBE, variantes }),
+    ...modeloVazio({ nome, tipoPeca, descricao: tipoPeca.toUpperCase(), escala: BEBE, variantes, caixaMax: 40 }),
     id: slug(ref), refCliente: ref, linhaEncomenda: linha,
   })
   return {

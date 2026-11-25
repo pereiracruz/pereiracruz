@@ -128,7 +128,7 @@ export const useDb = create<Estado>()(
       repor: () => { set(dadosIniciais()); get().log('Dados repostos', 'Dados de exemplo repostos') },
     }),
     {
-      name: 'pc-fichas-v1', version: 5,
+      name: 'pc-fichas-v1', version: 6,
       migrate: (antigo, versao) => {
         const a = antigo as Estado
         // v1 → v2: novos dados de exemplo; repõe os dados, mantém a sessão e a palavra-passe
@@ -148,6 +148,15 @@ export const useDb = create<Estado>()(
         if (versao < 5) {
           b = { ...b, fornecedores: juntar(b.fornecedores, seed.fornecedores), tecidos: juntar(b.tecidos, seed.tecidos), lavagens: juntar(b.lavagens, seed.lavagens),
             encomendas: b.encomendas.map((e) => (!e.id.startsWith('longratex') ? e : { ...e, modelos: e.modelos.map((m) => (m.refCliente === 'PAP/CAL1033350' && m.estado === 'sem-ficha' ? seed.fichaLongratex1033350(m) : m)) })) }
+        }
+        // v5 → v6: Sarja PPT da FJ Magalhães, etiqueta de marca e hangtag da cliente, 40 peças por caixa (criança)
+        if (versao < 6) {
+          const ficha = seed.fichaLongratex1033350
+          b = { ...b, tecidos: b.tecidos.map((t) => (t.id === 't14' && t.fornecedor === 'A confirmar' ? { ...t, fornecedor: 'FJ Magalhães' } : t)),
+            encomendas: b.encomendas.map((e) => (!e.id.startsWith('longratex') ? e : { ...e, modelos: e.modelos.map((m) => {
+              if (m.refCliente === 'PAP/CAL1033350' && m.estado === 'rascunho' && m.materiais.some((l) => l.fornecedor === 'A confirmar')) return ficha({ ...m, estado: 'sem-ficha' })
+              return m.caixaMax === 20 ? { ...m, caixaMax: 40 } : m
+            }) })) }
         }
         return b
       },

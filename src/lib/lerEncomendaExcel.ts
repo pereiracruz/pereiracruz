@@ -119,7 +119,8 @@ export function lerEncomendaExcel(buf: ArrayBuffer, nomesConhecidos: string[] = 
       modelos.push({
         id: slug(nome), nome: titulo(nome), tipoPeca: /denim|jean|calç|pant/i.test(nome) ? 'Calças' : 'A definir', descricao: titulo(nome).toUpperCase(),
         escala: tamanhos, techPack: false, variantes, estado: 'sem-ficha', materiais: [], operacoes: [],
-        observacoes: [], novasObservacoes: [], medidas: [], versoes: [], caixaMax: 20,
+        // média de 20 calças por caixa; modelos de criança (tamanhos em meses/anos) ≈ 40
+        observacoes: [], novasObservacoes: [], medidas: [], versoes: [], caixaMax: tamanhos.some((t) => /^\d{1,2}[MYA]$/i.test(t)) ? 40 : 20,
       })
     }
     const soma = (f: (v: Variante) => number[]) => modelos.flatMap((m) => m.variantes.flatMap(f)).reduce((a, b) => a + b, 0)

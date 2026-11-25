@@ -67,9 +67,13 @@ Uma página por modelo, sempre o mesmo formato ("FICHA TÉCNICA"):
 
 A ficha da **PAP/CAL1033350** (tech pack 1033350 «Mini Boy Soft Blue») fica gerada para aprovação: `E26-081-1`.
 
-### Perguntas em aberto
+### Respostas finais
 
-1. As quantidades escritas no tech pack, por baixo do desenho («TAMANHO 12 M = 15 PEÇAS…»): para que servem?
-2. Quem fornece a Sarja PPT?
-3. Etiqueta de marca e hangtag da Patachou: quem fornece (a Longratex envia?) e quantas por peça?
-4. Peças por caixa nos modelos de criança.
+- O tech pack enviado era **misturado, só como exemplo** do formato: as quantidades escritas por baixo do desenho
+  e a referência 1033351 não têm significado para esta encomenda (ignorar).
+- **Sarja PPT**: fornecedor **FJ Magalhães**.
+- **Etiqueta de marca e hangtag**: enviados **pela cliente**; **1 hangtag** por peça.
+- **Peças por caixa** nos modelos de criança: **≈ 40** (sem grandes certezas) → 40 por omissão quando os tamanhos
+  são em meses/anos; editável em cada modelo.
+
+A ficha da PAP/CAL1033350 fica completa e pronta a aprovar (`E26-081-1`).
