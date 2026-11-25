@@ -5,6 +5,8 @@ import { Botao, Cabecalho, Cartao, Etiqueta, Kpi, Tabela, aviso } from '../../co
 import { NOME_FOLHA, folhasDoModelo } from '../../components/Folhas'
 import { fichasGeradas, idInternoEncomenda, pecasEncomenda, pecasModelo, referenciasEncomenda, valorEncomenda, verificarEncomenda } from '../../lib/calc'
 import { exportarLivro } from '../../lib/exportar'
+import { gerarFichaDoTechPack } from '../../lib/gerarFicha'
+import type { TechPackLido } from '../../lib/ia'
 import { dataCurta, eur, int } from '../../lib/format'
 import { ESTADO_FICHA } from './FichaModelo'
 import { tomEstado } from './Encomendas'
@@ -13,7 +15,7 @@ import type { Modelo } from '../../types'
 export default function EncomendaDetalhe() {
   const { encId } = useParams()
   const nav = useNavigate()
-  const { encomendas, destinatarios, atualizarEncomenda, apagarEncomenda, log } = useDb()
+  const { encomendas, destinatarios, fornecedores, tecidos, equivalencias, acessorios, clientes, atualizarEncomenda, atualizarModelo, apagarEncomenda, log } = useDb()
   const enc = encomendas.find((e) => e.id === encId)
   if (!enc) return <Navigate to="/fichas" replace />
 
@@ -94,9 +96,20 @@ export default function EncomendaDetalhe() {
           { id: 'ficha', rotulo: 'Ficha', valor: (m) => (m.estado === 'sem-ficha' && !m.techPack ? 'Falta tech pack' : ESTADO_FICHA[m.estado].rotulo), filtro: 'lista', alinhar: 'centro',
             render: (m) => m.estado === 'sem-ficha' && !m.techPack ? <Etiqueta>Falta tech pack</Etiqueta> : <Etiqueta tom={ESTADO_FICHA[m.estado].tom}>{ESTADO_FICHA[m.estado].rotulo}</Etiqueta> },
         ]}
-        acaoLinha={(m) => m.estado !== 'sem-ficha'
-          ? <Botao pequeno onClick={() => nav(`/fichas/${enc.id}/${m.id}`)}>Abrir fichas</Botao>
-          : <Botao pequeno variante="fantasma" icone={<Upload size={13} />} onClick={() => aviso('A leitura de um novo tech pack fica ativa com o servidor e a IA.')}>Tech pack</Botao>}
+        acaoLinha={(m) => {
+          if (m.estado !== 'sem-ficha') return <Botao pequeno onClick={() => nav(`/fichas/${enc.id}/${m.id}`)}>Abrir fichas</Botao>
+          const tp = m.techPackLido && (enc.techPacks ?? []).find((t) => t.ficheiro === m.techPackLido!.ficheiro)
+          const modeloTP = tp ? (tp.dados as TechPackLido).modelos[m.techPackLido!.indice] : undefined
+          if (modeloTP) return (
+            <Botao pequeno variante="primario" onClick={() => {
+              atualizarModelo(enc.id, m.id, (x) => gerarFichaDoTechPack(x, modeloTP, enc, { fornecedores, tecidos, equivalencias, acessorios, clientes }))
+              log('Ficha gerada do tech pack', `${enc.cliente} · ${m.nome} · ${tp!.ficheiro}`)
+              aviso('Ficha gerada. Reveja os valores assinalados e aprove.')
+              nav(`/fichas/${enc.id}/${m.id}`)
+            }}>Gerar ficha</Botao>
+          )
+          return <Botao pequeno variante="fantasma" icone={<Upload size={13} />} onClick={() => nav('/fichas/nova')}>Tech pack</Botao>
+        }}
       />
     </>
   )

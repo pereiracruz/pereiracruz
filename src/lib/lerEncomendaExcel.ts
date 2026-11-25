@@ -32,6 +32,12 @@ export interface LeituraExcel {
   linhasComDiferenca: { linha: number; ref: string; lida: number; ficheiro: number }[]
   perguntas: PerguntaCliente[]
   notasPorRef: Record<string, string[]>
+  // leitura de PDF com IA
+  origem?: 'excel' | 'ia'
+  documento?: { cliente: string | null; numero: string | null; data: string | null; entrega: string | null }
+  notasDocumento?: string[]
+  totaisDoc?: { pecas: number; valor: number; porTamanho?: number[] }
+  linhasDuvidosas?: { ref: string; cor: string; pagina: number }[]
 }
 
 const titulo = (s: string) => s.toLowerCase().replace(/(^|\s|-)\S/g, (c) => c.toUpperCase())
@@ -141,14 +147,16 @@ export function encomendaDaLeitura(l: LeituraExcel, cliente: string, colecao: st
   let id = slug(`${cliente}-${colecao || 'encomenda'}`)
   id = `${id}-${Date.now().toString(36).slice(-4)}`
   return {
-    id, cliente, colecao: colecao || '—', modoServico: modo, entrega: '', criadaEm: new Date().toISOString().slice(0, 10), estado: 'Em revisão',
+    id, cliente, colecao: colecao || l.documento?.numero || '—', modoServico: modo, entrega: l.documento?.entrega ?? '', criadaEm: new Date().toISOString().slice(0, 10), estado: 'Em revisão',
     preEncomenda: l.preEncomenda, stock: l.stock, ficheiros, modelos: l.modelos,
+    numeroDocumento: l.documento?.numero ?? undefined, dataDocumento: l.documento?.data ?? undefined,
     notas: [
+      ...(l.notasDocumento ?? []),
       ...l.perguntas.map((p) => `Pergunta do cliente (${p.ref}): ${p.texto}`),
       ...Object.entries(l.notasPorRef).map(([ref, ns]) => `${ref}: ${ns.join(' · ')}`),
       ...(!l.temPrecos ? ['A encomenda não traz preços.'] : []),
-      'Data de entrega: confirmar no email do cliente.',
+      ...(l.documento?.entrega ? [] : ['Data de entrega: confirmar no email do cliente.']),
     ],
-    totaisDocumento: { pecas: l.preEncomenda + l.stock, valor: 0 },
+    totaisDocumento: l.totaisDoc ?? { pecas: l.preEncomenda + l.stock, valor: 0 },
   }
 }

@@ -63,6 +63,7 @@ export interface Modelo {
   nome: string
   alias?: string
   refCliente?: string // referência no documento do cliente
+  techPackLido?: { ficheiro: string; indice: number } // modelo do tech pack lido pela IA
   linhaEncomenda?: string // nº da linha de encomenda do cliente
   tipoPeca: string
   descricao: string
@@ -100,6 +101,8 @@ export interface Encomenda {
   notas?: string[] // notas do documento (normas, cuidados)
   totaisDocumento?: { pecas: number; valor: number; porTamanho?: number[] }
   numeroInterno?: number // nº da encomenda na Pereira & Cruz (E26-082-…)
+  ficheirosGuardados?: { nome: string; caminho: string }[] // no bucket «documentos»
+  techPacks?: { ficheiro: string; caminho: string; dados: unknown }[] // leitura da IA (TechPackLido)
   envios?: Envio[]
   criadaEm: string
   estado: EstadoEncomenda

@@ -1,0 +1,189 @@
+// Supabase Edge Function «ler-documento»
+// Lê uma encomenda ou um tech pack (PDF ou imagem) guardado no bucket «documentos»
+// com o Claude Opus 5.5 através do Google Cloud Vertex AI, endpoint multi-região «eu»
+// (processamento só na União Europeia). Devolve JSON validado por esquema.
+//
+// Segredos (Supabase → Edge Functions → Secrets):
+//   GOOGLE_SERVICE_ACCOUNT_JSON  conteúdo do ficheiro JSON da conta de serviço Google Cloud
+//   VERTEX_REGION                opcional, por omissão «eu»
+//   CLAUDE_MODEL                 opcional, por omissão «claude-opus-5-5»
+
+import { AnthropicVertex } from 'npm:@anthropic-ai/vertex-sdk@1.1.3'
+import { GoogleAuth } from 'npm:google-auth-library@10.9.1'
+import { createClient } from 'npm:@supabase/supabase-js@2'
+import { encodeBase64 } from 'jsr:@std/encoding@1/base64'
+
+// ---------------- Esquemas da leitura ----------------
+
+const s = { type: 'string' } as const
+const sn = { type: ['string', 'null'] } as const
+const nn = { type: ['number', 'null'] } as const
+const confianca = { type: 'string', enum: ['alta', 'media', 'baixa'] } as const
+const obj = (props: Record<string, unknown>) => ({
+  type: 'object', properties: props, required: Object.keys(props), additionalProperties: false,
+})
+
+const ESQUEMA_ENCOMENDA = obj({
+  cliente: sn,
+  numeroDocumento: sn,
+  dataDocumento: { ...sn, description: 'AAAA-MM-DD' },
+  dataEntrega: { ...sn, description: 'AAAA-MM-DD, só se o documento a indicar' },
+  tamanhos: { type: 'array', items: s, description: 'Cabeçalho de tamanhos, pela ordem do documento' },
+  linhas: {
+    type: 'array',
+    items: obj({
+      linhaEncomenda: { ...sn, description: 'Nº da linha de encomenda do cliente, se existir (ex.: P261273)' },
+      referencia: s,
+      descricao: s,
+      cor: { ...s, description: 'Código e nome da cor como no documento (ex.: "313 - LIGHT BLUE")' },
+      quantidades: { type: 'array', items: { type: 'integer' }, description: 'Uma quantidade por tamanho, alinhada com «tamanhos»; 0 onde a célula está vazia' },
+      total: { type: ['integer', 'null'] },
+      preco: nn,
+      pagina: { type: 'integer' },
+      confianca,
+    }),
+  },
+  totaisDocumento: obj({
+    pecas: { type: ['integer', 'null'] },
+    valor: { ...nn, description: 'Total ilíquido (sem IVA), se existir' },
+    porTamanho: { type: ['array', 'null'], items: { type: 'integer' } },
+  }),
+  notas: { type: 'array', items: s, description: 'Observações e normas do documento (ex.: Oeko-Tex, formaldeídos)' },
+  perguntas: { type: 'array', items: s, description: 'Perguntas que o cliente faz no documento' },
+})
+
+const campo = obj({ campo: s, valor: s, pagina: { type: 'integer' }, confianca })
+const material = obj({
+  descricao: s, fornecedor: sn, consumo: nn, unidade: sn, cor: sn, observacoes: sn, pagina: { type: 'integer' }, confianca,
+})
+
+const ESQUEMA_TECHPACK = obj({
+  marca: sn,
+  colecao: sn,
+  modelos: {
+    type: 'array',
+    items: obj({
+      referencia: { ...s, description: 'Referência/código do modelo como no tech pack' },
+      nome: s,
+      tipoPeca: sn,
+      paginas: { type: 'array', items: { type: 'integer' } },
+      composicao: sn,
+      tamanhos: { type: 'array', items: s },
+      campos: { type: 'array', items: campo, description: 'Tecido, lavagem/tingimento, gola, botões, pespontos, cuidados, cabide, etc.' },
+      tecidos: { type: 'array', items: material },
+      acessorios: { type: 'array', items: material },
+      bordadosEstampados: {
+        type: 'array',
+        items: obj({ tipo: { type: 'string', enum: ['Bordado', 'Estampado'] }, posicao: s, medidas: sn, cor: sn, fornecedor: sn, pagina: { type: 'integer' }, confianca }),
+      },
+      medidas: {
+        type: ['object', 'null'],
+        properties: {
+          tamanhoBase: sn,
+          pontos: { type: 'array', items: obj({ ponto: s, valores: { type: 'array', items: nn } }) },
+        },
+        required: ['tamanhoBase', 'pontos'],
+        additionalProperties: false,
+      },
+      pedidos: { type: 'array', items: s, description: 'Pedidos à fábrica (ex.: «find fabric with EA»), não são dados' },
+      observacoes: { type: 'array', items: s },
+    }),
+  },
+})
+
+// ---------------- Função ----------------
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+const resposta = (corpo: unknown, status = 200) =>
+  new Response(JSON.stringify(corpo), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
+
+const INSTRUCOES = {
+  encomenda: `És o assistente do escritório de uma confeção têxtil portuguesa (Pereira & Cruz).
+Lê a encomenda do cliente e extrai TODAS as linhas, sem resumir nem saltar nenhuma.
+- As quantidades por tamanho têm de ficar alinhadas com o cabeçalho de tamanhos: uma célula vazia é 0. Usa a posição na coluna, não a ordem dos números.
+- Se a mesma cor aparece em mais de uma linha da mesma referência, mantém as linhas separadas (a aplicação junta-as).
+- Copia referências, códigos e textos exatamente como estão, mesmo cortados ("...").
+- Extrai os totais do próprio documento (por tamanho, peças, valor sem IVA) para a aplicação conferir a leitura.
+- Indica a página de cada linha e a confiança (baixa quando a leitura for duvidosa).
+- Não inventes: se um campo não existe no documento, devolve null.`,
+  techpack: `És o assistente do escritório de uma confeção têxtil portuguesa (Pereira & Cruz).
+Lê o tech pack do cliente (pode estar em inglês ou francês, com texto dentro de imagens e etiquetas fotografadas).
+Para cada modelo/referência extrai: tecidos (com fornecedor, composição e consumo se existirem), lavagem/tingimento, bordados e estampados (posição, medidas, cor), gola, botões, pespontos, acessórios, cuidados de lavagem, medidas (só se houver tabela) e observações.
+- Escreve os valores em português, mantendo referências e nomes comerciais como estão.
+- Indica a página de onde veio cada valor e a confiança (baixa quando não tiveres a certeza).
+- Pedidos à fábrica (ex.: "find fabric with EA", "possible to produce?") vão para «pedidos», não para os campos.
+- Não inventes: o que não estiver no documento fica de fora ou a null.`,
+} as const
+
+let cliente: AnthropicVertex | null = null
+function claude() {
+  if (cliente) return cliente
+  const json = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON')
+  if (!json) throw new Error('Falta o segredo GOOGLE_SERVICE_ACCOUNT_JSON.')
+  const credenciais = JSON.parse(json)
+  cliente = new AnthropicVertex({
+    region: Deno.env.get('VERTEX_REGION') ?? 'eu',
+    projectId: credenciais.project_id,
+    googleAuth: new GoogleAuth({ credentials: credenciais, scopes: ['https://www.googleapis.com/auth/cloud-platform'] }),
+  })
+  return cliente
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
+  if (req.method !== 'POST') return resposta({ erro: 'Método não permitido' }, 405)
+
+  try {
+    const { caminho, tipo, contexto } = await req.json() as { caminho: string; tipo: 'encomenda' | 'techpack'; contexto?: string }
+    if (!caminho || (tipo !== 'encomenda' && tipo !== 'techpack')) return resposta({ erro: 'Pedido inválido' }, 400)
+
+    // descarregar o ficheiro com a sessão de quem pediu (respeita as regras de acesso)
+    const chave = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, chave, {
+      global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
+    })
+    const { data: ficheiro, error } = await supabase.storage.from('documentos').download(caminho)
+    if (error || !ficheiro) return resposta({ erro: 'Não consegui abrir o ficheiro guardado.' }, 404)
+
+    const bytes = new Uint8Array(await ficheiro.arrayBuffer())
+    const b64 = encodeBase64(bytes)
+    const tipoFicheiro = ficheiro.type || (caminho.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/png')
+    const bloco = tipoFicheiro === 'application/pdf'
+      ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: b64 } }
+      : { type: 'image' as const, source: { type: 'base64' as const, media_type: tipoFicheiro as 'image/png' | 'image/jpeg' | 'image/webp', data: b64 } }
+
+    const stream = claude().messages.stream({
+      model: Deno.env.get('CLAUDE_MODEL') ?? 'claude-opus-5-5',
+      max_tokens: 32000,
+      system: INSTRUCOES[tipo],
+      output_config: {
+        effort: 'high',
+        format: { type: 'json_schema', schema: tipo === 'encomenda' ? ESQUEMA_ENCOMENDA : ESQUEMA_TECHPACK },
+      },
+      messages: [{
+        role: 'user',
+        content: [bloco, { type: 'text', text: `Extrai os dados deste ${tipo === 'encomenda' ? 'documento de encomenda' : 'tech pack'}.${contexto ? `\nContexto: ${contexto}` : ''}` }],
+      }],
+    })
+    const msg = await stream.finalMessage()
+
+    if (msg.stop_reason === 'refusal') return resposta({ erro: 'A IA recusou ler este documento.' }, 422)
+    if (msg.stop_reason === 'max_tokens') return resposta({ erro: 'O documento é demasiado grande para uma leitura. Divida-o em partes.' }, 422)
+    const texto = msg.content.find((b) => b.type === 'text')
+    if (!texto || texto.type !== 'text') return resposta({ erro: 'A IA não devolveu dados.' }, 502)
+
+    return resposta({
+      ok: true,
+      tipo,
+      dados: JSON.parse(texto.text),
+      modelo: msg.model,
+      uso: { entrada: msg.usage.input_tokens, saida: msg.usage.output_tokens },
+    })
+  } catch (e) {
+    console.error(e)
+    return resposta({ erro: e instanceof Error ? e.message : String(e) }, 500)
+  }
+})

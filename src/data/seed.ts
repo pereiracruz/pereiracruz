@@ -75,6 +75,8 @@ export const acessoriosCliente: AcessorioCliente[] = [
   { id: 'a5', cliente: 'Dr. Collectors', item: 'Etiqueta "Teddy Forever"', fornecedor: 'Etisatos', consumo: '1 por peça' },
   { id: 'a6', cliente: 'Dr. Collectors', item: 'Fita de nastro (7 × 1,5 cm)', fornecedor: 'Nastrotex', consumo: '1 por peça' },
   { id: 'a7', cliente: 'Dr. Collectors', item: 'Fita de nastro (14 × 2,5 cm)', fornecedor: 'Nastrotex', consumo: '1 por peça' },
+  { id: 'a8', cliente: 'Longratex', item: 'Etiqueta de marca Patachou', fornecedor: 'Enviada pela cliente', consumo: '1 por peça' },
+  { id: 'a9', cliente: 'Longratex', item: 'Hangtag', fornecedor: 'Enviada pela cliente', consumo: '1 por peça' },
 ]
 
 export const LETRAS = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL']
