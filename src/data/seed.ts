@@ -69,10 +69,12 @@ export const acessoriosCliente: AcessorioCliente[] = [
 
 export const LETRAS = ['XS', 'S', 'M', 'L', 'XL', '2XL', '3XL']
 export const CINTURA = ['25', '26', '27', '28', '29', '30', '31', '32']
+export const BEBE = ['6M', '9M', '12M', '18M', '2Y', '3Y', '4Y', '5Y', '6Y', '8Y']
 export const escalas: Escala[] = [
   { id: 's1', nome: 'Letras', tamanhos: LETRAS, usadaEm: 'Camisas, casacos, calças com elástico' },
   { id: 's2', nome: 'Cintura', tamanhos: CINTURA, usadaEm: 'Denim e calções (Imprevu)' },
   { id: 's3', nome: 'Comprimento de perna', tamanhos: ['L32', 'L34'], usadaEm: 'Denim (Imprevu)' },
+  { id: 's4', nome: 'Bebé e criança', tamanhos: BEBE, usadaEm: 'Longratex' },
 ]
 
 export const destinatarios: Destinatario[] = [
@@ -100,6 +102,14 @@ export const precosRef: PrecoRef[] = [
 export const clientes: ClienteCfg[] = [
   { id: 'c1', nome: 'Imprevu', margemTipo: 'fixa', margem: 3, comissao: 7, idPrefixo: 'IMP' },
   { id: 'c2', nome: 'Dr. Collectors', margemTipo: 'fixa', margem: 3, comissao: 0, idPrefixo: 'DRC' },
+  {
+    id: 'c3', nome: 'Longratex', margemTipo: 'fixa', margem: 0, comissao: 0, idPrefixo: 'LGX', escala: 'Bebé e criança',
+    notasFixas: [
+      'Respeitar as normas Oeko-Tex e Reach: artigos de bebé e criança.',
+      'Contraste com branco e cores claras: atenção à solidez da cor.',
+      'Artigos para bebé com menos de 3 anos: isentos de formaldeídos (OEKO-TEX®).',
+    ],
+  },
 ]
 
 // ======================= Helpers =======================
@@ -341,7 +351,54 @@ function drc(): Encomenda {
   }
 }
 
-export const encomendasIniciais = (): Encomenda[] => [drc()]
+// ======================= Encomenda Longratex (PDF Macwin, lida e conferida) =======================
+/** Requisição FRQM2026/0130. A mesma cor partida em várias linhas junta-se numa só variante. */
+export function encomendaLongratex(): Encomenda {
+  const somar = (...ls: number[][]) => ls[0].map((_, i) => ls.reduce((s, l) => s + l[i], 0))
+  const cor = (codigo: string, nome: string, linhas: number[][], preco: number): Variante => ({
+    ...variante(codigo, `${codigo} - ${nome}`, nome.toUpperCase(), somar(...linhas), preco, 'A definir'),
+    id: slug(`${codigo}-${nome}`), linhasOrigem: linhas.length,
+  })
+  const mod = (linha: string, ref: string, nome: string, tipoPeca: string, variantes: Variante[]): Modelo => ({
+    ...modeloVazio({ nome, tipoPeca, descricao: tipoPeca.toUpperCase(), escala: BEBE, variantes }),
+    id: slug(ref), refCliente: ref, linhaEncomenda: linha,
+  })
+  return {
+    id: 'longratex-frqm2026-0130', cliente: 'Longratex', colecao: 'FRQM2026/0130', modoServico: 'Produto acabado',
+    entrega: '', criadaEm: '2026-09-14', estado: 'Em revisão', preEncomenda: 1030, stock: 0,
+    numeroDocumento: 'FRQM2026/0130', dataDocumento: '2026-09-14',
+    ficheiros: ['encomenda.pdf'],
+    notas: [
+      'Os artigos fornecidos devem respeitar as normas Oeko Tex e Reach (artigos de bebé e criança).',
+      'Os produtos vão fazer contraste com branco/cores claras: atenção à solidez da cor.',
+      'Artigos para bebé inferiores a 3 anos: isentos de formaldeídos e respeitar as normas OEKO-TEX®.',
+      'Data de entrega: vem no email do cliente.',
+    ],
+    totaisDocumento: { pecas: 1030, valor: 13044.85, porTamanho: [27, 21, 61, 75, 164, 148, 164, 111, 138, 121] },
+    modelos: [
+      mod('P261273', 'PAP/CAL1033350', 'Calça vaqueiro 3933311 · Básicos Patachou', 'Calças', [
+        cor('000', 'White', [[0, 0, 1, 1, 3, 5, 5, 2, 5, 5]], 12.95),
+        cor('313', 'Light blue', [[7, 6, 9, 11, 53, 52, 54, 47, 51, 49]], 12.95),
+        cor('852', 'Brown', [[9, 2, 11, 9, 10, 5, 9, 5, 6, 5]], 12.95),
+      ]),
+      mod('P261274', 'PAP/CAL1033370', 'Calção vaqueiro de rapaz · Boy Hamptons', 'Calções', [
+        cor('000', 'White', [[2, 1, 0, 3, 6, 7, 8, 5, 7, 5]], 11.9),
+        cor('313', 'Light blue', [[0, 0, 3, 6, 10, 11, 11, 3, 8, 5]], 11.9),
+        cor('656', 'Ocean green', [[4, 4, 10, 11, 16, 13, 17, 12, 16, 12]], 11.9),
+      ]),
+      mod('P261286', 'PAP/CL1033372', 'Calção chino com cinto · Básicos Patachou', 'Calções', [
+        cor('000', 'White', [[1, 0, 5, 5, 8, 10, 9, 7, 5, 4]], 12.9),
+        cor('120', 'Bege', [[0, 0, 4, 4, 7, 7, 7, 7, 8, 8], [4, 7, 11, 17, 28, 20, 24, 9, 19, 15]], 12.9),
+        cor('360', 'Marine', [[0, 1, 7, 8, 15, 10, 12, 6, 5, 5]], 12.9),
+      ]),
+      mod('P261364', 'PAP/CON4433817', 'Calção 1033370 · cor 656 · entregar sem etiq. c…', 'Calções', [
+        cor('391', 'Multicolor', [[0, 0, 0, 0, 8, 8, 8, 8, 8, 8]], 11.9),
+      ]),
+    ],
+  }
+}
+
+export const encomendasIniciais = (): Encomenda[] => [encomendaLongratex(), drc()]
 
 // ======================= Orçamentação =======================
 export const linhasShirtMao = (): LinhaCusto[] => [

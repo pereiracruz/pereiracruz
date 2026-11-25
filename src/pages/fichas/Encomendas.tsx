@@ -38,7 +38,7 @@ export default function Encomendas() {
           { id: 'refs', rotulo: 'Referências', valor: (e) => referenciasEncomenda(e), alinhar: 'centro' },
           { id: 'pecas', rotulo: 'Peças', valor: (e) => pecasEncomenda(e), render: (e) => int(pecasEncomenda(e)), alinhar: 'centro' },
           { id: 'fichas', rotulo: 'Fichas', valor: (e) => fichasGeradas(e), render: (e) => `${fichasGeradas(e)} / ${referenciasEncomenda(e)}`, alinhar: 'centro' },
-          { id: 'entrega', rotulo: 'Data de entrega', valor: (e) => e.entrega, render: (e) => dataCurta(e.entrega), filtro: 'data', alinhar: 'centro' },
+          { id: 'entrega', rotulo: 'Data de entrega', valor: (e) => e.entrega, render: (e) => (e.entrega ? dataCurta(e.entrega) : <span className="text-ambar">A confirmar</span>), filtro: 'data', alinhar: 'centro' },
           { id: 'estado', rotulo: 'Estado', valor: (e) => e.estado, filtro: 'lista', render: (e) => <Etiqueta tom={tomEstado(e.estado)}>{e.estado}</Etiqueta>, alinhar: 'centro' },
         ]}
       />

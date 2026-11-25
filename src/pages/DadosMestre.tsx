@@ -7,7 +7,7 @@ import { NOME_FOLHA } from '../components/Folhas'
 
 type Linha = Record<string, unknown> & { id: string }
 interface Def {
-  campo: string; rotulo: string; tipo?: 'texto' | 'numero' | 'lista' | 'tamanhos'; opcoes?: string[]; filtro?: 'texto' | 'lista'
+  campo: string; rotulo: string; tipo?: 'texto' | 'numero' | 'lista' | 'tamanhos' | 'linhas'; opcoes?: string[]; filtro?: 'texto' | 'lista'
   mostrar?: (l: Linha) => React.ReactNode
 }
 interface Separador { id: NomeTabela; rotulo: string; desc?: string; defs: Def[]; titulo: (l: Linha) => string }
@@ -61,6 +61,8 @@ const SEPARADORES: Separador[] = [
     { campo: 'margemTipo', rotulo: 'Tipo de margem', tipo: 'lista', opcoes: ['fixa', 'percentual'] },
     { campo: 'margem', rotulo: 'Margem', tipo: 'numero', mostrar: (l) => (l.margemTipo === 'fixa' ? eur(Number(l.margem)) : `${l.margem} %`) },
     { campo: 'comissao', rotulo: 'Comissão do agente (%)', tipo: 'numero', mostrar: (l) => `${l.comissao} %` },
+    { campo: 'escala', rotulo: 'Escala de tamanhos' },
+    { campo: 'notasFixas', rotulo: 'Notas fixas (uma por linha)', tipo: 'linhas', mostrar: (l) => ((l.notasFixas as string[] | undefined)?.length ? <span className="text-[13px] text-suave">{(l.notasFixas as string[]).length} notas</span> : <span className="text-tenue">—</span>) },
   ] },
   { id: 'precosRef', rotulo: 'Tabela de preços', desc: 'Mão de obra, serviços e valores de referência da ficha de custo.', titulo: (l) => String(l.linha), defs: [
     { campo: 'linha', rotulo: 'Linha', filtro: 'texto', mostrar: (l) => <span className="font-medium">{String(l.linha)}</span> },
@@ -86,7 +88,7 @@ export default function DadosMestre() {
 
   const abrirNova = () => {
     const l: Linha = { id: uid(sep.slice(0, 3)) }
-    s.defs.forEach((d) => { l[d.campo] = d.tipo === 'numero' ? 0 : d.tipo === 'tamanhos' ? [] : d.opcoes?.[0] ?? '' })
+    s.defs.forEach((d) => { l[d.campo] = d.tipo === 'numero' ? 0 : d.tipo === 'tamanhos' || d.tipo === 'linhas' ? [] : d.opcoes?.[0] ?? '' })
     setEdit(l); setNova(true)
   }
 
@@ -116,6 +118,9 @@ export default function DadosMestre() {
               <Campo key={d.campo} rotulo={d.rotulo} ajuda={d.tipo === 'tamanhos' ? 'Separe os tamanhos com espaços ou vírgulas.' : undefined}>
                 {d.tipo === 'lista' ? (
                   <Seletor valor={String(edit[d.campo] ?? '')} onChange={(v) => setEdit({ ...edit, [d.campo]: v })} opcoes={d.opcoes ?? []} />
+                ) : d.tipo === 'linhas' ? (
+                  <textarea rows={4} defaultValue={((edit[d.campo] as string[] | undefined) ?? []).join('\n')} onChange={(e) => setEdit({ ...edit, [d.campo]: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) })}
+                    className="w-full rounded-controlo border border-linha p-3 text-[14px] outline-none focus:border-tinta-2" />
                 ) : d.tipo === 'tamanhos' ? (
                   <Entrada defaultValue={(edit[d.campo] as string[]).join(' ')} onChange={(e) => setEdit({ ...edit, [d.campo]: e.target.value.split(/[\s,·]+/).filter(Boolean) })} />
                 ) : (

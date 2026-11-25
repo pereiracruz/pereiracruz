@@ -72,6 +72,19 @@ export function verificarEncomenda(e: Encomenda): Verificacao[] {
     ok: difs.length === 0,
     texto: difs.length ? `Soma por cor diferente do total por tamanho em ${difs.map((m) => m.nome).join(', ')}` : 'Soma por cor igual ao total por tamanho',
   })
+  const doc = e.totaisDocumento
+  if (doc) {
+    const pecas = pecasEncomenda(e)
+    out.push({ ok: pecas === doc.pecas, texto: pecas === doc.pecas ? `Peças iguais ao documento (${doc.pecas})` : `Peças: ${pecas} lidas, ${doc.pecas} no documento` })
+    if (doc.porTamanho) {
+      const n = doc.porTamanho.length
+      const lidas = doc.porTamanho.map((_, i) => soma(e.modelos.flatMap((m) => m.variantes.map((v) => v.qtdEncomenda[i] ?? 0))))
+      const iguais = e.modelos.every((m) => m.escala.length >= n) && lidas.every((x, i) => x === doc.porTamanho![i])
+      out.push({ ok: iguais, texto: iguais ? 'Totais por tamanho iguais ao documento' : 'Totais por tamanho diferentes do documento', detalhe: iguais ? undefined : `Lidos: ${lidas.join(' · ')}` })
+    }
+    const valor = Math.round(valorEncomenda(e) * 100) / 100
+    out.push({ ok: Math.abs(valor - doc.valor) < 0.005, texto: Math.abs(valor - doc.valor) < 0.005 ? 'Valor igual ao documento' : 'Valor diferente do documento' })
+  }
   return out
 }
 

@@ -14,6 +14,8 @@ export interface ClienteCfg {
   margemTipo: 'fixa' | 'percentual'; margem: number
   comissao: number // % do agente sobre o total de custos
   idPrefixo: string
+  escala?: string // escala de tamanhos habitual
+  notasFixas?: string[] // passam para as observações das fichas
 }
 
 // ---------- Fichas de produção ----------
@@ -47,6 +49,7 @@ export interface Variante {
   qtd: number[] // na ficha (deve igualar a encomenda)
   preco: number // preço por peça na encomenda
   fichaGerada: boolean
+  linhasOrigem?: number // nº de linhas da encomenda juntadas (mesma cor partida em várias linhas)
 }
 
 export type EstadoFicha = 'sem-ficha' | 'rascunho' | 'aprovada' | 'enviada'
@@ -55,6 +58,8 @@ export interface Modelo {
   id: string
   nome: string
   alias?: string
+  refCliente?: string // referência no documento do cliente
+  linhaEncomenda?: string // nº da linha de encomenda do cliente
   tipoPeca: string
   descricao: string
   escala: string[]
@@ -81,7 +86,11 @@ export interface Encomenda {
   cliente: string
   colecao: string
   modoServico: ModoServico
-  entrega: string // ISO
+  entrega: string // ISO; vazio = a confirmar
+  numeroDocumento?: string
+  dataDocumento?: string
+  notas?: string[] // notas do documento (normas, cuidados)
+  totaisDocumento?: { pecas: number; valor: number; porTamanho?: number[] }
   criadaEm: string
   estado: EstadoEncomenda
   preEncomenda: number

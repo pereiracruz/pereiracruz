@@ -122,6 +122,13 @@ export const useDb = create<Estado>()(
       },
       repor: () => { set(dadosIniciais()); get().log('Dados repostos', 'Dados de exemplo repostos') },
     }),
-    { name: 'pc-fichas-v1', version: 1 },
+    {
+      name: 'pc-fichas-v1', version: 2,
+      // novos dados de exemplo: repõe os dados, mantém a sessão e a palavra-passe
+      migrate: (antigo) => {
+        const a = antigo as Partial<Estado>
+        return { ...dadosIniciais(), sessao: a.sessao ?? null, passHash: a.passHash ?? PASS_INICIAL_HASH, nomeUtilizador: a.nomeUtilizador ?? 'Admin' } as Estado
+      },
+    },
   ),
 )
