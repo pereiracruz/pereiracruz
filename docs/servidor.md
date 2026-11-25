@@ -48,4 +48,4 @@ VITE_SUPABASE_ANON_KEY=chave-publica
   - o registo de atividade fica na tabela `atividade` (não se altera nem apaga);
   - «Repor exemplo» não existe no modo servidor.
 
-Projeto: `https://gupydoryatnbfakegbzo.supabase.co` (região a confirmar: Central EU · Frankfurt).
+Projeto: `https://gupydoryatnbfakegbzo.supabase.co` · região Central EU (Frankfurt), confirmada.
