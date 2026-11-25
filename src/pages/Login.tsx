@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { useDb } from '../store/db'
+import { modoServidor } from '../lib/supabase'
 import { Campo, Entrada } from '../components/ui'
 
 export default function Login() {
   const entrar = useDb((s) => s.entrar)
+  const erroServidor = useDb((s) => s.erroServidor)
   const [u, setU] = useState('')
   const [p, setP] = useState('')
   const [erro, setErro] = useState('')
@@ -15,7 +17,7 @@ export default function Login() {
     setAEntrar(true); setErro('')
     const ok = await entrar(u, p)
     setAEntrar(false)
-    if (!ok) setErro('Utilizador ou palavra-passe incorretos.')
+    if (!ok) setErro(modoServidor ? 'Email ou palavra-passe incorretos.' : 'Utilizador ou palavra-passe incorretos.')
   }
 
   return (
@@ -25,10 +27,10 @@ export default function Login() {
           <img src="/logo-mark.png" alt="Pereira & Cruz" className="h-16 mx-auto" />
           <h1 className="text-center text-[20px] font-semibold mt-7 mb-8">Iniciar sessão</h1>
           <div className="space-y-5">
-            <Campo rotulo="Utilizador"><Entrada autoFocus value={u} onChange={(e) => setU(e.target.value)} placeholder="admin" autoComplete="username" /></Campo>
+            <Campo rotulo={modoServidor ? 'Email' : 'Utilizador'}><Entrada autoFocus type={modoServidor ? 'email' : 'text'} value={u} onChange={(e) => setU(e.target.value)} placeholder={modoServidor ? 'nome@empresa.pt' : 'admin'} autoComplete="username" /></Campo>
             <Campo rotulo="Palavra-passe"><Entrada type="password" value={p} onChange={(e) => setP(e.target.value)} placeholder="••••••••" autoComplete="current-password" /></Campo>
           </div>
-          {erro && <p className="text-[13px] text-vermelho mt-4">{erro}</p>}
+          {(erro || erroServidor) && <p className="text-[13px] text-vermelho mt-4">{erro || erroServidor}</p>}
           <button disabled={aEntrar} className="mt-8 w-full h-11 rounded-controlo bg-tinta text-white font-medium flex items-center justify-center gap-2 hover:bg-tinta-2 disabled:opacity-60">
             Entrar <ArrowRight size={16} />
           </button>

@@ -19,6 +19,8 @@
 
 1. **Projeto** criado na região **Central EU (Frankfurt)** (Project Settings → General → Region).
 2. **SQL Editor → New query** → colar `supabase/migrations/20261125000000_inicial.sql` → **Run**.
+   Depois, numa nova query, `supabase/migrations/20261125000100_permissoes.sql` → **Run**
+   (os projetos novos não dão permissões automáticas às tabelas).
 3. **Authentication → Sign In / Providers → Email**: desligar **«Allow new users to sign up»** (só a Pereira & Cruz cria contas).
 4. **Authentication → Users → Add user → Create new user**: email e palavra-passe do Admin, com «Auto Confirm User».
 5. **Project Settings → API** (ou «Data API» / «API Keys»): copiar
@@ -34,3 +36,16 @@ Ficheiro `.env.local` (não vai para o GitHub):
 VITE_SUPABASE_URL=https://xxxx.supabase.co
 VITE_SUPABASE_ANON_KEY=chave-publica
 ```
+
+## Como a aplicação usa o servidor
+
+- Sem `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`: **modo local** (dados no browser, utilizador `admin`).
+- Com as variáveis: **modo servidor** (`src/store/servidor.ts`):
+  - entrada com **email e palavra-passe** (Supabase Auth); nada fica guardado no browser além da sessão;
+  - ao entrar carrega todos os documentos; se a base de dados estiver vazia, carrega os dados iniciais
+    (clientes, dados mestre, encomendas de exemplo);
+  - cada alteração é guardada automaticamente (indicador «A guardar… / Guardado» na barra lateral);
+  - o registo de atividade fica na tabela `atividade` (não se altera nem apaga);
+  - «Repor exemplo» não existe no modo servidor.
+
+Projeto: `https://gupydoryatnbfakegbzo.supabase.co` (região a confirmar: Central EU · Frankfurt).

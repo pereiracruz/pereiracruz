@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './index.css'
 import { useDb } from './store/db'
+import { iniciarServidor } from './store/servidor'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Painel from './pages/Painel'
@@ -18,8 +19,16 @@ import Historico from './pages/orcamentos/Historico'
 import Atividade from './pages/Atividade'
 import Conta from './pages/Conta'
 
+iniciarServidor()
+
 function App() {
   const sessao = useDb((s) => s.sessao)
+  const aCarregar = useDb((s) => s.aCarregar)
+  if (aCarregar) return (
+    <div className="h-full grid place-items-center text-center">
+      <div><img src="/logo-mark.png" alt="" className="h-14 mx-auto animate-pulse" /><p className="mt-4 text-[14px] text-suave">A carregar os dados…</p></div>
+    </div>
+  )
   if (!sessao) return <Login />
   return (
     <Routes>

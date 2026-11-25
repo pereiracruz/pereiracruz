@@ -10,11 +10,14 @@ npm install
 npm run dev
 ```
 
-Abrir http://localhost:5173 · utilizador `admin` · palavra-passe inicial `pereira2026` (mudar em «A minha conta»).
+Abrir http://localhost:5173.
+
+- **Modo servidor** (Supabase): criar `.env.local` com `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (ver `docs/servidor.md`); entrar com o email e a palavra-passe criados no Supabase.
+- **Modo local** (sem `.env.local`): utilizador `admin` · palavra-passe inicial `pereira2026`.
 
 ## Estado (fase 1: frontend)
 
-- Os dados ficam no browser (localStorage). «Repor exemplo» no Painel volta aos dados iniciais.
+- Com Supabase os dados ficam na base de dados (UE); sem configuração ficam no browser.
 - A leitura de documentos pela IA está **simulada** com o exemplo da Imprevu (SHIRT MAO). A leitura real entra com o servidor.
 - Exportação: **Excel** real (um separador por folha, totais em fórmula) e **PDF** (janela de impressão). Google Sheets entra com o servidor.
 

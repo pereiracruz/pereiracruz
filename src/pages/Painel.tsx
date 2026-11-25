@@ -5,6 +5,7 @@ import { useDb } from '../store/db'
 import { Botao, Cartao, Pilulas, aviso } from '../components/ui'
 import { calcularCusto, fichasGeradas, fichasPorAprovar, pecasModelo, soma } from '../lib/calc'
 import { dataLonga, eur, int } from '../lib/format'
+import { modoServidor } from '../lib/supabase'
 
 export default function Painel() {
   const [sep, setSep] = useState<'fichas' | 'orc'>('fichas')
@@ -24,9 +25,9 @@ export default function Painel() {
         <h1 className="text-[32px] font-semibold tracking-[-0.02em]">Painel</h1>
         <div className="flex items-center gap-4">
           <span className="text-[14px] text-tenue">{dataLonga()}</span>
-          <Botao variante="fantasma" icone={<RotateCcw size={15} />} onClick={() => {
+          {!modoServidor && <Botao variante="fantasma" icone={<RotateCcw size={15} />} onClick={() => {
             if (confirm('Repor os dados de exemplo? As alterações feitas neste browser perdem-se.')) { repor(); aviso('Dados de exemplo repostos.') }
-          }}>Repor exemplo</Botao>
+          }}>Repor exemplo</Botao>}
           <Botao variante="primario" onClick={() => nav('/fichas/nova')}>Nova encomenda</Botao>
         </div>
       </div>

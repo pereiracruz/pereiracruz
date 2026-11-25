@@ -5,7 +5,7 @@ import { useDb } from '../store/db'
 import { Botao, Cabecalho, Campo, Cartao, Entrada, aviso } from '../components/ui'
 
 export default function Conta() {
-  const { nomeUtilizador, mudarPass } = useDb()
+  const { nomeUtilizador, mudarPass, sessao } = useDb()
   const [atual, setAtual] = useState('')
   const [nova, setNova] = useState('')
   const [rep, setRep] = useState('')
@@ -23,7 +23,7 @@ export default function Conta() {
       <div className="grid grid-cols-[320px_1fr] gap-5 items-start">
         <Cartao className="p-6 flex items-center gap-4">
           <div className="size-14 rounded-full bg-tinta text-white grid place-items-center text-[18px] font-semibold">{nomeUtilizador.charAt(0)}</div>
-          <div><p className="font-semibold text-[16px]">{nomeUtilizador}</p><p className="text-[13px] text-suave">Administrador · utilizador: admin</p></div>
+          <div><p className="font-semibold text-[16px]">{nomeUtilizador}</p><p className="text-[13px] text-suave">Administrador · {sessao}</p></div>
         </Cartao>
         <Cartao className="p-6">
           <h3 className="font-semibold mb-4">Palavra-passe</h3>
@@ -47,7 +47,6 @@ export default function Conta() {
               ))}
             </ul>
           </form>
-          <p className="text-[12px] text-tenue mt-6">Nesta fase a conta fica guardada neste browser. Com o servidor passa a ter autenticação segura e cópias de segurança.</p>
         </Cartao>
       </div>
     </>

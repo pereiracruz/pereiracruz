@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Bell, ChevronDown, ClipboardList, Database, FileClock, History, KeyRound, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Receipt } from 'lucide-react'
+import { Bell, Check, ChevronDown, Cloud, ClipboardList, Database, FileClock, History, KeyRound, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Receipt } from 'lucide-react'
 import { useDb } from '../store/db'
 import { fichasPorAprovar } from '../lib/calc'
 import { Toasts } from './ui'
+import { modoServidor } from '../lib/supabase'
 
 function Item({ para, icone, children, fim }: { para: string; icone?: ReactNode; children: ReactNode; fim?: boolean }) {
   return (
@@ -72,6 +73,7 @@ export default function Layout() {
   const sair = useDb((s) => s.sair)
   const nome = useDb((s) => s.nomeUtilizador)
   const porAprovar = useDb((s) => s.encomendas.reduce((n, e) => n + fichasPorAprovar(e), 0))
+  const aGuardar = useDb((s) => s.aGuardar)
 
   return (
     <div className="h-full flex">
@@ -115,7 +117,9 @@ export default function Layout() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[14px] font-medium leading-tight">{nome}</p>
-            <p className="text-[12px] text-tenue">Administrador</p>
+            <p className="text-[12px] text-tenue flex items-center gap-1">{modoServidor
+              ? (aGuardar ? <><Cloud size={11} className="animate-pulse" />A guardar…</> : <><Check size={11} className="text-verde" />Guardado</>)
+              : 'Modo local'}</p>
           </div>
           <button onClick={sair} className="p-1.5 text-tenue hover:text-tinta" aria-label="Sair" title="Sair"><LogOut size={17} /></button>
         </div>
