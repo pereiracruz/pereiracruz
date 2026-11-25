@@ -1,5 +1,7 @@
 # Pôr a aplicação online (Netlify)
 
+**Endereço: https://pereiracruz.netlify.app**
+
 A configuração está em `netlify.toml` (construção, rotas e cabeçalhos de segurança).
 Cada envio para o ramo `main` no GitHub volta a publicar a aplicação automaticamente.
 
@@ -16,8 +18,8 @@ Cada envio para o ramo `main` no GitHub volta a publicar a aplicação automatic
 
 ## Depois de publicado
 
-- No **Supabase → Authentication → URL Configuration**, pôr o endereço do Netlify em **Site URL**
-  (serve para os emails de recuperação de palavra-passe).
+- No **Supabase → Authentication → URL Configuration**: **Site URL** = `https://pereiracruz.netlify.app` e, em
+  **Redirect URLs**, `https://pereiracruz.netlify.app/**` (serve para os emails de recuperação de palavra-passe).
 - Entrar com o email e a palavra-passe criados no Supabase. Na primeira entrada a base de dados recebe os dados iniciais.
 - **Endereço próprio** (opcional): Netlify → Domain management → `fichas.pereirasproject.com`, e um registo CNAME no
   fornecedor do domínio.

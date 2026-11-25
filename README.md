@@ -1,5 +1,7 @@
 # Pereira & Cruz · Fichas de produção e pré-orçamentação
 
+Aplicação: **https://pereiracruz.netlify.app** (Netlify, publica a cada envio para `main`) · dados no Supabase (UE, Frankfurt).
+
 Aplicação web para gerar as fichas de produção a partir da encomenda e do tech pack, e para preparar os orçamentos.
 Requisitos: `../LEVANTAMENTO.md` (demo analisada + Descrição Funcional PEC/2026/01).
 
