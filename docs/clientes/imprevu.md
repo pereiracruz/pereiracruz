@@ -33,8 +33,8 @@ Testado com este ficheiro: 13 linhas, 0 diferenças.
 | JU1 | Denim June Clean Light Grey | Sidogras PCRL P707 1020 washed |
 | JU2 | Denim June Velvet Light Blue | Sidogras PECO P705 washed B |
 | JU9 | Denim June Light Brown Grey | Sidogras PCRL P707 1045 washed |
-| LE1 | Denim Lexi Bicolore Grey | Foster / FJ Magalhães |
-| LE2 | Denim Lexi Bicolore Blue | Gigio cor grey / FJ Magalhães |
+| LE1 | Denim Lexi Bicolore Grey | Foster / FJ Magalhães *(errado no tech pack: é Gigio)* |
+| LE2 | Denim Lexi Bicolore Blue | Gigio cor grey / FJ Magalhães *(errado no tech pack: é Foster)* |
 | LE3 | Denim Lexi Vintage | Foster / FJ Magalhães · cor light dirty blue |
 | RO9 | Denim Roxy Balloon Used Bordeaux | Options · cor brown 19-1521 TPG · Troficolor F19-S7 (Santos-S) + foto da etiqueta do tecido (ref. SA0012/6DBL136, 100% CO, 400 g/m², larg. 145) |
 | ST1 | Denim Stevie Medium Grey | «Find fabric with EA (ref. Epheusus Bob)» → pedido à Pereira & Cruz |
@@ -48,6 +48,7 @@ Testado com este ficheiro: 13 linhas, 0 diferenças.
 | «Bicolore» | **É tudo o mesmo tecido**: muda só **mais uma operação na confeção** (faixa lateral). Não é um segundo tecido. |
 | Modelo que já existia noutra coleção | **Ficha nova**: os tecidos podem ser diferentes. Não se parte da ficha anterior. |
 | Perguntas da cliente | Ficam registadas **na encomenda**. |
+| Tecido do Lexi (ficha vs tech pack trocados) | **A ficha da Pereira & Cruz está certa**: LE1 grey = **Gigio**, LE2 blue = **Foster**. O tech pack da cliente tinha-os trocados. |
 
 ### O que isto pede à leitura
 

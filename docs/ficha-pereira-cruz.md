@@ -56,7 +56,7 @@ automática do Excel da encomenda (9/9).
 | `Cópia de Acabamento_Roxy` | **R09** (zero) em vez de **RO9** (letra O) | Referência igual à encomenda |
 | `Roxy` | Modelo «ROXI» | Nome do modelo dos dados da encomenda |
 | `Lexi_grey`, `Roxy`, `Stevie`… | Largura útil «1,65 cm» (165 cm?) | Unidade da largura |
-| `Lexi_grey` / `Lexi_blue` | Ficha: grey = Gigio, blue = Foster; tech pack: LE1 grey = Foster, LE2 blue = Gigio | Divergência tecido ↔ tech pack |
+| `Lexi_grey` / `Lexi_blue` | Ficha: grey = Gigio, blue = Foster; tech pack: LE1 grey = Foster, LE2 blue = Gigio | Divergência tecido ↔ tech pack · **confirmado: a ficha está certa, o tech pack estava trocado** |
 | `Cópia de Packing_list` | Caixa 4 «14+1stevie32» com total escrito à mão (14) | Totais por fórmula |
 
 ## Impacto no software
@@ -79,6 +79,7 @@ automática do Excel da encomenda (9/9).
 | Peso | Depende do modelo | Peso por peça (kg) por modelo, opcional; coluna KG na packing list |
 | Linha | Depende da encomenda (várias espessuras): **só cor e fornecedor** | Materiais «sem consumo»: não contam como total a zero |
 | Confeções externas como destinatários | Não | Ficam como observação |
+| Tecido do Lexi (ficha ≠ tech pack) | A ficha está certa | O tech pack pode vir errado: a divergência é assinalada e quem decide é a equipa; a decisão fica registada na ficha |
 
 - Produção (confecionado/embalado) preenche-se na folha de embalamento e **não** obriga a nova aprovação.
 - Packing list por envio (FIRST SEND, SECOND SEND…), em inglês, caixas numeradas seguidas dentro do envio,
