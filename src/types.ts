@@ -32,6 +32,7 @@ export interface LinhaMaterial {
   cor: string
   largura?: string
   folha: 'confecao' | 'embalamento' | 'tecido'
+  semConsumo?: boolean // ex.: linha — só cor e fornecedor (a espessura depende da encomenda)
   divergencia?: string // diferença face ao tech pack
   justificacao?: string
 }
@@ -49,6 +50,8 @@ export interface Variante {
   qtd: number[] // na ficha (deve igualar a encomenda)
   preco: number // preço por peça na encomenda
   fichaGerada: boolean
+  qtdConfecionado?: number[] // preenchido depois da confeção
+  qtdEmbalado?: number[] // preenchido no embalamento
   qtdStock?: number[] // parte das quantidades que é stock (incluída em qtdEncomenda)
   linhasOrigem?: number // nº de linhas da encomenda juntadas (mesma cor partida em várias linhas)
 }
@@ -76,9 +79,13 @@ export interface Modelo {
   medidas: Medida[]
   medidasBase?: string
   versoes: Versao[]
-  caixaMax: number
+  caixaMax: number // peças por caixa na packing list (média 20 calças; menos nos modelos de criança)
+  pesoPeca?: number // kg por peça, para o peso das caixas (depende do modelo)
+  obsEmbalamento?: string[]
   aprovadaEm?: string
 }
+
+export interface Envio { id: string; nome: string; data: string; itens: { modeloId: string; varianteId: string }[] }
 
 export type EstadoEncomenda = 'Em revisão' | 'Fichas geradas' | 'Concluída'
 
@@ -92,6 +99,8 @@ export interface Encomenda {
   dataDocumento?: string
   notas?: string[] // notas do documento (normas, cuidados)
   totaisDocumento?: { pecas: number; valor: number; porTamanho?: number[] }
+  numeroInterno?: number // nº da encomenda na Pereira & Cruz (E26-082-…)
+  envios?: Envio[]
   criadaEm: string
   estado: EstadoEncomenda
   preEncomenda: number

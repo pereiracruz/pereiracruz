@@ -1,35 +1,31 @@
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import type { Destinatario, Encomenda, FolhaTipo, LinhaMaterial, Modelo, Variante } from '../types'
-import { packingList, soma, totalMaterial, totalVariante } from '../lib/calc'
+import { packingList, qtdConfecionada, soma, totalMaterial, totalVariante } from '../lib/calc'
 import { dataCurta, num } from '../lib/format'
 
 export const NOME_FOLHA: Record<FolhaTipo, string> = {
-  produto: 'Ficha de produto', corte: 'Corte e confeção', lavandaria: 'Lavandaria', bordador: 'Bordador',
+  produto: 'Corte e confeção', corte: 'Corte', lavandaria: 'Lavandaria', bordador: 'Bordador',
   estampador: 'Estampador', embalamento: 'Embalamento', packing: 'Packing list', medidas: 'Medidas',
 }
 
 export function folhasDoModelo(m: Modelo): FolhaTipo[] {
-  const f: FolhaTipo[] = ['produto', 'corte']
+  // Todas as variantes têm sempre: corte e confeção (ficha do produto) + embalamento
+  const f: FolhaTipo[] = ['produto', 'embalamento']
   if (m.lavagem) f.push('lavandaria')
   if (m.operacoes.some((o) => o.tipo === 'Bordado')) f.push('bordador')
   if (m.operacoes.some((o) => o.tipo === 'Estampado')) f.push('estampador')
-  f.push('embalamento', 'packing', 'medidas')
+  f.push('medidas')
   return f
 }
 
-export const idEncomendaVariante = (e: Encomenda, prefixo: string, v: Variante) => {
-  const todas = e.modelos.flatMap((m) => m.variantes)
-  const i = todas.findIndex((x) => x.id === v.id && x.ref === v.ref) + 1
-  return `${prefixo}-${e.colecao.replace(/\W/g, '')}-${String(i).padStart(2, '0')}`
-}
-
-const fmtQtd = (l: LinhaMaterial, v: Variante) => {
-  const t = totalMaterial(l, v)
+const fmtQtd = (l: LinhaMaterial, v: Variante, base?: number) => {
+  if (l.semConsumo) return '—'
+  const t = base != null ? (l.consumo == null ? null : l.consumo * base) : totalMaterial(l, v)
   if (t == null) return 'A confirmar'
   return l.unidade === 'm' ? `${num(Math.round(t * 100) / 100)} m` : num(t)
 }
-const fmtCons = (l: LinhaMaterial) => (l.consumo == null ? 'A confirmar' : l.unidade === 'm' ? `${num(l.consumo)} m` : num(l.consumo))
+const fmtCons = (l: LinhaMaterial) => (l.semConsumo ? '—' : l.consumo == null ? 'A confirmar' : l.unidade === 'm' ? `${num(l.consumo)} m` : num(l.consumo))
 
 // ---------- primitivas da folha ----------
 const Faixa = ({ children, className }: { children: ReactNode; className?: string }) => (
@@ -96,11 +92,11 @@ export function Folha({ enc, m, v, folha, idEnc, destinatarios, dataFicha, logo 
         <div className="grid place-items-center p-3 border-r border-linha-forte"><img src={logo} alt="Pereira & Cruz" className="max-h-24 w-auto" /></div>
         <div>
           <p className="text-center font-bold text-[15px] py-2.5 border-b border-linha-forte">FICHA DO PRODUTO</p>
-          <Faixa>Informação geral da encomenda</Faixa>
+          <Faixa>{folha === 'embalamento' ? `Coleção ${enc.colecao}` : 'Informação geral da encomenda'}</Faixa>
           <div className="grid grid-cols-[110px_1fr_140px_1fr] text-[12px]">
-            {[['CLIENTE:', enc.cliente.toUpperCase(), 'MODELO:', `${m.nome.toUpperCase()} · ${v.nome.toUpperCase()}`],
+            {[['CLIENTE:', enc.cliente.toUpperCase(), 'MODELO:', folha === 'embalamento' ? `${v.ref} · ${v.nome.toUpperCase()}` : `${m.nome.toUpperCase()} · ${v.nome.toUpperCase()}`],
               ['DATA:', dataCurta(dataFicha), 'DESCRIÇÃO DA PEÇA:', m.descricao],
-              ['DATA DE ENTREGA:', dataCurta(enc.entrega), 'ID ENCOMENDA:', idEnc]].map((r, i) => (
+              ['DATA DE ENTREGA:', enc.entrega ? dataCurta(enc.entrega) : 'A confirmar', folha === 'embalamento' ? 'ID ENCOMENDA INTERNO:' : 'ID ENCOMENDA:', idEnc]].map((r, i) => (
               r.map((c, j) => <div key={`${i}${j}`} className={clsx('px-2 py-2 border-b border-r border-linha-forte', j % 2 === 0 && 'font-bold')}>{c}</div>)
             ))}
           </div>
@@ -110,11 +106,23 @@ export function Folha({ enc, m, v, folha, idEnc, destinatarios, dataFicha, logo 
 
       {/* quantidades */}
       <Faixa>Distribuição de quantidades por tamanho</Faixa>
-      <T cab={['TECIDO', 'Ref. cor', ...tam, 'Totais']} destacarUltima
-        linhas={[[(tecidos[0]?.ref ?? m.tecido ?? '—').toUpperCase(), v.refCor, ...qtdLinha]]}
-        total={[ROTULO_TOTAL[folha], '', ...qtdLinha]} />
+      {folha === 'embalamento' ? (() => {
+        const conf = v.qtdConfecionado, emb = v.qtdEmbalado
+        const linha = (q?: number[]) => (q ? [...q, soma(q)] : tam.map(() => '').concat(''))
+        const linhas: ReactNode[][] = [
+          [(tecidos[0]?.ref ?? m.tecido ?? '—').toUpperCase(), 'ENCOMENDA', ...qtdLinha],
+          ['', 'TOTAL CONFECIONADO', ...linha(conf)],
+          ['', 'TOTAL EMBALADO', ...linha(emb)],
+        ]
+        if (conf && emb) linhas.push(['', 'SOBRAS', ...conf.map((q, i) => q - emb[i] || ''), soma(conf) - soma(emb)])
+        return <T cab={['TECIDO', 'Ref. cor', ...tam, 'Totais']} destacarUltima linhas={linhas} />
+      })() : (
+        <T cab={['TECIDO', 'Ref. cor', ...tam, 'Totais']} destacarUltima
+          linhas={[[(tecidos[0]?.ref ?? m.tecido ?? '—').toUpperCase(), v.refCor, ...qtdLinha]]}
+          total={[ROTULO_TOTAL[folha], '', ...qtdLinha]} />
+      )}
 
-      {dest && folha !== 'produto' && (
+      {dest && folha !== 'produto' && folha !== 'embalamento' && (
         <div className="flex items-center justify-between px-3 py-2 bg-fundo/50 border-y border-linha-forte text-[12px]">
           <span><b>Para:</b> {NOME_FOLHA[folha] === dest.nome ? dest.nome : `${NOME_FOLHA[folha]} · ${dest.nome}`}</span>
           <span className="text-suave">{dest.contacto}</span>
@@ -174,12 +182,18 @@ export function Folha({ enc, m, v, folha, idEnc, destinatarios, dataFicha, logo 
         )
       })()}
 
-      {folha === 'embalamento' && (
-        <>
-          <Faixa>Acessórios de embalamento</Faixa><T cab={cabAc} linhas={emb.map(linhaAc)} />
-          <Obs titulo="Observações para embalamento" itens={['Uma peça por saco, com o autocolante colado no saco.', ...(emb.some((l) => /cliente/i.test(l.fornecedor)) ? ['Acessórios enviados pela cliente: conferir a quantidade à chegada.'] : [])]} />
-        </>
-      )}
+      {folha === 'embalamento' && (() => {
+        const base = soma(qtdConfecionada(v))
+        return (
+          <div className="grid grid-cols-[1.6fr_1fr]">
+            <div className="border-r border-linha-forte">
+              <Faixa>Acessórios {v.qtdConfecionado ? '· total sobre o confecionado' : '· total sobre a encomenda (até haver confecionado)'}</Faixa>
+              <T cab={cabAc} linhas={emb.map((l) => [l.ref, l.fornecedor, l.obs, fmtCons(l), l.cor, fmtQtd(l, v, base)])} />
+            </div>
+            <Obs titulo="Observações para embalamento" itens={m.obsEmbalamento?.length ? m.obsEmbalamento : ['Uma peça por saco, com o autocolante colado no saco.', ...(emb.some((l) => /cliente/i.test(l.fornecedor)) ? ['Acessórios enviados pela cliente: conferir a quantidade à chegada.'] : [])]} />
+          </div>
+        )
+      })()}
 
       {folha === 'packing' && (() => {
         const cx = packingList(v.qtd, m.caixaMax)

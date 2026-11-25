@@ -4,9 +4,9 @@ import clsx from 'clsx'
 import { AlertTriangle, Check, CircleCheck, FileSpreadsheet, FileText, Pencil, Plus, Send, Sheet, Trash2, Upload, X } from 'lucide-react'
 import { useDb } from '../../store/db'
 import { Botao, Cabecalho, Cartao, Entrada, Etiqueta, Modal, Seletor, aviso, type Tom } from '../../components/ui'
-import { Folha, NOME_FOLHA, folhasDoModelo, idEncomendaVariante } from '../../components/Folhas'
-import { soma, totalVariante, verificarFicha } from '../../lib/calc'
-import { exportarExcel, exportarPDF } from '../../lib/exportar'
+import { Folha, NOME_FOLHA, folhasDoModelo } from '../../components/Folhas'
+import { idInterno, soma, totalVariante, verificarFicha } from '../../lib/calc'
+import { exportarLivro, exportarPDF } from '../../lib/exportar'
 import { hojeISO, parseNum, uid, num } from '../../lib/format'
 import type { EstadoFicha, FolhaTipo, LinhaMaterial, Modelo } from '../../types'
 
@@ -20,7 +20,7 @@ export const ESTADO_FICHA: Record<EstadoFicha, { rotulo: string; tom: Tom }> = {
 export default function FichaModelo() {
   const { encId, modId } = useParams()
   const nav = useNavigate()
-  const { encomendas, destinatarios, clientes, fornecedores, atualizarModelo, atualizarEncomenda, log } = useDb()
+  const { encomendas, destinatarios, fornecedores, atualizarModelo, atualizarEncomenda, log } = useDb()
   const enc = encomendas.find((e) => e.id === encId)
   const m = enc?.modelos.find((x) => x.id === modId)
   const comFicha = m?.variantes.filter((v) => v.fichaGerada) ?? []
@@ -30,14 +30,13 @@ export default function FichaModelo() {
   const [exportar, setExportar] = useState(false)
   const [novaObs, setNovaObs] = useState('')
 
-  const prefixo = clientes.find((c) => c.nome === enc?.cliente)?.idPrefixo ?? 'ENC'
-  const ids = useMemo(() => (enc && m ? Object.fromEntries(m.variantes.map((v) => [v.id, idEncomendaVariante(enc, prefixo, v)])) : {}), [enc, m, prefixo])
+  const ids = useMemo(() => (enc && m ? Object.fromEntries(m.variantes.map((v) => [v.id, idInterno(enc, m)])) : {}), [enc, m])
 
   if (!enc || !m) return <Navigate to="/fichas" replace />
   const v = comFicha.find((x) => x.id === varId) ?? comFicha[0]
   const folhas = folhasDoModelo(m)
   const verif = v ? verificarFicha(m, v) : []
-  const bloqueios = verif.filter((x) => !x.ok && !x.texto.startsWith('Medidas'))
+  const bloqueios = verif.filter((x) => !x.ok && !x.aviso)
   const dataFicha = m.versoes[m.versoes.length - 1]?.data ?? enc.criadaEm
 
   /** Qualquer alteração a uma ficha aprovada obriga a nova aprovação. */
@@ -126,6 +125,9 @@ export default function FichaModelo() {
           </div>
 
           {editar && <EditorFicha m={m} v={v} fornecedores={fornecedores.map((f) => f.nome)} alterar={alterar} alterarMaterial={alterarMaterial} />}
+          {folha === 'embalamento' && (
+            <Producao m={m} v={v} guardar={(fn, d) => { atualizarModelo(enc.id, m.id, fn); log('Produção atualizada', `${enc.cliente} · ${m.nome} · ${d}`) }} />
+          )}
 
           <Folha enc={enc} m={m} v={v} folha={folha} idEnc={ids[v.id]} destinatarios={destinatarios} dataFicha={dataFicha} />
 
@@ -160,8 +162,8 @@ export default function FichaModelo() {
           <ModalExportar aberto={exportar} onFechar={() => setExportar(false)} folhas={folhas} variantes={comFicha} onExportar={(formato, fs, vs) => {
             const variantes = comFicha.filter((x) => vs.includes(x.id))
             if (formato === 'excel') {
-              const nomes = exportarExcel(enc, m, variantes, fs, ids, dataFicha, destinatarios)
-              aviso(`${nomes.length} ${nomes.length === 1 ? 'ficheiro Excel descarregado' : 'ficheiros Excel descarregados'}.`)
+              const nome = exportarLivro(enc, variantes.map((x) => ({ m, v: x, folhas: fs })), () => dataFicha, destinatarios, false)
+              aviso(`Livro Excel descarregado: ${nome}`)
             } else if (!exportarPDF({ enc, m, variantes, folhas: fs, ids, dataFicha, dest: destinatarios })) {
               alert('O browser bloqueou a janela de impressão. Autorize janelas pop-up para este site.')
             }
@@ -212,7 +214,10 @@ function EditorFicha({ m, v, fornecedores, alterar, alterarMaterial }: {
                   <td className="pr-2"><Entrada className="h-8" value={l.ref} onChange={(e) => alterarMaterial(l.id, { ref: e.target.value })} /></td>
                   <td className="pr-2"><Seletor className="[&_select]:h-8 [&_select]:text-[13px] min-w-36" valor={l.fornecedor} onChange={(f) => alterarMaterial(l.id, { fornecedor: f })} opcoes={[...new Set([l.fornecedor, 'Enviada pela cliente', ...fornecedores])]} /></td>
                   <td className="pr-2"><Entrada className="h-8" value={l.obs} onChange={(e) => alterarMaterial(l.id, { obs: e.target.value })} /></td>
-                  <td className="pr-2"><Entrada className={clsx('h-8 text-right', l.consumo == null && 'border-vermelho')} defaultValue={l.consumo == null ? '' : num(l.consumo)} placeholder="?" onBlur={(e) => alterarMaterial(l.id, { consumo: parseNum(e.target.value) })} /></td>
+                  <td className="pr-2">{l.semConsumo
+                    ? <button title="Sem consumo (só cor e fornecedor). Clique para indicar consumo." onClick={() => alterarMaterial(l.id, { semConsumo: false })} className="h-8 w-full rounded-controlo border border-dashed border-linha-forte text-[12px] text-suave">sem cons.</button>
+                    : <div className="flex gap-1"><Entrada className={clsx('h-8 text-right', l.consumo == null && 'border-vermelho')} defaultValue={l.consumo == null ? '' : num(l.consumo)} placeholder="?" onBlur={(e) => alterarMaterial(l.id, { consumo: parseNum(e.target.value) })} />
+                      <button title="Sem consumo: só cor e fornecedor (ex.: linha)" onClick={() => alterarMaterial(l.id, { semConsumo: true, consumo: null })} className="text-[11px] text-tenue hover:text-tinta px-1">—</button></div>}</td>
                   <td className="pr-2"><Seletor className="[&_select]:h-8 [&_select]:text-[13px]" valor={l.unidade} onChange={(u) => alterarMaterial(l.id, { unidade: u as 'm' | 'un' })} opcoes={['un', 'm']} /></td>
                   <td className="pr-2"><Entrada className="h-8" value={l.cor} onChange={(e) => alterarMaterial(l.id, { cor: e.target.value })} /></td>
                   <td><button onClick={() => alterar((x) => ({ ...x, materiais: x.materiais.filter((y) => y.id !== l.id) }), `Material ${l.ref} removido.`)} className="p-1 text-tenue hover:text-vermelho"><Trash2 size={14} /></button></td>
@@ -236,9 +241,50 @@ function EditorFicha({ m, v, fornecedores, alterar, alterarMaterial }: {
             {f === 'tecido' ? 'Tecido' : f === 'confecao' ? 'Acessório de confeção' : 'Acessório de embalamento'}
           </Botao>
         ))}
-        <label className="ml-auto flex items-center gap-2 text-[13px] text-suave">Peças por caixa
-          <Entrada className="h-8 w-16 text-center" value={m.caixaMax} onChange={(e) => alterar((x) => ({ ...x, caixaMax: Math.max(1, Math.round(parseNum(e.target.value) ?? 1)) }), 'Packing list alterada.')} />
-        </label>
+      </div>
+    </Cartao>
+  )
+}
+
+// ---------------- Produção (não obriga a nova aprovação) ----------------
+function Producao({ m, v, guardar }: { m: Modelo; v: Modelo['variantes'][number]; guardar: (fn: (m: Modelo) => Modelo, d: string) => void }) {
+  const tam = m.escala.slice(0, v.qtd.length)
+  const [obs, setObs] = useState('')
+  const setQ = (campo: 'qtdConfecionado' | 'qtdEmbalado', i: number, val: string) => guardar((x) => ({
+    ...x, variantes: x.variantes.map((y) => {
+      if (y.id !== v.id) return y
+      const base = y[campo] ?? (campo === 'qtdEmbalado' ? y.qtdConfecionado ?? y.qtd : y.qtd)
+      return { ...y, [campo]: base.map((q, j) => (j === i ? Math.max(0, Math.round(parseNum(val) ?? 0)) : q)) }
+    }),
+  }), `${v.nome}: ${campo === 'qtdConfecionado' ? 'confecionado' : 'embalado'}`)
+  const linha = (rot: string, campo: 'qtdConfecionado' | 'qtdEmbalado') => (
+    <div className="flex items-end gap-2 flex-wrap">
+      <span className="w-40 text-[13px] pb-2">{rot}</span>
+      {tam.map((t, i) => (
+        <label key={t} className="w-14 text-center"><span className="block text-[11px] text-suave">{t}</span>
+          <Entrada className="h-8 text-center px-1" placeholder="—" value={v[campo]?.[i] ?? ''} onChange={(e) => setQ(campo, i, e.target.value)} /></label>
+      ))}
+      <span className="w-14 text-center pb-2 font-semibold num">{v[campo] ? soma(v[campo]!) : '—'}</span>
+      {v[campo] && <button onClick={() => guardar((x) => ({ ...x, variantes: x.variantes.map((y) => (y.id === v.id ? { ...y, [campo]: undefined } : y)) }), `${v.nome}: ${rot} limpo`)} className="pb-2 text-[12px] text-tenue hover:text-tinta">limpar</button>}
+    </div>
+  )
+  return (
+    <Cartao className="p-5 mb-4 no-print">
+      <div className="flex items-baseline justify-between mb-3"><h3 className="font-semibold">Produção · {v.nome}</h3><span className="text-[12px] text-tenue">Preenche-se depois da confeção e no embalamento. Não obriga a nova aprovação.</span></div>
+      <div className="space-y-2">
+        <div className="flex items-end gap-2"><span className="w-40 text-[13px] text-suave">Encomenda</span>{v.qtd.map((q, i) => <span key={i} className="w-14 text-center text-[13px] num">{q}</span>)}<span className="w-14 text-center font-semibold num">{soma(v.qtd)}</span></div>
+        {linha('Total confecionado', 'qtdConfecionado')}
+        {linha('Total embalado', 'qtdEmbalado')}
+      </div>
+      <div className="flex gap-6 mt-4 flex-wrap items-end">
+        <label className="flex items-center gap-2 text-[13px] text-suave">Peças por caixa
+          <Entrada className="h-8 w-16 text-center" value={m.caixaMax} onChange={(e) => guardar((x) => ({ ...x, caixaMax: Math.max(1, Math.round(parseNum(e.target.value) ?? 1)) }), 'peças por caixa')} /></label>
+        <label className="flex items-center gap-2 text-[13px] text-suave">Peso por peça (kg)
+          <Entrada className="h-8 w-20 text-center" defaultValue={m.pesoPeca != null ? num(m.pesoPeca) : ''} placeholder="—" onBlur={(e) => guardar((x) => ({ ...x, pesoPeca: parseNum(e.target.value) ?? undefined }), 'peso por peça')} /></label>
+        <div className="flex gap-2 flex-1 min-w-[280px]">
+          <Entrada value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Observação para embalamento" />
+          <Botao pequeno className="h-10" disabled={!obs.trim()} onClick={() => { guardar((x) => ({ ...x, obsEmbalamento: [...(x.obsEmbalamento ?? []), obs.trim()] }), 'observação de embalamento'); setObs('') }}>Acrescentar</Botao>
+        </div>
       </div>
     </Cartao>
   )

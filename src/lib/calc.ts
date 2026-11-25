@@ -25,10 +25,24 @@ export const fichasPorAprovar = (e: Encomenda) =>
   soma(e.modelos.filter((m) => m.estado === 'rascunho').map((m) => m.variantes.filter((v) => v.fichaGerada).length))
 
 /** Total de material de uma linha para uma variante: consumo × peças (sempre por fórmula). */
-export const totalMaterial = (l: LinhaMaterial, v: Variante) => (l.consumo == null ? null : l.consumo * totalVariante(v))
+export const totalMaterial = (l: LinhaMaterial, v: Variante) => (l.consumo == null || l.semConsumo ? null : l.consumo * totalVariante(v))
+
+/** Quantidade de referência para o embalamento: confecionado (se já houver) ou encomenda. */
+export const qtdConfecionada = (v: Variante) => v.qtdConfecionado ?? v.qtd
+/** Quantidade a pôr nas caixas: embalado → confecionado → encomenda. */
+export const qtdParaEmbalar = (v: Variante) => v.qtdEmbalado ?? v.qtdConfecionado ?? v.qtd
+
+/** ID interno: E + ano (2 dígitos) + nº da encomenda + nº do modelo na encomenda. Ex.: E26-082-3 */
+export function idInterno(e: Encomenda, m: Modelo) {
+  const ano = (e.criadaEm || new Date().toISOString()).slice(2, 4)
+  const n = e.numeroInterno != null ? String(e.numeroInterno).padStart(3, '0') : '???'
+  return `E${ano}-${n}-${e.modelos.findIndex((x) => x.id === m.id) + 1}`
+}
+export const idInternoEncomenda = (e: Encomenda) => idInterno(e, e.modelos[0] ?? ({ id: '' } as Modelo)).replace(/-\d+$/, '')
 
 // ---------------- Verificações ----------------
-export interface Verificacao { ok: boolean; texto: string; detalhe?: string }
+/** aviso = não impede a aprovação */
+export interface Verificacao { ok: boolean; texto: string; detalhe?: string; aviso?: boolean }
 
 export function verificarFicha(m: Modelo, v: Variante): Verificacao[] {
   const out: Verificacao[] = []
@@ -40,7 +54,7 @@ export function verificarFicha(m: Modelo, v: Variante): Verificacao[] {
   })
   out.push({ ok: true, texto: 'Modelo e variante iguais em todas as folhas' })
   const comQtd = totalVariante(v) > 0
-  const zeros = m.materiais.filter((l) => l.consumo == null || (comQtd && l.consumo === 0))
+  const zeros = m.materiais.filter((l) => !l.semConsumo && (l.consumo == null || (comQtd && l.consumo === 0)))
   out.push({
     ok: zeros.length === 0,
     texto: zeros.length === 0 ? 'Totais calculados, nenhum a zero' : `${zeros.length} ${zeros.length === 1 ? 'material sem consumo' : 'materiais sem consumo'}`,
@@ -55,7 +69,16 @@ export function verificarFicha(m: Modelo, v: Variante): Verificacao[] {
       : comDiv.length ? 'Divergências do tech pack justificadas' : 'Materiais iguais ao tech pack',
     detalhe: semJust.map((l) => l.ref).join(', ') || undefined,
   })
-  if (!m.medidas.length) out.push({ ok: false, texto: 'Medidas por preencher (o tech pack não tem tabela)' })
+  if (!m.medidas.length) out.push({ ok: false, aviso: true, texto: 'Medidas por preencher (o tech pack não tem tabela)' })
+  if (v.qtdConfecionado) {
+    const abaixo = v.qtdConfecionado.some((q, i) => q < v.qtd[i])
+    out.push({ ok: !abaixo, aviso: true, texto: abaixo ? 'Confecionado abaixo da encomenda nalgum tamanho' : `Confecionado: ${soma(v.qtdConfecionado)} peças` })
+  }
+  if (v.qtdEmbalado) {
+    const ref = v.qtdConfecionado ?? v.qtd
+    const mais = v.qtdEmbalado.some((q, i) => q > ref[i])
+    out.push({ ok: !mais, aviso: true, texto: mais ? 'Embalado acima do confecionado nalgum tamanho' : `Embalado: ${soma(v.qtdEmbalado)} peças` })
+  }
   return out
 }
 

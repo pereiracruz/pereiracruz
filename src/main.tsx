@@ -10,6 +10,7 @@ import Encomendas from './pages/fichas/Encomendas'
 import NovaEncomenda from './pages/fichas/NovaEncomenda'
 import EncomendaDetalhe from './pages/fichas/EncomendaDetalhe'
 import FichaModelo from './pages/fichas/FichaModelo'
+import PackingList from './pages/fichas/PackingList'
 import DadosMestre from './pages/DadosMestre'
 import Pedidos from './pages/orcamentos/Pedidos'
 import NovoPedido from './pages/orcamentos/NovoPedido'
@@ -27,6 +28,7 @@ function App() {
         <Route path="fichas" element={<Encomendas />} />
         <Route path="fichas/nova" element={<NovaEncomenda />} />
         <Route path="fichas/:encId" element={<EncomendaDetalhe />} />
+        <Route path="fichas/:encId/packing" element={<PackingList />} />
         <Route path="fichas/:encId/:modId" element={<FichaModelo />} />
         <Route path="dados" element={<DadosMestre />} />
         <Route path="orcamentos" element={<Pedidos />} />

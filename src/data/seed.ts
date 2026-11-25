@@ -263,7 +263,7 @@ export function gerarFichaJanet(
     variantes: m.variantes.map((v) => ({ ...v, fichaGerada: v.nome === 'Acid wash' ? true : d.variante })),
     materiais: [
       mat({ ref: tecidoNome, fornecedor: tec?.fornecedor ?? 'A confirmar', obs: '', consumo: 1.2, unidade: 'm', cor: 'Conforme variante', largura: tec?.larguraUtil ?? 'A confirmar', folha: 'tecido', divergencia: 'Tech pack: Casmik 52129', justificacao: 'Equivalente da Pereira & Cruz (tabela de equivalências).' }),
-      mat({ ref: 'Linha', fornecedor: 'Crafil', obs: '', consumo: 1, cor: 'PPT', folha: 'confecao' }),
+      mat({ ref: 'Linha', fornecedor: 'Crafil', obs: '', consumo: null, semConsumo: true, cor: 'PPT', folha: 'confecao' }),
       mat({ ref: 'Etiqueta de composição', fornecedor: 'Fibratex', obs: 'Costura lateral', consumo: 1, cor: 'Cetim', folha: 'confecao' }),
       madre
         ? mat({ ref: 'Molas de madrepérola', fornecedor: 'Louropel', obs: 'Ver amostra física', consumo: 8, cor: 'Pérola', folha: 'confecao' })
@@ -301,7 +301,7 @@ function drc(): Encomenda {
     estado: 'enviada', tecido, aprovadaEm: '2026-08-20',
     materiais: [
       mat({ ref: tecido, fornecedor: forn, obs: '', consumo: 1.3, unidade: 'm', cor, largura: larg, folha: 'tecido' }),
-      mat({ ref: 'Linha', fornecedor: 'Realfio', obs: '100% CO', consumo: 1, cor: 'PPT', folha: 'confecao' }),
+      mat({ ref: 'Linha', fornecedor: 'Realfio', obs: '100% CO', consumo: null, semConsumo: true, cor: 'PPT', folha: 'confecao' }),
       mat({ ref: 'Etiquetas de composição', fornecedor: 'Fibratex', obs: '', consumo: 1, cor: 'Cetim', folha: 'confecao' }),
       mat({ ref: 'Etiquetas "Teddy Forever"', fornecedor: 'Etisatos', obs: 'Ver amostra física', consumo: 1, cor: 'N/A', folha: 'confecao' }),
       mat({ ref: 'Saco plástico', fornecedor: 'Plasbritos', obs: '', consumo: 1, cor: 'N/A', folha: 'embalamento' }),
@@ -351,7 +351,7 @@ function drc(): Encomenda {
   }
   return {
     id: 'dr-collectors-ss27', cliente: 'Dr. Collectors', colecao: 'SS/27', modoServico: 'A feitio',
-    entrega: '2026-10-15', criadaEm: '2026-08-14', estado: 'Concluída', preEncomenda: 69, stock: 0,
+    entrega: '2026-10-15', criadaEm: '2026-08-14', estado: 'Concluída', preEncomenda: 69, stock: 0, numeroInterno: 70,
     ficheiros: ['DR COLLECTORS SS27.xlsx', 'DRC_TECHPACK_SS27.pdf'], modelos,
   }
 }
@@ -370,7 +370,7 @@ export function encomendaLongratex(): Encomenda {
   })
   return {
     id: 'longratex-frqm2026-0130', cliente: 'Longratex', colecao: 'FRQM2026/0130', modoServico: 'Produto acabado',
-    entrega: '', criadaEm: '2026-09-14', estado: 'Em revisão', preEncomenda: 1030, stock: 0,
+    entrega: '', criadaEm: '2026-09-14', estado: 'Em revisão', preEncomenda: 1030, stock: 0, numeroInterno: 81,
     numeroDocumento: 'FRQM2026/0130', dataDocumento: '2026-09-14',
     ficheiros: ['encomenda.pdf'],
     notas: [

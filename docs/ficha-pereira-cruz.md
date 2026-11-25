@@ -68,3 +68,19 @@ automática do Excel da encomenda (9/9).
 3. **Packing list por envio**, em inglês, com numeração contínua, tamanho máximo por modelo, peso opcional e
    quantidades a partir do confecionado/embalado.
 4. Exportação Excel: um livro por encomenda, uma folha por variante + acabamento + packing list.
+
+## Respostas da Pereira & Cruz e o que ficou implementado
+
+| Pergunta | Resposta | No software |
+|---|---|---|
+| ID da encomenda `E26-082-3` | E + ano + nº da encomenda + **nº do modelo** (o mesmo modelo pode ter vários tecidos/variantes) | `idInterno()`: E{aa}-{nnn}-{nº do modelo na encomenda}; nº interno sequencial e editável na encomenda |
+| Folhas por variante | **Todas** têm corte e confeção + embalamento | Folhas fixas: «Corte e confeção» (ficha do produto) e «Embalamento» (encomenda / confecionado / embalado / sobras; acessórios sobre o confecionado) |
+| Peças por caixa | Depende do modelo; **média de 20 calças**, exceto modelos de criança | Peças por caixa por modelo (20 por omissão, editável) |
+| Peso | Depende do modelo | Peso por peça (kg) por modelo, opcional; coluna KG na packing list |
+| Linha | Depende da encomenda (várias espessuras): **só cor e fornecedor** | Materiais «sem consumo»: não contam como total a zero |
+| Confeções externas como destinatários | Não | Ficam como observação |
+
+- Produção (confecionado/embalado) preenche-se na folha de embalamento e **não** obriga a nova aprovação.
+- Packing list por envio (FIRST SEND, SECOND SEND…), em inglês, caixas numeradas seguidas dentro do envio,
+  quantidades embaladas → confecionadas → encomenda.
+- «Livro Excel» na encomenda: uma folha por variante (corte e confeção + embalamento) e a packing list, só com fichas aprovadas.

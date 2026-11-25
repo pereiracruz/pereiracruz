@@ -1,9 +1,10 @@
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, Check, CheckCheck, Info, Trash2, Upload } from 'lucide-react'
+import { AlertTriangle, Check, CheckCheck, FileSpreadsheet, Info, Package, Trash2, Upload } from 'lucide-react'
 import { useDb } from '../../store/db'
 import { Botao, Cabecalho, Cartao, Etiqueta, Kpi, Tabela, aviso } from '../../components/ui'
 import { NOME_FOLHA, folhasDoModelo } from '../../components/Folhas'
-import { fichasGeradas, pecasEncomenda, pecasModelo, referenciasEncomenda, valorEncomenda, verificarEncomenda } from '../../lib/calc'
+import { fichasGeradas, idInternoEncomenda, pecasEncomenda, pecasModelo, referenciasEncomenda, valorEncomenda, verificarEncomenda } from '../../lib/calc'
+import { exportarLivro } from '../../lib/exportar'
 import { dataCurta, eur, int } from '../../lib/format'
 import { ESTADO_FICHA } from './FichaModelo'
 import { tomEstado } from './Encomendas'
@@ -19,14 +20,23 @@ export default function EncomendaDetalhe() {
   const verif = verificarEncomenda(enc)
   const valor = valorEncomenda(enc)
   const todasAprovadas = enc.modelos.filter((m) => m.estado !== 'sem-ficha').every((m) => m.estado === 'aprovada' || m.estado === 'enviada')
+  const aprovadas = enc.modelos.filter((m) => m.estado === 'aprovada' || m.estado === 'enviada')
   const destNome = (f: string) => destinatarios.find((d) => d.folha === f)?.nome
 
   return (
     <>
       <Cabecalho migalhas={[{ rotulo: 'Encomendas', para: '/fichas' }, { rotulo: `${enc.cliente} · ${enc.colecao}` }]} sobre="Fichas de produção"
-        titulo={`${enc.cliente} · ${enc.colecao}`} extra={<><Etiqueta tom={tomEstado(enc.estado)}>{enc.estado}</Etiqueta><Etiqueta ponto={false}>{enc.modoServico}</Etiqueta></>}
+        titulo={`${enc.cliente} · ${enc.colecao}`} extra={<><Etiqueta tom={tomEstado(enc.estado)}>{enc.estado}</Etiqueta><Etiqueta ponto={false}>{enc.modoServico}</Etiqueta><Etiqueta tom="azul" ponto={false}>{idInternoEncomenda(enc)}</Etiqueta></>}
         sub={<>{enc.numeroDocumento && `Documento ${enc.numeroDocumento} de ${dataCurta(enc.dataDocumento)} · `}{referenciasEncomenda(enc)} referências · {int(pecasEncomenda(enc))} peças · ficheiros: {enc.ficheiros.join(', ')}</>}
         acoes={<>
+          <Botao icone={<Package size={15} />} onClick={() => nav(`/fichas/${enc.id}/packing`)}>Packing list</Botao>
+          <Botao icone={<FileSpreadsheet size={15} />} disabled={!aprovadas.length} title={aprovadas.length ? '' : 'Ainda não há fichas aprovadas'} onClick={() => {
+            const entradas = aprovadas.flatMap((m) => m.variantes.filter((v) => v.fichaGerada).map((v) => ({ m, v, folhas: folhasDoModelo(m).filter((f) => f === 'produto' || f === 'embalamento') })))
+            const nome = exportarLivro(enc, entradas, (m) => m.versoes[m.versoes.length - 1]?.data ?? enc.criadaEm, destinatarios, true)
+            const fora = enc.modelos.filter((m) => m.estado === 'rascunho').length
+            log('Livro Excel exportado', `${enc.cliente} · ${enc.colecao} · ${entradas.length} variantes`)
+            aviso(fora ? `${nome} descarregado. ${fora} modelo(s) por aprovar ficaram de fora.` : `${nome} descarregado.`)
+          }}>Livro Excel</Botao>
           <Botao variante="fantasma" icone={<Trash2 size={15} />} onClick={() => {
             if (confirm(`Apagar a encomenda ${enc.cliente} · ${enc.colecao} e as suas fichas?`)) { apagarEncomenda(enc.id); log('Encomenda apagada', `${enc.cliente} · ${enc.colecao}`); nav('/fichas') }
           }}>Apagar</Botao>
@@ -42,11 +52,19 @@ export default function EncomendaDetalhe() {
       </div>
 
       <div className="grid grid-cols-[260px_1fr] gap-4 mb-5">
-        <Cartao className="p-4">
+        <Cartao className="p-4 space-y-3">
+          <div>
+            <p className="text-[13px] text-suave mb-1.5">Nº interno da encomenda</p>
+            <input type="number" min={1} value={enc.numeroInterno ?? ''} onChange={(e) => { const n = e.target.value ? Number(e.target.value) : undefined; atualizarEncomenda(enc.id, (x) => ({ ...x, numeroInterno: n })) }}
+              className="w-full h-10 px-3 rounded-controlo border border-linha bg-papel text-[14px] outline-none focus:border-tinta-2" />
+            <p className="text-[12px] text-tenue mt-1">ID nas fichas: {idInternoEncomenda(enc)}-nº do modelo</p>
+          </div>
+          <div>
           <p className="text-[13px] text-suave mb-1.5">Data de entrega</p>
           <input type="date" value={enc.entrega} onChange={(e) => { const v = e.target.value; atualizarEncomenda(enc.id, (x) => ({ ...x, entrega: v })); log('Data de entrega alterada', `${enc.cliente} · ${enc.colecao} · ${v || 'sem data'}`) }}
             className={`w-full h-10 px-3 rounded-controlo border bg-papel text-[14px] outline-none focus:border-tinta-2 ${enc.entrega ? 'border-linha' : 'border-ambar-borda bg-ambar-fraco'}`} />
           {!enc.entrega && <p className="text-[12px] text-ambar mt-1.5">A confirmar: vem no email do cliente.</p>}
+          </div>
         </Cartao>
         {(enc.notas?.length ?? 0) > 0 ? (
           <Cartao className="p-4">
@@ -72,7 +90,7 @@ export default function EncomendaDetalhe() {
           )).reduce<React.ReactNode[]>((a, x, i) => (i ? [...a, ' · ', x] : [x]), [])}</span> },
           { id: 'pecas', rotulo: 'Peças', valor: (m) => pecasModelo(m), render: (m) => int(pecasModelo(m)), alinhar: 'centro' },
           { id: 'dest', rotulo: 'Folhas por destinatário', valor: (m) => (m.estado === 'sem-ficha' ? '' : folhasDoModelo(m).join()), render: (m) => m.estado === 'sem-ficha' ? <span className="text-tenue">—</span> :
-            <span className="text-[12px] text-suave">{folhasDoModelo(m).filter((f) => !['produto', 'packing', 'medidas'].includes(f)).map((f) => f === 'corte' || f === 'embalamento' ? NOME_FOLHA[f] : `${NOME_FOLHA[f]} (${destNome(f)})`).join(' · ')}</span> },
+            <span className="text-[12px] text-suave">{folhasDoModelo(m).filter((f) => f !== 'medidas').map((f) => f === 'produto' || f === 'embalamento' ? NOME_FOLHA[f] : `${NOME_FOLHA[f]} (${destNome(f)})`).join(' · ')}</span> },
           { id: 'ficha', rotulo: 'Ficha', valor: (m) => (m.estado === 'sem-ficha' && !m.techPack ? 'Falta tech pack' : ESTADO_FICHA[m.estado].rotulo), filtro: 'lista', alinhar: 'centro',
             render: (m) => m.estado === 'sem-ficha' && !m.techPack ? <Etiqueta>Falta tech pack</Etiqueta> : <Etiqueta tom={ESTADO_FICHA[m.estado].tom}>{ESTADO_FICHA[m.estado].rotulo}</Etiqueta> },
         ]}

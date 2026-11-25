@@ -94,7 +94,12 @@ export const useDb = create<Estado>()(
         get().log('Dados mestre: linha apagada', descricao)
       },
 
-      adicionarEncomenda: (e) => set((s) => ({ encomendas: [e, ...s.encomendas.filter((x) => x.id !== e.id)] })),
+      adicionarEncomenda: (e) => set((s) => {
+        // nº interno sequencial (E26-082-…) se ainda não tiver
+        const proximo = Math.max(0, ...s.encomendas.map((x) => x.numeroInterno ?? 0)) + 1
+        const nova = e.numeroInterno != null ? e : { ...e, numeroInterno: proximo }
+        return { encomendas: [nova, ...s.encomendas.filter((x) => x.id !== e.id)] }
+      }),
       apagarEncomenda: (id) => set((s) => ({ encomendas: s.encomendas.filter((x) => x.id !== id) })),
       atualizarEncomenda: (id, fn) => set((s) => ({ encomendas: s.encomendas.map((e) => (e.id === id ? fn(e) : e)) })),
       atualizarModelo: (encId, modId, fn) =>
@@ -123,14 +128,23 @@ export const useDb = create<Estado>()(
       repor: () => { set(dadosIniciais()); get().log('Dados repostos', 'Dados de exemplo repostos') },
     }),
     {
-      name: 'pc-fichas-v1', version: 3,
+      name: 'pc-fichas-v1', version: 4,
       migrate: (antigo, versao) => {
         const a = antigo as Estado
         // v1 → v2: novos dados de exemplo; repõe os dados, mantém a sessão e a palavra-passe
         if (versao < 2) return { ...dadosIniciais(), sessao: a.sessao ?? null, passHash: a.passHash ?? PASS_INICIAL_HASH, nomeUtilizador: a.nomeUtilizador ?? 'Admin' } as Estado
         // v2 → v3: acrescenta dados mestre novos (Sidogras) sem apagar o que existe
         const juntar = <T extends { id: string }>(atual: T[], novos: T[]) => [...atual, ...novos.filter((n) => !atual.some((x) => x.id === n.id))]
-        return { ...a, fornecedores: juntar(a.fornecedores, seed.fornecedores), tecidos: juntar(a.tecidos, seed.tecidos) }
+        let b: Estado = versao < 3 ? { ...a, fornecedores: juntar(a.fornecedores, seed.fornecedores), tecidos: juntar(a.tecidos, seed.tecidos) } : a
+        // v3 → v4: nº interno das encomendas e linha sem consumo (só cor e fornecedor)
+        if (versao < 4) {
+          let n = 80
+          b = { ...b, encomendas: [...b.encomendas].reverse().map((e) => ({
+            ...e, numeroInterno: e.numeroInterno ?? (e.id === 'dr-collectors-ss27' ? 70 : e.id.startsWith('longratex') ? 81 : ++n + 1),
+            modelos: e.modelos.map((m) => ({ ...m, materiais: m.materiais.map((l) => (/^linha$/i.test(l.ref.trim()) ? { ...l, semConsumo: true, consumo: null } : l)) })),
+          })).reverse() }
+        }
+        return b
       },
     },
   ),
