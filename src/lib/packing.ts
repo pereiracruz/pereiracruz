@@ -1,5 +1,5 @@
 import type { Encomenda, Envio } from '../types'
-import { packingList, soma } from './calc'
+import { packingList, qtdEmbaladaPreenchida, soma } from './calc'
 
 export interface BlocoPacking {
   chave: string; modeloId: string; varianteId: string
@@ -17,8 +17,9 @@ export function calcularEnvio(enc: Encomenda, envio: Envio): BlocoPacking[] {
     const m = enc.modelos.find((x) => x.id === it.modeloId)
     const v = m?.variantes.find((x) => x.id === it.varianteId)
     if (!m || !v) continue
-    const origem = v.qtdEmbalado ? 'embalado' : v.qtdConfecionado ? 'confecionado' : 'encomenda'
-    const qtd = v.qtdEmbalado ?? v.qtdConfecionado ?? v.qtd
+    const embalado = qtdEmbaladaPreenchida(v)
+    const origem = embalado ? 'embalado' : v.qtdConfecionado ? 'confecionado' : 'encomenda'
+    const qtd = embalado ?? v.qtdConfecionado ?? v.qtd
     const temPeso = m.pesoPeca != null && m.pesoPeca > 0
     const caixas = packingList(qtd, m.caixaMax).map((c) => {
       const total = soma(c)

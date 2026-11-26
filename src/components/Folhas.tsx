@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import type { Destinatario, Encomenda, FolhaTipo, LinhaMaterial, Modelo, Variante } from '../types'
-import { packingList, qtdConfecionada, soma, totalMaterial, totalVariante } from '../lib/calc'
+import { packingList, qtdConfecionada, qtdEmbaladaPreenchida, soma, totalMaterial, totalVariante } from '../lib/calc'
 import { dataCurta, num } from '../lib/format'
 
 export const NOME_FOLHA: Record<FolhaTipo, string> = {
@@ -107,14 +107,14 @@ export function Folha({ enc, m, v, folha, idEnc, destinatarios, dataFicha, logo 
       {/* quantidades */}
       <Faixa>Distribuição de quantidades por tamanho</Faixa>
       {folha === 'embalamento' ? (() => {
-        const conf = v.qtdConfecionado, emb = v.qtdEmbalado
+        const conf = v.qtdConfecionado, emb = qtdEmbaladaPreenchida(v) // sem embalado: em branco, para escrever à mão
         const linha = (q?: number[]) => (q ? [...q, soma(q)] : tam.map(() => '').concat(''))
         const linhas: ReactNode[][] = [
           [(tecidos[0]?.ref ?? m.tecido ?? '—').toUpperCase(), 'ENCOMENDA', ...qtdLinha],
           ['', 'TOTAL CONFECIONADO', ...linha(conf)],
           ['', 'TOTAL EMBALADO', ...linha(emb)],
         ]
-        if (conf && emb) linhas.push(['', 'SOBRAS', ...conf.map((q, i) => q - emb[i] || ''), soma(conf) - soma(emb)])
+        linhas.push(conf && emb ? ['', 'SOBRAS', ...conf.map((q, i) => q - emb[i] || ''), soma(conf) - soma(emb)] : ['', 'SOBRAS', ...linha()])
         return <T cab={['TECIDO', 'Ref. cor', ...tam, 'Totais']} destacarUltima linhas={linhas} />
       })() : (
         <T cab={['TECIDO', 'Ref. cor', ...tam, 'Totais']} destacarUltima

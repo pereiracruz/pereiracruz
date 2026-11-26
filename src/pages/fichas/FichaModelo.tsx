@@ -5,7 +5,7 @@ import { AlertTriangle, Check, CircleCheck, FileSpreadsheet, FileText, Pencil, P
 import { useDb } from '../../store/db'
 import { Botao, Cabecalho, Cartao, Entrada, Etiqueta, Modal, Seletor, aviso, type Tom } from '../../components/ui'
 import { Folha, NOME_FOLHA, folhasDoModelo } from '../../components/Folhas'
-import { idInterno, soma, totalVariante, verificarFicha } from '../../lib/calc'
+import { idInterno, qtdEmbaladaPreenchida, soma, totalVariante, verificarFicha } from '../../lib/calc'
 import { exportarLivro, exportarPDF, montarLivro, nomeLivro } from '../../lib/exportar'
 import { exportarSheets, sheetsDisponivel } from '../../lib/sheets'
 import { hojeISO, parseNum, uid, num } from '../../lib/format'
@@ -269,17 +269,17 @@ function Producao({ m, v, guardar }: { m: Modelo; v: Modelo['variantes'][number]
       return { ...y, [campo]: base.map((q, j) => (j === i ? Math.max(0, Math.round(parseNum(val) ?? 0)) : q)) }
     }),
   }), `${v.nome}: ${campo === 'qtdConfecionado' ? 'confecionado' : 'embalado'}`)
-  const linha = (rot: string, campo: 'qtdConfecionado' | 'qtdEmbalado') => (
+  const linha = (rot: string, campo: 'qtdConfecionado' | 'qtdEmbalado') => { const val = campo === 'qtdEmbalado' ? qtdEmbaladaPreenchida(v) : v[campo]; return (
     <div className="flex items-end gap-2 flex-wrap">
       <span className="w-40 text-[13px] pb-2">{rot}</span>
       {tam.map((t, i) => (
         <label key={t} className="w-14 text-center"><span className="block text-[11px] text-suave">{t}</span>
-          <Entrada className="h-8 text-center px-1" placeholder="—" value={v[campo]?.[i] ?? ''} onChange={(e) => setQ(campo, i, e.target.value)} /></label>
+          <Entrada className="h-8 text-center px-1" placeholder="—" value={val?.[i] ?? ''} onChange={(e) => setQ(campo, i, e.target.value)} /></label>
       ))}
-      <span className="w-14 text-center pb-2 font-semibold num">{v[campo] ? soma(v[campo]!) : '—'}</span>
+      <span className="w-14 text-center pb-2 font-semibold num">{val ? soma(val) : '—'}</span>
       {v[campo] && <button onClick={() => guardar((x) => ({ ...x, variantes: x.variantes.map((y) => (y.id === v.id ? { ...y, [campo]: undefined } : y)) }), `${v.nome}: ${rot} limpo`)} className="pb-2 text-[12px] text-tenue hover:text-tinta">limpar</button>}
     </div>
-  )
+  ) }
   return (
     <Cartao className="p-5 mb-4 no-print">
       <div className="flex items-baseline justify-between mb-3"><h3 className="font-semibold">Produção · {v.nome}</h3><span className="text-[12px] text-tenue">Preenche-se depois da confeção e no embalamento. Não obriga a nova aprovação.</span></div>
