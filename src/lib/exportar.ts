@@ -46,7 +46,10 @@ function grelha(enc: Encomenda, m: Modelo, v: Variante, folha: FolhaTipo, idEnc:
     // acessórios de embalamento sobre o confecionado (se houver)
     if (v.qtdConfecionado) { totalRef = `$${col(cN + 1)}$${rc}`; base = soma(v.qtdConfecionado) }
   } else {
-    push('', 'TOTAL CORTADO')
+    // linha de total (igual à da aplicação): por tamanho = quantidades da encomenda, total = soma; tudo em fórmula
+    const rotulo = folha === 'lavandaria' ? 'TOTAL CONFECIONADO' : 'TOTAL CORTADO'
+    const rt = L.length + 1
+    push('', rotulo, ...tam.map((_, i) => F(`${col(c0 + i)}${rq}`, v.qtd[i])), somaLinha(rt, tot))
   }
   push()
 
