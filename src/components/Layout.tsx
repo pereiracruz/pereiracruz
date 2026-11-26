@@ -101,7 +101,7 @@ export default function Layout() {
         <div className="flex items-center justify-between px-4 h-16">
           <div className="flex items-center gap-2.5">
             <img src="/logo-mark.png" alt="" className="h-8 w-auto" />
-            <span className="font-semibold text-[15px] tracking-tight whitespace-nowrap">Pereira & Cruz</span>
+            <span className="font-semibold text-[15px] tracking-tight whitespace-nowrap">Pereira's Project</span>
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => setRecolhida(true)} className="hidden lg:block p-1.5 text-tenue hover:text-tinta" aria-label="Recolher a barra lateral"><PanelLeftClose size={17} /></button>
