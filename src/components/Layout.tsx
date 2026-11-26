@@ -161,7 +161,7 @@ export default function Layout() {
         <div className="no-print lg:hidden sticky top-0 z-30 bg-fundo/95 backdrop-blur border-b border-linha pt-[env(safe-area-inset-top)]">
           <div className="h-14 flex items-center justify-between px-2">
             <button onClick={() => setMenuAberto(true)} className="p-2.5 text-tinta" aria-label="Abrir o menu"><Menu size={22} /></button>
-            <span className="flex items-center gap-2"><img src="/logo-mark.png" alt="" className="h-7 w-auto" /><span className="font-semibold text-[15px] tracking-tight">Pereira & Cruz</span></span>
+            <span className="flex items-center gap-2"><img src="/logo-mark.png" alt="" className="h-7 w-auto" /><span className="font-semibold text-[15px] tracking-tight">Pereira's Project</span></span>
             <span className="p-1.5"><Sino direita /></span>
           </div>
         </div>
