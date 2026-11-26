@@ -29,7 +29,7 @@ export default function PrazosEncomenda({ enc }: { enc: Encomenda }) {
       </div>
       {sit.alertas.length > 0 && <div className={clsx('mx-5 mb-3 text-[13px] rounded-controlo px-3 py-2 border flex gap-2', sit.nivel === 'atrasada' ? 'text-vermelho bg-vermelho-fraco border-vermelho/30' : 'text-ambar bg-ambar-fraco border-ambar-borda')}>
         <AlertTriangle size={15} className="mt-0.5 shrink-0" /><span>{sit.alertas.join(' · ')}</span></div>}
-      <table className="w-full text-[13.5px]">
+      <div className="overflow-x-auto"><table className="w-full text-[13.5px] min-w-[620px]">
         <thead><tr className="text-[11px] uppercase tracking-wider text-suave border-y border-linha bg-fundo/40">
           <th className="text-left px-5 py-2 font-medium">Etapa</th><th className="text-left px-2 font-medium">Quem</th><th className="text-left px-2 font-medium w-44">Data prevista</th>
           <th className="text-left px-2 font-medium">Situação</th><th className="text-right px-5 font-medium">Feita</th></tr></thead>
@@ -60,7 +60,7 @@ export default function PrazosEncomenda({ enc }: { enc: Encomenda }) {
             )
           })}
         </tbody>
-      </table>
+      </table></div>
       <p className="px-5 py-3 text-[12px] text-tenue">Prazo habitual: 4 semanas, mas depende do modelo, da lavagem e do planeamento anterior. O planeamento automático usa, dentro dessas 4 semanas, materiais 24 dias antes da entrega, corte 21, confeção 12, lavandaria 6 e embalamento 2: ajuste em cada encomenda.</p>
     </Cartao>
   )

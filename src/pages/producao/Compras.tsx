@@ -17,7 +17,7 @@ export default function Compras() {
   return (
     <>
       <Cabecalho sobre="Fichas de produção" titulo="Compras" sub="O que a Pereira's Project tem de comprar para as encomendas em curso, calculado a partir das fichas (consumo × peças). Clique numa linha para abrir a encomenda." />
-      <div className="grid grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-5">
         <Kpi rotulo="Encomendas em curso" valor={encomendas.length} />
         <Kpi rotulo="Por encomendar" valor={conta('Por encomendar')} tom={conta('Por encomendar') ? 'ambar' : undefined} />
         <Kpi rotulo="Encomendado (por receber)" valor={conta('Encomendado')} />

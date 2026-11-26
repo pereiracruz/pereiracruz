@@ -108,9 +108,9 @@ export function Cabecalho({ migalhas, sobre, titulo, extra, sub, acoes }: {
   migalhas?: { rotulo: string; para?: string }[]; sobre?: string; titulo: ReactNode; extra?: ReactNode; sub?: ReactNode; acoes?: ReactNode
 }) {
   return (
-    <header className="mb-6 pb-6 border-b border-linha">
+    <header className="mb-5 pb-5 lg:mb-6 lg:pb-6 border-b border-linha">
       {migalhas && (
-        <nav className="flex items-center gap-1.5 text-[13px] text-suave mb-5 no-print">
+        <nav className="flex items-center gap-1.5 text-[13px] text-suave mb-4 lg:mb-5 no-print flex-wrap">
           {migalhas.map((m, i) => (
             <span key={i} className="flex items-center gap-1.5">
               {i > 0 && <ChevronRight size={13} className="text-tenue" />}
@@ -119,16 +119,16 @@ export function Cabecalho({ migalhas, sobre, titulo, extra, sub, acoes }: {
           ))}
         </nav>
       )}
-      <div className="flex items-end justify-between gap-6 flex-wrap">
+      <div className="flex items-end justify-between gap-4 lg:gap-6 flex-wrap">
         <div className="min-w-0">
           {sobre && <p className="text-[13px] text-suave mb-1">{sobre}</p>}
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-[32px] font-semibold tracking-[-0.02em] leading-tight">{titulo}</h1>
+            <h1 className="text-[24px] sm:text-[28px] lg:text-[32px] font-semibold tracking-[-0.02em] leading-tight break-words">{titulo}</h1>
             {extra}
           </div>
           {sub && <p className="text-[14px] text-suave mt-1.5">{sub}</p>}
         </div>
-        {acoes && <div className="flex items-center gap-2 no-print">{acoes}</div>}
+        {acoes && <div className="flex items-center gap-2 no-print flex-wrap">{acoes}</div>}
       </div>
     </header>
   )

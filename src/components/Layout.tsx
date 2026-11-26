@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useEffect, useState, type ReactNode } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Archive, Bell, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Receipt } from 'lucide-react'
+import { Archive, Bell, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, X, PanelLeftOpen, Receipt } from 'lucide-react'
 import { useDb } from '../store/db'
 import { fichasPorAprovar } from '../lib/calc'
 import { situacaoPrazos } from '../lib/prazos'
@@ -35,7 +35,7 @@ function Grupo({ titulo, children }: { titulo: string; children: ReactNode }) {
   )
 }
 
-function Sino() {
+function Sino({ direita }: { direita?: boolean }) {
   const encomendas = useDb((s) => s.encomendas)
   const pedidos = useDb((s) => s.pedidos)
   const nav = useNavigate()
@@ -58,7 +58,7 @@ function Sino() {
       {aberto && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setAberto(false)} />
-          <div className="absolute left-0 top-9 z-40 w-80 bg-papel border border-linha rounded-cartao shadow-xl p-2">
+          <div className={clsx('absolute top-9 z-40 w-80 max-w-[calc(100vw-2rem)] bg-papel', direita ? 'right-0' : 'left-0', 'border border-linha rounded-cartao shadow-xl p-2')}>
             <p className="px-3 py-2 text-[12px] font-semibold uppercase tracking-wider text-suave">Pendentes</p>
             {itens.length === 0 && <p className="px-3 py-4 text-[14px] text-tenue">Nada por tratar.</p>}
             {itens.map((i, k) => (
@@ -75,6 +75,10 @@ function Sino() {
 
 export default function Layout() {
   const [recolhida, setRecolhida] = useState(false)
+  // telemóvel: o menu abre por cima e fecha ao mudar de página
+  const [menuAberto, setMenuAberto] = useState(false)
+  const local = useLocation()
+  useEffect(() => { setMenuAberto(false) }, [local.pathname, local.search])
   const sair = useDb((s) => s.sair)
   const nome = useDb((s) => s.nomeUtilizador)
   const porAprovar = useDb((s) => s.encomendas.reduce((n, e) => n + fichasPorAprovar(e), 0))
@@ -90,19 +94,23 @@ export default function Layout() {
 
   return (
     <div className="h-full flex">
-      <aside className={clsx('no-print shrink-0 bg-papel border-r border-linha flex flex-col transition-[width] duration-200', recolhida ? 'w-0 overflow-hidden border-0' : 'w-[248px]')}>
+      {menuAberto && <div className="no-print fixed inset-0 z-40 bg-tinta/30 lg:hidden" onClick={() => setMenuAberto(false)} />}
+      <aside className={clsx('no-print bg-papel border-r border-linha flex flex-col',
+        'fixed inset-y-0 left-0 z-50 w-[280px] max-w-[85vw] max-lg:overflow-y-auto transition-transform duration-200 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]', menuAberto ? 'translate-x-0 shadow-xl' : '-translate-x-full',
+        'lg:static lg:z-auto lg:max-w-none lg:translate-x-0 lg:shadow-none lg:shrink-0 lg:transition-[width] lg:pt-0 lg:pb-0', recolhida ? 'lg:w-0 lg:overflow-hidden lg:border-0' : 'lg:w-[248px]')}>
         <div className="flex items-center justify-between px-4 h-16">
           <div className="flex items-center gap-2.5">
             <img src="/logo-mark.png" alt="" className="h-8 w-auto" />
             <span className="font-semibold text-[15px] tracking-tight whitespace-nowrap">Pereira & Cruz</span>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => setRecolhida(true)} className="p-1.5 text-tenue hover:text-tinta" aria-label="Recolher a barra lateral"><PanelLeftClose size={17} /></button>
-            <Sino />
+            <button onClick={() => setRecolhida(true)} className="hidden lg:block p-1.5 text-tenue hover:text-tinta" aria-label="Recolher a barra lateral"><PanelLeftClose size={17} /></button>
+            <span className="hidden lg:block"><Sino /></span>
+            <button onClick={() => setMenuAberto(false)} className="lg:hidden p-2 text-tenue hover:text-tinta" aria-label="Fechar o menu"><X size={20} /></button>
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto">
+        <nav className="flex-none lg:flex-1 lg:overflow-y-auto">
           <div className="px-3 pb-4 pt-1 space-y-1">
             <Item para="/" fim icone={<LayoutGrid size={17} />}>Painel</Item>
           </div>
@@ -148,11 +156,19 @@ export default function Layout() {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto relative">
+      <main className="flex-1 min-w-0 overflow-y-auto relative">
+        {/* barra de cima no telemóvel */}
+        <div className="no-print lg:hidden sticky top-0 z-30 bg-fundo/95 backdrop-blur border-b border-linha pt-[env(safe-area-inset-top)]">
+          <div className="h-14 flex items-center justify-between px-2">
+            <button onClick={() => setMenuAberto(true)} className="p-2.5 text-tinta" aria-label="Abrir o menu"><Menu size={22} /></button>
+            <span className="flex items-center gap-2"><img src="/logo-mark.png" alt="" className="h-7 w-auto" /><span className="font-semibold text-[15px] tracking-tight">Pereira & Cruz</span></span>
+            <span className="p-1.5"><Sino direita /></span>
+          </div>
+        </div>
         {recolhida && (
-          <button onClick={() => setRecolhida(false)} className="no-print absolute left-3 top-4 p-2 text-suave hover:text-tinta" aria-label="Abrir a barra lateral"><PanelLeftOpen size={18} /></button>
+          <button onClick={() => setRecolhida(false)} className="no-print hidden lg:block absolute left-3 top-4 p-2 text-suave hover:text-tinta" aria-label="Abrir a barra lateral"><PanelLeftOpen size={18} /></button>
         )}
-        <div className="max-w-[1180px] mx-auto px-8 py-8 min-h-full flex flex-col">
+        <div className="max-w-[1180px] mx-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-8 min-h-full flex flex-col pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
           <div className="flex-1"><Outlet /></div>
           <footer className="no-print mt-12 pt-5 border-t border-linha text-[11px] tracking-[0.12em] uppercase text-tenue text-right">© {new Date().getFullYear()} Pereira & Cruz</footer>
         </div>

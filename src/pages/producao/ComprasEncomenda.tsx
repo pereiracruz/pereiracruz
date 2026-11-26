@@ -90,7 +90,7 @@ export default function ComprasEncomenda({ enc }: { enc: Encomenda }) {
         {semFicha.length} modelo(s) ainda sem ficha ({semFicha.map((m) => m.nome).join(', ')}): os materiais desses modelos ainda não entram nas compras.</p>}
       {!linhas.length ? <p className="px-5 pb-5 text-[14px] text-tenue">Ainda não há materiais: gere as fichas dos modelos.</p> : (
         <div className="overflow-x-auto">
-          <table className="w-full text-[13.5px]">
+          <table className="w-full text-[13.5px] min-w-[760px]">
             <thead><tr className="text-[11px] uppercase tracking-wider text-suave">
               <th className="text-left px-5 py-2 font-medium">Material</th><th className="text-left px-2 font-medium">Cor</th><th className="text-right px-2 font-medium">Peças</th>
               <th className="text-right px-2 font-medium">Necessário</th><th className="text-right px-2 font-medium">A comprar</th><th className="text-left px-2 font-medium w-36">Estado</th><th className="text-left px-5 font-medium">Nota</th></tr></thead>

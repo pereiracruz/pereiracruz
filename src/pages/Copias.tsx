@@ -68,7 +68,7 @@ export default function Copias() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
         <Cartao className="p-5">
           <h3 className="font-semibold mb-1">Descarregar cópia</h3>
           <p className="text-[13px] text-suave mb-4">Ficheiro JSON com o estado atual. Os PDFs e Excel originais guardados no servidor não entram na cópia.</p>

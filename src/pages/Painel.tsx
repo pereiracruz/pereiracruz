@@ -22,9 +22,9 @@ export default function Painel() {
   return (
     <>
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
-        <h1 className="text-[32px] font-semibold tracking-[-0.02em]">Painel</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-[14px] text-tenue">{dataLonga()}</span>
+        <h1 className="text-[24px] sm:text-[28px] lg:text-[32px] font-semibold tracking-[-0.02em]">Painel</h1>
+        <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+          <span className="text-[14px] text-tenue w-full sm:w-auto">{dataLonga()}</span>
           {!modoServidor && <Botao variante="fantasma" icone={<RotateCcw size={15} />} onClick={() => {
             if (confirm('Repor os dados de exemplo? As alterações feitas neste browser perdem-se.')) { repor(); aviso('Dados de exemplo repostos.') }
           }}>Repor exemplo</Botao>}
@@ -43,14 +43,14 @@ export default function Painel() {
             <Num v={soma(encomendas.map(fichasPorAprovar))} r="por aprovar" />
           </div>
           {ultima && (
-            <div className="p-6">
-              <div className="flex items-center justify-between max-w-[540px] mb-4">
+            <div className="p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3 max-w-[540px] mb-4">
                 <p className="text-[11px] font-semibold tracking-[0.12em] uppercase text-suave">Peças por modelo · {ultima.cliente} {ultima.colecao}</p>
                 <p className="text-[12px] text-tenue">{int(totalPecas)} peças</p>
               </div>
               <div className="space-y-2.5 max-w-[540px]">
                 {modelos.map((m) => (
-                  <Link key={m.id} to={`/fichas/${ultima.id}`} className="grid grid-cols-[140px_1fr_50px] items-center gap-4 group">
+                  <Link key={m.id} to={`/fichas/${ultima.id}`} className="grid grid-cols-[110px_1fr_44px] sm:grid-cols-[140px_1fr_50px] items-center gap-3 sm:gap-4 group">
                     <span className="text-[14px] truncate group-hover:underline">{m.nome}</span>
                     <span className="h-1.5 rounded-full bg-fundo-2 overflow-hidden"><span className="block h-full bg-tinta rounded-full" style={{ width: `${(pecasModelo(m) / maxPecas) * 100}%` }} /></span>
                     <span className="text-[13px] text-suave text-right num">{int(pecasModelo(m))}</span>
@@ -68,7 +68,7 @@ export default function Painel() {
             <Num v={pedidos.filter((p) => p.estado === 'Por validar').length} r="por validar" />
             <Num v={precos.length ? eur(soma(precos) / precos.length) : '—'} r="preço médio por peça" />
           </div>
-          <div className="p-6 max-w-[540px]">
+          <div className="p-4 sm:p-6 max-w-[540px]">
             <p className="text-[11px] font-semibold tracking-[0.12em] uppercase text-suave mb-4">Preço por peça · mais recente primeiro</p>
             {pedidos.map((p, i) => (
               <Link key={p.id} to={`/orcamentos/${p.id}`} className="flex justify-between py-2 border-b border-linha last:border-0 hover:underline">
@@ -83,12 +83,12 @@ export default function Painel() {
 }
 
 const Cab = ({ icone, titulo, sub, link, linkTxt }: { icone: React.ReactNode; titulo: string; sub: string; link: string; linkTxt: string }) => (
-  <div className="flex items-start justify-between px-6 py-5">
+  <div className="flex items-start justify-between gap-3 px-4 sm:px-6 py-5 flex-wrap">
     <div className="flex gap-3"><span className="text-suave mt-1">{icone}</span><div><h2 className="text-[18px] font-semibold">{titulo}</h2><p className="text-[13px] text-suave">{sub}</p></div></div>
     <Link to={link} className="text-[14px] text-tinta-2 hover:text-tinta flex items-center gap-1">{linkTxt} <ArrowUpRight size={14} /></Link>
   </div>
 )
 const Num = ({ v, r }: { v: React.ReactNode; r: string }) => (
-  <div className="px-6 py-5 border-r border-linha last:border-0"><p className="text-[30px] font-semibold tracking-tight num">{v}</p><p className="text-[12px] text-suave">{r}</p></div>
+  <div className="px-3 sm:px-6 py-4 sm:py-5 border-r border-linha last:border-0 min-w-0"><p className="text-[22px] sm:text-[30px] font-semibold tracking-tight num truncate">{v}</p><p className="text-[12px] text-suave">{r}</p></div>
 )
 

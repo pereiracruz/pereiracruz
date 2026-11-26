@@ -79,7 +79,7 @@ export default function Pedidos() {
           <Botao variante="primario" icone={<Plus size={16} />} onClick={() => nav('/orcamentos/novo')}>Novo pedido</Botao>
         </>} />
       {erroImp && <p className="mb-4 text-[13px] text-vermelho bg-vermelho-fraco border border-vermelho-borda rounded-controlo px-3 py-2">{erroImp}</p>}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Kpi rotulo="Por validar" icone={<ShieldCheck size={14} />} tom="ambar" {...k('Por validar')} />
         <Kpi rotulo="Enviados" icone={<Send size={14} />} {...k('Enviado')} />
         <Kpi rotulo="Fechados" icone={<CheckCheck size={14} />} tom="verde" {...k('Fechado')} />

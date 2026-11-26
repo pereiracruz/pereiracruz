@@ -54,7 +54,7 @@ export default function Historico() {
           <Botao icone={<Upload size={15} />} onClick={() => input.current?.click()}>Importar orçamentos</Botao>
           <input ref={input} type="file" hidden accept=".xlsx,.xls,.csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) importar(f); e.target.value = '' }} />
         </>} />
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6">
         <Kpi rotulo="Preços guardados" valor={historico.length} />
         <Kpi rotulo="Preço médio por peça" valor={eur(media)} />
         <Kpi rotulo="Peças encomendadas" valor={int(soma(comPecas.map((h) => h.pecas!)))} />

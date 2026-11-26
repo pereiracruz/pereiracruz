@@ -89,7 +89,7 @@ export default function NovoPedido() {
       <Passos passos={PASSOS} atual={passo} />
 
       {passo === 0 && (
-        <div className="grid grid-cols-[1fr_440px] gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_440px] gap-5 items-start">
           <div>
             <button onClick={() => inputRef.current?.click()} onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) { setNomePdf(f.name); setPdfUrl(URL.createObjectURL(f)); setCarregado(true) } }}
@@ -108,7 +108,7 @@ export default function NovoPedido() {
             <Cartao className="p-5 mt-6">
               <h3 className="font-semibold">Ou começar com a ficha-modelo da Pereira & Cruz</h3>
               <p className="text-[13px] text-suave mb-4">Sem tech pack nem IA: as linhas das vossas fichas de custo (corte e confeção, plano de corte, tecido, lavandaria, acessórios…) com os valores de referência, para ajustar. Ganga: lavagem à peça, molas/botão e 3 rebites. Sarja: tingimento ao kg e botão de massa.</p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Campo rotulo="Cliente"><Seletor valor={mCliente} onChange={setMCliente} vazio="Escolher…" opcoes={clientes.map((c) => c.nome)} /></Campo>
                 <Campo rotulo="Tipo de peça"><Seletor valor={mTipo} onChange={setMTipo} opcoes={['Calças', 'Calções', 'Camisa', 'Casaco', 'Outra']} /></Campo>
                 <Campo rotulo="Tecido"><Seletor valor={mTecido} onChange={(v) => setMTecido(v as typeof mTecido)} opcoes={['Ganga', 'Sarja', 'Outro']} /></Campo>
@@ -131,7 +131,7 @@ export default function NovoPedido() {
       )}
 
       {passo === 1 && (
-        <div className="grid grid-cols-[1fr_1.15fr] gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.15fr] gap-5 items-start">
           <TechPack nome={nomePdf} url={pdfUrl} pagina={pagina} setPagina={setPagina} />
           <Cartao className="p-6"><div className="flex items-center gap-3"><EtiquetaIA /><div><p className="font-semibold">A ler o tech pack e a preparar a ficha de custo…</p><p className="text-[13px] text-suave">Materiais da ficha de produção + tabela de preços</p></div></div>
             <div className="h-1 rounded-full bg-fundo-2 mt-5 overflow-hidden"><div className="h-full bg-ouro animate-[crescer_2.6s_ease-out_forwards]" style={{ width: '100%' }} /></div></Cartao>
@@ -139,7 +139,7 @@ export default function NovoPedido() {
       )}
 
       {existente && custo && (
-        <div className={clsx('grid gap-5 items-start', existente.origem ? 'grid-cols-1 max-w-4xl' : 'grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]')}>
+        <div className={clsx('grid gap-5 items-start', existente.origem ? 'grid-cols-1 max-w-4xl' : 'grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]')}>
           {!existente.origem && <TechPack nome="SHIRT MAO.pdf" pagina={pagina} setPagina={setPagina} />}
 
           <div className="space-y-4 min-w-0">
@@ -268,7 +268,7 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
         {compacta && <span className="flex items-center gap-2 font-semibold num">{eur(c.final)}<ChevronDown size={15} className={clsx('transition-transform', aberta && 'rotate-180')} /></span>}
       </button>
       {aberta && <>
-        <table className="w-full text-[13px]">
+        <div className="overflow-x-auto"><table className="w-full text-[13px] min-w-[680px]">
           <thead><tr className="text-[11px] uppercase tracking-wider text-suave border-y border-linha bg-fundo/40">
             <th className="text-left px-5 py-2 font-medium">Descrição</th><th className="text-center px-1 font-medium w-14">Unid.</th><th className="text-right px-2 font-medium w-24">Consumo</th><th className="text-right px-2 font-medium w-24">Valor unitário</th><th className="text-right px-2 font-medium w-24">Total s/ IVA</th><th className="text-right px-5 font-medium w-28">Origem</th>{editavel && <th className="w-8" />}</tr></thead>
           <tbody>
@@ -302,7 +302,7 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
               )
             })}
           </tbody>
-        </table>
+        </table></div>
         {editavel && <div className="px-5 pt-2"><Botao pequeno variante="fantasma" icone={<Plus size={13} />} onClick={() => atualizar({ linhas: [...p.linhas, { id: uid('c'), descricao: 'Nova linha', unidade: '€', consumo: 1, valor: 0, origem: 'Confirmar' }] })}>Acrescentar linha</Botao></div>}
         <div className="px-5 py-3 text-[13px] space-y-1.5">
           <div className="flex justify-between"><span>Total do custo</span><span className="font-semibold num">{eur(c.total)}</span></div>
@@ -396,7 +396,7 @@ function LavandariaClothius({ l, tipoPeca, crianca, pesos, onFechar, aplicar }: 
       <div className="space-y-4">
         <Pilulas valor={modo} onChange={setModo} opcoes={[{ id: 'ting', rotulo: 'Tingimento (ao kg)' }, { id: 'lav', rotulo: 'Lavagem e secos (à peça)' }]} />
         {modo === 'ting' ? (<>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Campo rotulo="Tipo de tingimento"><Seletor valor={tipo} onChange={setTipo} opcoes={tingimentos.map((x) => x.tipo)} /></Campo>
             <Campo rotulo="Peso da peça (kg)" ajuda="Depende do modelo: pesar a peça ou o protótipo."><Entrada value={peso} onChange={(e) => setPeso(e.target.value)} placeholder="ex.: 0,35" /></Campo>
           </div>
@@ -418,7 +418,7 @@ function LavandariaClothius({ l, tipoPeca, crianca, pesos, onFechar, aplicar }: 
           {(['Lavagem', 'Secos'] as const).map((sec) => (
             <div key={sec}>
               <p className="text-[11px] uppercase tracking-wider text-suave mb-1.5">{sec === 'Lavagem' ? 'Lavagens' : 'Secos'}</p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
                 {lavagens.filter((x) => x.seccao === sec).map((x) => (
                   <label key={x.id} className={clsx('flex items-center justify-between gap-2 text-[13px]', x[grupo] == null && 'opacity-40')}>
                     <span className="flex items-center gap-2"><input type="checkbox" disabled={x[grupo] == null} checked={escolhidas.has(x.id)}

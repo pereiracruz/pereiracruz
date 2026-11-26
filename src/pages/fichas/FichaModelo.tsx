@@ -130,7 +130,7 @@ export default function FichaModelo() {
             <Producao m={m} v={v} guardar={(fn, d) => { atualizarModelo(enc.id, m.id, fn); log('Produção atualizada', `${enc.cliente} · ${m.nome} · ${d}`) }} />
           )}
 
-          <Folha enc={enc} m={m} v={v} folha={folha} idEnc={ids[v.id]} destinatarios={destinatarios} dataFicha={dataFicha} />
+          <div className="overflow-x-auto print:overflow-visible"><div className="min-w-[880px] print:min-w-0"><Folha enc={enc} m={m} v={v} folha={folha} idEnc={ids[v.id]} destinatarios={destinatarios} dataFicha={dataFicha} /></div></div>
 
           {editar && (
             <div className="mt-3 flex gap-2 no-print">
@@ -139,7 +139,7 @@ export default function FichaModelo() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4 mt-6 no-print">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 no-print">
             <Cartao className="p-5">
               <h3 className="font-semibold mb-4">Versões da ficha</h3>
               <ol className="space-y-4">

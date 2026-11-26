@@ -18,7 +18,7 @@ export default function Encomendas() {
     <>
       <Cabecalho sobre="Fichas de produção" titulo="Encomendas" sub={`${encomendas.length} ${encomendas.length === 1 ? 'encomenda' : 'encomendas'}`}
         acoes={<Botao variante="primario" icone={<Plus size={16} />} onClick={() => nav('/fichas/nova')}>Nova encomenda</Botao>} />
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <Kpi rotulo="Em revisão" valor={encomendas.filter((e) => e.estado === 'Em revisão').length} sub={`${encomendas.reduce((n, e) => n + fichasPorAprovar(e), 0)} fichas por aprovar`}
           icone={<ScanSearch size={14} />} tom="ambar" ativo={kpi === 'Em revisão'} onClick={() => setKpi(kpi === 'Em revisão' ? '' : 'Em revisão')} />
         <Kpi rotulo="Fichas geradas" valor={encomendas.filter((e) => e.estado === 'Fichas geradas').length} icone={<FileStack size={14} />}

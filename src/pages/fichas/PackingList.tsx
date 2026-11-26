@@ -69,7 +69,7 @@ export default function PackingList() {
                     <p className="font-semibold text-[13px]">PACKING LIST – {b.titulo}</p>
                     <button className="no-print text-tenue hover:text-tinta text-[12px] flex items-center gap-1" onClick={() => mudarEnvio(envio.id, (x) => ({ ...x, itens: x.itens.filter((i) => !(i.modeloId === b.modeloId && i.varianteId === b.varianteId)) }), `${b.titulo} retirado`)}><X size={12} />retirar</button>
                   </div>
-                  <table className="w-full text-[12px] border-collapse">
+                  <div className="overflow-x-auto"><table className="w-full text-[12px] border-collapse">
                     <thead><tr className="bg-folha-cab text-white"><th className="px-2 py-1.5">BOX Nº</th>{b.tamanhos.map((t) => <th key={t} className="px-2">{t}</th>)}<th className="px-2">TOTAL</th>{b.temPeso && <th className="px-2">KG</th>}</tr></thead>
                     <tbody>
                       {b.caixas.map((c) => (
@@ -79,7 +79,7 @@ export default function PackingList() {
                       ))}
                       <tr className="bg-fundo/50 font-semibold text-center num"><td className="py-1.5">TOTAL</td>{b.totalPorTamanho.map((q, i) => <td key={i}>{q}</td>)}<td>{b.total}</td>{b.temPeso && <td>{num(b.peso)}</td>}</tr>
                     </tbody>
-                  </table>
+                  </table></div>
                   <p className={clsx('px-5 py-1.5 text-[11px] no-print', b.origem === 'encomenda' ? 'text-ambar' : 'text-suave')}>
                     Quantidades: {b.origem === 'embalado' ? 'total embalado' : b.origem === 'confecionado' ? 'total confecionado (ainda sem embalado)' : 'encomenda (ainda sem confecionado nem embalado)'} · caixas de até {b.caixaMax} peças
                   </p>

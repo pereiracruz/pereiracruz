@@ -70,14 +70,14 @@ export default function EncomendaDetalhe() {
             onClick={() => { atualizarEncomenda(enc.id, (e) => ({ ...e, estado: 'Concluída' })); log('Encomenda concluída', `${enc.cliente} · ${enc.colecao}`); aviso('Encomenda marcada como concluída.') }}>Marcar como concluída</Botao>}
         </>} />
 
-      <div className="grid grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-5">
         <Kpi rotulo="Modelos" valor={enc.modelos.length} />
         <Kpi rotulo="Referências" valor={referenciasEncomenda(enc)} sub={`${int(enc.preEncomenda)} pré-encomenda · ${enc.stock} stock`} />
         <Kpi rotulo="Peças" valor={int(pecasEncomenda(enc))} sub={valor ? eur(valor) : undefined} />
         <Kpi rotulo="Fichas geradas" valor={fichasGeradas(enc)} sub={`de ${referenciasEncomenda(enc)} variantes`} />
       </div>
 
-      <div className="grid grid-cols-[260px_1fr] gap-4 mb-5">
+      <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4 mb-5">
         <Cartao className="p-4 space-y-3">
           <div>
             <p className="text-[13px] text-suave mb-1.5">Nº interno da encomenda</p>

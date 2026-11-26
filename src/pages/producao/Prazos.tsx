@@ -21,7 +21,7 @@ export default function Prazos() {
   return (
     <>
       <Cabecalho sobre="Fichas de produção" titulo="Prazos" sub="Encomendas em curso por data de entrega, com a próxima etapa e os atrasos. Clique numa encomenda para planear as datas." />
-      <div className="grid grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-5">
         <Kpi rotulo="Atrasadas" valor={n('atrasada')} tom={n('atrasada') ? 'vermelho' : undefined} />
         <Kpi rotulo="Precisam de atenção" valor={n('urgente')} sub="entrega em 7 dias ou materiais por receber" tom={n('urgente') ? 'ambar' : undefined} />
         <Kpi rotulo="Dentro do prazo" valor={n('ok')} tom="verde" />

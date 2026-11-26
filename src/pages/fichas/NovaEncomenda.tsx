@@ -196,7 +196,7 @@ export default function NovaEncomenda() {
 
       {/* ---------- 1. Carregar ---------- */}
       {passo === 0 && (
-        <div className="grid grid-cols-[1fr_440px] gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_440px] gap-5 items-start">
           <div>
             <button onClick={() => inputRef.current?.click()}
               onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); adicionar(e.dataTransfer.files) }}
@@ -239,7 +239,7 @@ export default function NovaEncomenda() {
               </div>
             </div>
             {real && (
-              <div className="grid grid-cols-2 gap-4 mt-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-5">
                 <Campo rotulo="Cliente"><Seletor valor={cliente} onChange={setCliente} vazio="Escolher o cliente…" opcoes={clientes.map((c) => c.nome)} /></Campo>
                 <Campo rotulo="Coleção" ajuda="Sugerida a partir dos nomes dos ficheiros."><Entrada value={colecao} onChange={(e) => setColecao(e.target.value)} placeholder="ex.: FW26" /></Campo>
               </div>
@@ -280,7 +280,7 @@ export default function NovaEncomenda() {
 
       {/* ---------- 2. A IA lê (exemplo) ---------- */}
       {passo === 1 && !real && (
-        <div className="grid grid-cols-[1fr_1.15fr] gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.15fr] gap-5 items-start">
           <TechPack nome={pdf?.nome ?? 'SHIRT MAO.pdf'} url={exemplo ? undefined : pdf?.url} pagina={Math.min(7, etapa * 2 + 1)} setPagina={() => {}} />
           <Cartao className="p-6">
             <div className="flex items-center gap-3">
@@ -309,7 +309,7 @@ export default function NovaEncomenda() {
 
       {/* ---------- 3. Ligação ---------- */}
       {passo === 2 && (
-        <div className="grid grid-cols-[1fr_1.15fr] gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.15fr] gap-5 items-start">
           <TechPack nome={pdf?.nome ?? 'SHIRT MAO.pdf'} url={exemplo ? undefined : pdf?.url} pagina={1} setPagina={setPagina} />
           <div className="space-y-4">
             <ResumoEncomenda enc={enc} />
@@ -341,7 +341,7 @@ export default function NovaEncomenda() {
 
       {/* ---------- 4. Rever e gerar ---------- */}
       {passo === 3 && !leitura && (
-        <div className="grid grid-cols-[1fr_1.15fr] gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.15fr] gap-5 items-start">
           <TechPack nome={pdf?.nome ?? 'SHIRT MAO.pdf'} url={exemplo ? undefined : pdf?.url} pagina={pagina} setPagina={setPagina} destaque={destaque} />
           <div className="space-y-4">
             {pendentes > 0
@@ -355,7 +355,7 @@ export default function NovaEncomenda() {
                 <h3 className="text-[16px] font-semibold">Chemise Janet · lido do tech pack</h3>
                 <span className="text-[12px] text-suave">{Object.values(confirmados).filter(Boolean).length} / {leituraShirtMao.campos.length} confirmados</span>
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
                 {leituraShirtMao.campos.map((c) => {
                   const pag = Number(c.pagina.match(/\d+/)?.[0] ?? 1)
                   const ok = confirmados[c.campo]
@@ -460,7 +460,7 @@ function RevisaoExcel({ l, enc, ligacoes, techPacks }: { l: LeituraExcel; enc: R
   const ok = (b: boolean, t: string) => <li className={clsx('flex items-center gap-2 text-[13px]', b ? 'text-verde' : 'text-ambar')}>{b ? <Check size={14} /> : <AlertTriangle size={14} />}{t}</li>
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-[1fr_1fr] gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Cartao className="p-5">
           <h3 className="font-semibold mb-1 flex items-center gap-2">{l.origem === 'ia' ? <>Leitura do PDF <EtiquetaIA /></> : 'Leitura do Excel'}</h3>
           <p className="text-[13px] text-suave mb-3">{l.origem === 'ia'

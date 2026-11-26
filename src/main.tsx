@@ -5,6 +5,7 @@ import './index.css'
 import { useDb } from './store/db'
 import { iniciarServidor } from './store/servidor'
 import { prepararGoogle } from './lib/sheets'
+import { prepararApp } from './lib/app'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Painel from './pages/Painel'
@@ -61,6 +62,8 @@ function App() {
     </Routes>
   )
 }
+
+prepararApp()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

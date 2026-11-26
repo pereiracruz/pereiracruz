@@ -35,7 +35,7 @@ function TabelaGrupos({ titulo, grupos }: { titulo: string; grupos: Grupo[] }) {
   return (
     <Cartao>
       <h3 className="font-semibold px-5 pt-5 pb-3">{titulo}</h3>
-      <table className="w-full text-[13.5px] whitespace-nowrap">
+      <div className="overflow-x-auto"><table className="w-full text-[13.5px] whitespace-nowrap">
         <thead><tr className="text-[11px] uppercase tracking-wider text-suave border-y border-linha bg-fundo/40">
           <th className="text-left px-5 py-2 font-medium" /><th className="text-right px-2 font-medium">Fichas</th><th className="text-right px-2 font-medium">Custo médio</th>
           <th className="text-right px-2 font-medium">Preço médio</th><th className="text-right px-2 font-medium">Margem média</th><th className="text-right px-2 font-medium">Mín · máx</th>
@@ -48,7 +48,7 @@ function TabelaGrupos({ titulo, grupos }: { titulo: string; grupos: Grupo[] }) {
             <td className="px-2 text-right num text-suave">{pct(g.min)} · {pct(g.max)}</td>
             <td className="px-5 text-right num">{g.abaixo}{g.prejuizo > 0 && <span className="text-vermelho"> ({g.prejuizo} abaixo do custo)</span>}</td>
           </tr>))}</tbody>
-      </table>
+      </table></div>
     </Cartao>
   )
 }
@@ -78,7 +78,7 @@ export default function Margens() {
           <Seletor valor={colecao} onChange={setColecao} vazio="Todas as coleções" opcoes={[...new Set(todas.map((l) => l.colecao))].sort()} />
         </div>} />
       {!total ? <Cartao className="p-6 text-[14px] text-tenue">Ainda não há fichas de custo com preço final. Importe as fichas em Pedidos → Importar fichas de custo.</Cartao> : <>
-        <div className="grid grid-cols-4 gap-4 mb-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-5">
           <Kpi rotulo="Fichas" valor={total.n} sub={`${new Set(linhas.map((l) => l.p.cliente)).size} cliente(s) · ${new Set(linhas.map((l) => l.colecao)).size} coleção(ões)`} />
           <Kpi rotulo="Margem média sobre o custo" valor={pct(total.pct)} sub={`${eur(total.margem)} por peça`} tom={total.pct >= MARGEM_OBJETIVO ? 'verde' : total.pct < 0 ? 'vermelho' : 'ambar'} />
           <Kpi rotulo={`Abaixo do objetivo (${MARGEM_OBJETIVO} %)`} valor={total.abaixo} sub={`de ${total.n} fichas`} tom={total.abaixo ? 'ambar' : 'verde'} />
