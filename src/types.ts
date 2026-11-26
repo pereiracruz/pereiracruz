@@ -142,6 +142,8 @@ export interface Pedido {
   referencia?: string // código do modelo na ficha de custo
   origemFicheiro?: string // ficha de custo importada (ficheiro · folha)
   origem?: 'ia' | 'modelo' | 'importado' // como foi criada a ficha de custo
+  margemFixa?: number // «N/ comissão» desta ficha (sobrepõe-se à do cliente)
+  comissaoPct?: number // comissão do agente desta ficha, % sobre o custo (sobrepõe-se à do cliente)
 }
 export interface PrecoHistorico {
   id: string; cliente: string; peca: string; variante: string; tipoPeca: string; tecido: string; tratamento: string

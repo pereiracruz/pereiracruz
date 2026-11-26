@@ -57,7 +57,7 @@ export default function NovoPedido() {
   }, [lendo, guardarPedido, log, nav])
 
   const cfg = clientes.find((c) => c.nome === existente?.cliente)
-  const custo = existente ? calcularCusto(existente.linhas, cfg, existente.precoFinal) : null
+  const custo = existente ? calcularCusto(existente.linhas, cfg, existente.precoFinal, existente) : null
   const parecidas = useMemo(() => (existente ? pecasParecidas(existente, historico.filter((h) => !h.id.startsWith(existente.id))) : []), [existente, historico])
   const intervalo = custo ? propostaIntervalo(custo.final, parecidas) : null
   const porConfirmar = existente?.linhas.filter((l) => l.origem !== 'Segura' && !l.confirmado) ?? []
@@ -220,7 +220,7 @@ export default function NovoPedido() {
 
 function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar: (x: Partial<Pedido>) => void; editavel: boolean; compacta?: boolean }) {
   const cfg = useDb((s) => s.clientes.find((c) => c.nome === p.cliente))
-  const c = calcularCusto(p.linhas, cfg, p.precoFinal)
+  const c = calcularCusto(p.linhas, cfg, p.precoFinal, p)
   const [aberta, setAberta] = useState(!compacta)
   const linha = (id: string, x: Partial<LinhaCusto>) => atualizar({ linhas: p.linhas.map((l) => (l.id === id ? { ...l, ...x } : l)) })
   // consumo/valor: aceita números ou fórmulas simples (3/32, 140.8/1000, 0,46+0,08)
@@ -274,11 +274,14 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
         {editavel && <div className="px-5 pt-2"><Botao pequeno variante="fantasma" icone={<Plus size={13} />} onClick={() => atualizar({ linhas: [...p.linhas, { id: uid('c'), descricao: 'Nova linha', unidade: '€', consumo: 1, valor: 0, origem: 'Confirmar' }] })}>Acrescentar linha</Botao></div>}
         <div className="px-5 py-3 text-[13px] space-y-1.5">
           <div className="flex justify-between"><span>Total do custo</span><span className="font-semibold num">{eur(c.total)}</span></div>
-          {c.fixado ? (
+          {c.fixado ? (<>
             <div className={clsx('flex justify-between', c.margem < 0 ? 'text-vermelho font-semibold' : 'text-suave')}><span>Margem total {c.margem < 0 && '· preço abaixo do custo'}</span><span className="num">{eur(c.margem)} · {c.margemPct.toFixed(1).replace('.', ',')} %</span></div>
-          ) : <>
-            <div className="flex justify-between text-suave"><span>N/ margem ({cfg?.margemTipo === 'percentual' ? `${cfg.margem} %` : 'fixa'})</span><span className="num">{eur(c.margem)}</span></div>
-            <div className="flex justify-between text-suave"><span>Comissão do agente ({cfg?.comissao ?? 0} %)</span><span className="num">{eur(c.comissao)}</span></div>
+            {(p.margemFixa != null || p.comissaoPct != null) && Math.abs(c.ajuste) > 0.005 && (
+              <div className="flex justify-between text-tenue text-[12px]"><span>Cálculo da ficha: custo + N/ comissão {eur(c.nMargem)}{c.pct ? ` + agente ${String(c.pct).replace('.', ',')} %` : ''} = {eur(c.valorTotal)} · preço ajustado à mão</span><span className="num">{c.ajuste > 0 ? '+' : ''}{eur(c.ajuste)}</span></div>
+            )}
+          </>) : <>
+            <div className="flex justify-between text-suave"><span>N/ comissão{p.margemFixa == null && ` (${cfg?.margemTipo === 'percentual' ? `${cfg.margem} %` : 'fixa'})`}</span><span className="num">{eur(c.margem)}</span></div>
+            <div className="flex justify-between text-suave"><span>Comissão do agente ({String(c.pct).replace('.', ',')} %)</span><span className="num">{eur(c.comissao)}</span></div>
           </>}
         </div>
         <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-linha bg-fundo/40 rounded-b-cartao flex-wrap">

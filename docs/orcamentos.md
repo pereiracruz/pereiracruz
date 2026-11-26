@@ -31,3 +31,12 @@ Analisado a partir de `SS27.xlsx` (Longratex: Vaqueiro, Calção chino, Calção
   **preço final fixado** (margem total em € e %) ou calculado (margem + comissão do cliente).
 - **Duplicar** uma ficha para orçamentar uma peça parecida.
 - Com servidor, os valores de referência novos juntam-se aos dados mestre do Supabase na próxima entrada.
+
+## Outros formatos (Imprevu FW27/SS27, GBTX)
+
+- Cabeçalho com **Cliente / Marca / Ref.** (à direita ou por baixo); sem cabeçalho, o nome vem da folha
+  (`Melody_acidwash` → Melody · acidwash). Cliente desconhecido é criado automaticamente (ex.: GBTX).
+- Fim da ficha: **Total · N/ Comissão** (margem fixa em €: Imprevu 3,00 €, GBTX 2,25 €) **· Comissão agente**
+  (percentagem, ex.: `E28*0.07`) **· Preço final**. A ficha importada guarda a margem e a comissão próprias.
+- Avisos novos: preço final à mão diferente do cálculo, linha sem consumo, cor da folha ≠ nome,
+  mesmo código ou nome de cabeçalho noutra folha (cabeçalho copiado?), preço abaixo do custo.

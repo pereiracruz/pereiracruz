@@ -136,16 +136,17 @@ export const totalLinha = (l: LinhaCusto) => l.consumo * l.valor
  * - preço final fixado (como nas fichas da Pereira & Cruz): margem total = preço final − custo;
  * - calculado: custo + margem do cliente (fixa ou %) + comissão do agente (% sobre o custo).
  */
-export function calcularCusto(linhas: LinhaCusto[], cfg?: ClienteCfg, precoFinal?: number) {
+export function calcularCusto(linhas: LinhaCusto[], cfg?: ClienteCfg, precoFinal?: number, ficha?: { margemFixa?: number; comissaoPct?: number }) {
   const total = soma(linhas.map(totalLinha))
+  const nMargem = ficha?.margemFixa ?? (!cfg ? 0 : cfg.margemTipo === 'fixa' ? cfg.margem : (total * cfg.margem) / 100)
+  const pct = ficha?.comissaoPct ?? cfg?.comissao ?? 0
+  const comissao = (total * pct) / 100
+  const valorTotal = total + nMargem + comissao
   if (precoFinal != null) {
     const margem = precoFinal - total
-    return { total, margem, comissao: 0, final: precoFinal, margemPct: precoFinal ? (margem / precoFinal) * 100 : 0, fixado: true }
+    return { total, margem, comissao: 0, final: precoFinal, margemPct: precoFinal ? (margem / precoFinal) * 100 : 0, fixado: true, nMargem, pct, valorTotal, ajuste: precoFinal - valorTotal }
   }
-  const margem = !cfg ? 0 : cfg.margemTipo === 'fixa' ? cfg.margem : (total * cfg.margem) / 100
-  const comissao = cfg ? (total * cfg.comissao) / 100 : 0
-  const final = total + margem + comissao
-  return { total, margem, comissao, final, margemPct: final ? ((margem + comissao) / final) * 100 : 0, fixado: false }
+  return { total, margem: nMargem, comissao, final: valorTotal, margemPct: valorTotal ? ((nMargem + comissao) / valorTotal) * 100 : 0, fixado: false, nMargem, pct, valorTotal, ajuste: 0 }
 }
 
 /** Lê «3/32», «0,46+0,08», «140.8/1000» ou «1,2» (só números e + − × ÷). */
