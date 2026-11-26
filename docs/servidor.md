@@ -49,3 +49,14 @@ VITE_SUPABASE_ANON_KEY=chave-publica
   - «Repor exemplo» não existe no modo servidor.
 
 Projeto: `https://gupydoryatnbfakegbzo.supabase.co` · região Central EU (Frankfurt), confirmada.
+
+## Cópias de segurança
+
+O plano gratuito do Supabase **não faz cópias automáticas**. Na aplicação: **Cópias de segurança**
+(barra lateral, com um ponto âmbar quando passou mais de uma semana desde a última).
+
+- **Descarregar cópia de segurança:** ficheiro JSON com encomendas e fichas, pedidos, histórico, dados mestre e
+  registo de atividade. Guardar fora do computador (ex.: Google Drive). Os PDFs/Excel originais do bucket não entram.
+- **Repor a partir de uma cópia:** valida o ficheiro, mostra por tipo de dados o que é novo, alterado ou retirado,
+  e só repõe depois de escrever «REPOR». O registo de atividade não é apagado; a reposição fica registada.
+- Alternativa: plano Pro do Supabase (cópias diárias automáticas).

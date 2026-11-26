@@ -19,6 +19,7 @@ import NovoPedido from './pages/orcamentos/NovoPedido'
 import Historico from './pages/orcamentos/Historico'
 import Atividade from './pages/Atividade'
 import Conta from './pages/Conta'
+import Copias from './pages/Copias'
 
 iniciarServidor()
 void prepararGoogle()?.catch(() => {})
@@ -48,6 +49,7 @@ function App() {
         <Route path="historico" element={<Historico />} />
         <Route path="atividade" element={<Atividade />} />
         <Route path="conta" element={<Conta />} />
+        <Route path="copias" element={<Copias />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

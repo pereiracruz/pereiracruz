@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Bell, Check, ChevronDown, Cloud, ClipboardList, Database, FileClock, History, KeyRound, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Receipt } from 'lucide-react'
+import { Archive, Bell, Check, ChevronDown, Cloud, ClipboardList, Database, FileClock, History, KeyRound, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Receipt } from 'lucide-react'
 import { useDb } from '../store/db'
 import { fichasPorAprovar } from '../lib/calc'
 import { Toasts } from './ui'
@@ -74,6 +74,10 @@ export default function Layout() {
   const nome = useDb((s) => s.nomeUtilizador)
   const porAprovar = useDb((s) => s.encomendas.reduce((n, e) => n + fichasPorAprovar(e), 0))
   const aGuardar = useDb((s) => s.aGuardar)
+  const copiaEmFalta = useDb((s) => {
+    const u = s.atividade.find((a) => a.acao === 'Cópia de segurança descarregada')
+    return !u || Date.now() - new Date(u.data).getTime() > 7 * 864e5
+  })
 
   return (
     <div className="h-full flex">
@@ -108,6 +112,7 @@ export default function Layout() {
 
         <div className="border-t border-linha px-3 py-3 space-y-1">
           <Item para="/atividade" icone={<FileClock size={16} />}>Registo de atividade</Item>
+          <Item para="/copias" icone={<Archive size={16} />}><span className="flex-1">Cópias de segurança</span>{copiaEmFalta && <span className="size-2 rounded-full bg-ambar" title="Cópia de segurança em falta" />}</Item>
           <Item para="/conta" icone={<KeyRound size={16} />}>A minha conta</Item>
         </div>
         <div className="border-t border-linha px-4 py-3 flex items-center gap-3">
