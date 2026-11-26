@@ -232,12 +232,21 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
   const [lavandaria, setLavandaria] = useState<LinhaCusto | null>(null)
   // pesos já usados no tingimento de fichas do mesmo modelo (o peso depende do modelo)
   const todos = useDb((s) => s.pedidos)
+  const encomendas = useDb((s) => s.encomendas)
   const pesos = useMemo(() => {
-    const raiz = (x: string) => x.toLowerCase().trim().split(/\s+/)[0] ?? ''
-    return todos.filter((o) => o.id !== p.id && raiz(o.peca) === raiz(p.peca) && raiz(p.peca))
+    // primeira palavra que identifica o modelo (salta «calça», «calção», «shirt»… e números)
+    const GENERICAS = new Set(['calca', 'calcas', 'calcao', 'calcoes', 'camisa', 'shirt', 'saia', 'skirt', 'casaco', 'jacket', 'denim', 'vaqueiro', 'chino', 'boy', 'girl', 'mini', 'de', 'do', 'da'])
+    const raiz = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z0-9]+/).find((w) => w.length > 1 && !GENERICAS.has(w) && !/^\d+$/.test(w)) ?? ''
+    const r = raiz(p.peca)
+    if (!r) return []
+    // 1) peso por peça escrito na ficha de produção do mesmo modelo (quadro de produção, folha de embalamento)
+    const daProducao = encomendas.flatMap((e) => e.modelos.filter((m) => m.pesoPeca && [m.nome, m.alias ?? ''].some((n) => n && raiz(n) === r))
+      .map((m) => ({ kg: m.pesoPeca!, onde: `ficha de produção ${m.nome} (${e.cliente} · ${e.colecao})` })))
+    // 2) peso usado no tingimento de outras fichas de custo do mesmo modelo
+    const dasFichas = todos.filter((o) => o.id !== p.id && raiz(o.peca) === r)
       .flatMap((o) => o.linhas.filter((x) => x.unidade === 'kg' && /tingim|lavand/i.test(x.descricao) && x.consumo > 0).map((x) => ({ kg: x.consumo, onde: [o.peca, o.variante].filter(Boolean).join(' · ') })))
-      .filter((x, i, a) => a.findIndex((y) => y.kg === x.kg && y.onde === x.onde) === i).slice(0, 6)
-  }, [todos, p.id, p.peca])
+    return [...daProducao, ...dasFichas].filter((x, i, a) => a.findIndex((y) => y.kg === x.kg && y.onde === x.onde) === i).slice(0, 6)
+  }, [todos, encomendas, p.id, p.peca])
   const linha = (id: string, x: Partial<LinhaCusto>) => atualizar({ linhas: p.linhas.map((l) => (l.id === id ? { ...l, ...x } : l)) })
   // consumo/valor: aceita números ou fórmulas simples (3/32, 140.8/1000, 0,46+0,08)
   const campo = (l: LinhaCusto, k: 'consumo' | 'valor') => {
@@ -349,7 +358,8 @@ function LavandariaClothius({ l, tipoPeca, crianca, pesos, onFechar, aplicar }: 
   const [modo, setModo] = useState<'ting' | 'lav'>(/ting|kg/i.test(`${l.descricao} ${l.unidade}`) ? 'ting' : 'lav')
   const [tipo, setTipo] = useState(tingimentos[0]?.tipo ?? '')
   const [cor, setCor] = useState<(typeof CORES_LABDIP)[number][0]>('medias')
-  const [peso, setPeso] = useState(l.unidade === 'kg' && l.consumo ? String(l.consumo).replace('.', ',') : '')
+  // peso: o da linha; senão o da ficha de produção do mesmo modelo, se houver
+  const [peso, setPeso] = useState(l.unidade === 'kg' && l.consumo ? String(l.consumo).replace('.', ',') : pesos.find((x) => x.onde.startsWith('ficha de produção')) ? String(pesos.find((x) => x.onde.startsWith('ficha de produção'))!.kg).replace('.', ',') : '')
   const [gots, setGots] = useState(false)
   const [grupo, setGrupo] = useState<GrupoLavandaria>(grupoLavandaria(tipoPeca, crianca))
   const [escolhidas, setEscolhidas] = useState<Set<string>>(new Set())
@@ -390,7 +400,7 @@ function LavandariaClothius({ l, tipoPeca, crianca, pesos, onFechar, aplicar }: 
             <Campo rotulo="Tipo de tingimento"><Seletor valor={tipo} onChange={setTipo} opcoes={tingimentos.map((x) => x.tipo)} /></Campo>
             <Campo rotulo="Peso da peça (kg)" ajuda="Depende do modelo: pesar a peça ou o protótipo."><Entrada value={peso} onChange={(e) => setPeso(e.target.value)} placeholder="ex.: 0,35" /></Campo>
           </div>
-          {pesos.length > 0 && <div className="text-[12px] text-suave flex flex-wrap items-center gap-1.5">Pesos noutras fichas deste modelo:
+          {pesos.length > 0 && <div className="text-[12px] text-suave flex flex-wrap items-center gap-1.5">Pesos deste modelo:
             {pesos.map((x) => <button key={x.onde} onClick={() => setPeso(String(x.kg).replace('.', ','))} className="rounded border border-linha px-1.5 py-0.5 hover:bg-papel"><span className="num font-semibold">{num(x.kg)} kg</span> · {x.onde}</button>)}</div>}
           <Campo rotulo="Cor do labdip">
             <div className="flex flex-wrap gap-2">
