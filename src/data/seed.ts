@@ -212,8 +212,8 @@ export function linhasModeloPC(tipoPeca: string, tecido: 'Ganga' | 'Sarja' | 'Ou
       ? L('Tecido', 'mts', 0.7, 4.1, 'Estimada', { nota: 'Média por excesso (0,7 m × 4,10 €): confirmar nos mini planos.' })
       : L('Tecido', 'mts', 0.4, 4, 'Estimada', { nota: 'Confirmar tecido e preço por metro; consumo nos mini planos.' }),
     ganga ? L('Lavandaria - Clothius (lavagem normal)', 'un', 1, calcao ? 0.3 : 0.4, 'Estimada', { nota: `Ganga lava-se: à peça, grupo ${calcao ? 'A' : 'B'} da tabela Clothius. Escolher as lavagens e secos em «Tabela Clothius».` })
-      : sarja ? L('Lavandaria - Clothius (tingimento reativo, cor média)', 'kg', 0.3, 3.2, 'Estimada', { nota: 'Sarja tinge-se: ao kg conforme o labdip × peso da peça. Confirmar cor e peso em «Tabela Clothius».' })
-        : L('Lavandaria - Clothius', 'kg', 0.3, 3.5, 'Estimada', { nota: 'Ganga: à peça (lavagem). Sarja: ao kg conforme o labdip (tingimento).' }),
+      : sarja ? L('Lavandaria - Clothius (tingimento reativo, cor média)', 'kg', 0, 3.2, 'Confirmar', { nota: 'Sarja tinge-se: ao kg conforme o labdip × peso da peça. O peso depende do modelo: escrever em «Tabela Clothius».' })
+        : L('Lavandaria - Clothius', 'kg', 0, 3.5, 'Confirmar', { nota: 'Ganga: à peça (lavagem). Sarja: ao kg conforme o labdip × peso da peça (depende do modelo). Usar «Tabela Clothius».' }),
     ...(ganga ? [
       L('Molas (meses) / botão (anos)', '€', 1, 0.1408, 'Confirmar', { valorExpr: '140.8/1000', nota: 'Molas nos tamanhos de meses; botão (70 € o milheiro) nos tamanhos de anos.' }),
       L('Rebites', '€', 3, 0.082, 'Confirmar', { nota: '3 rebites (meses e anos).' }),

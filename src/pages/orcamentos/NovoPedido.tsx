@@ -230,6 +230,14 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
   const tomMargem = c.margem < 0 ? 'text-vermelho font-semibold' : c.margemPct < MARGEM_OBJETIVO ? 'text-ambar' : 'text-verde'
   const [aberta, setAberta] = useState(!compacta)
   const [lavandaria, setLavandaria] = useState<LinhaCusto | null>(null)
+  // pesos já usados no tingimento de fichas do mesmo modelo (o peso depende do modelo)
+  const todos = useDb((s) => s.pedidos)
+  const pesos = useMemo(() => {
+    const raiz = (x: string) => x.toLowerCase().trim().split(/\s+/)[0] ?? ''
+    return todos.filter((o) => o.id !== p.id && raiz(o.peca) === raiz(p.peca) && raiz(p.peca))
+      .flatMap((o) => o.linhas.filter((x) => x.unidade === 'kg' && /tingim|lavand/i.test(x.descricao) && x.consumo > 0).map((x) => ({ kg: x.consumo, onde: [o.peca, o.variante].filter(Boolean).join(' · ') })))
+      .filter((x, i, a) => a.findIndex((y) => y.kg === x.kg && y.onde === x.onde) === i).slice(0, 6)
+  }, [todos, p.id, p.peca])
   const linha = (id: string, x: Partial<LinhaCusto>) => atualizar({ linhas: p.linhas.map((l) => (l.id === id ? { ...l, ...x } : l)) })
   // consumo/valor: aceita números ou fórmulas simples (3/32, 140.8/1000, 0,46+0,08)
   const campo = (l: LinhaCusto, k: 'consumo' | 'valor') => {
@@ -256,7 +264,8 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
             <th className="text-left px-5 py-2 font-medium">Descrição</th><th className="text-center px-1 font-medium w-14">Unid.</th><th className="text-right px-2 font-medium w-24">Consumo</th><th className="text-right px-2 font-medium w-24">Valor unitário</th><th className="text-right px-2 font-medium w-24">Total s/ IVA</th><th className="text-right px-5 font-medium w-28">Origem</th>{editavel && <th className="w-8" />}</tr></thead>
           <tbody>
             {p.linhas.map((l) => {
-              const incoerente = l.consumo === 0 && /leva \d/.test(l.nota ?? '')
+              const faltaPeso = l.unidade === 'kg' && /tingim|lavand/i.test(l.descricao) && !l.consumo
+              const incoerente = (l.consumo === 0 && /leva \d/.test(l.nota ?? '')) || faltaPeso
               return (
                 <tr key={l.id} className="border-b border-linha align-top">
                   <td className="px-5 py-2">
@@ -267,7 +276,7 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
                         className={clsx('mt-0.5 whitespace-nowrap text-[10.5px] font-semibold tracking-wide rounded px-1.5 py-px border', { PC: 'text-azul border-azul/30', PP: 'text-ouro border-ouro/40', FORA: 'text-vermelho border-vermelho/30', CLIENTE: 'text-suave border-linha' }[e], editavel && 'hover:bg-fundo')}>
                         {ROTULO_EMPRESA[e]}</button>) })()}
                     {editavel && /lavand|tingim|lavagem/i.test(l.descricao) && <button onClick={() => setLavandaria(l)} className="ml-2 text-[12px] text-azul hover:underline">Tabela Clothius</button>}
-                    {l.nota && <p className={clsx('text-[12px] mt-0.5 flex gap-1', incoerente ? 'text-ambar' : 'text-suave')}>{incoerente && <AlertTriangle size={12} className="mt-0.5 shrink-0" />}{l.nota}</p>}
+                    {l.nota && <p className={clsx('text-[12px] mt-0.5 flex gap-1', incoerente ? 'text-ambar' : 'text-suave')}>{incoerente && <AlertTriangle size={12} className="mt-0.5 shrink-0" />}{faltaPeso ? `Falta o peso da peça (depende do modelo). ${l.nota ?? ''}` : l.nota}</p>}
                   </td>
                   <td className="px-1 py-1.5 text-center text-suave">{editavel
                     ? <input defaultValue={l.unidade ?? '€'} onBlur={(e) => linha(l.id, { unidade: e.target.value.trim() || '€' })} className="w-12 h-8 text-center bg-transparent border border-linha rounded-md outline-none focus:border-tinta-2" />
@@ -277,7 +286,7 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
                   <td className="px-2 py-2 text-right num">{eur(totalLinha(l))}</td>
                   <td className="px-5 py-1.5 text-right">
                     <Etiqueta tom={l.confirmado ? 'verde' : TOM_ORIGEM[l.origem]}>{l.confirmado ? 'Confirmado' : l.origem}</Etiqueta>
-                    {editavel && incoerente && <Botao pequeno className="mt-1.5" onClick={() => linha(l.id, { consumo: Number(l.nota!.match(/leva (\d+)/)![1]), nota: 'Corrigido de acordo com a ficha de produto.' })}>Corrigir para {l.nota!.match(/leva (\d+)/)![1]}</Botao>}
+                    {editavel && incoerente && !faltaPeso && <Botao pequeno className="mt-1.5" onClick={() => linha(l.id, { consumo: Number(l.nota!.match(/leva (\d+)/)![1]), nota: 'Corrigido de acordo com a ficha de produto.' })}>Corrigir para {l.nota!.match(/leva (\d+)/)![1]}</Botao>}
                   </td>
                   {editavel && <td className="py-2"><button title="Apagar linha" onClick={() => atualizar({ linhas: p.linhas.filter((x) => x.id !== l.id) })} className="text-tenue hover:text-vermelho"><Trash2 size={14} /></button></td>}
                 </tr>
@@ -323,7 +332,7 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
             : <span className="font-semibold text-[16px] num">{eur(c.final)}</span>}
         </div>
       </>}
-      {lavandaria && <LavandariaClothius l={lavandaria} tipoPeca={p.tipoPeca} crianca={/beb|crian/i.test(cfg?.escala ?? '')}
+      {lavandaria && <LavandariaClothius l={lavandaria} tipoPeca={p.tipoPeca} pesos={pesos} crianca={/beb|crian/i.test(cfg?.escala ?? '')}
         onFechar={() => setLavandaria(null)} aplicar={(x) => { linha(lavandaria.id, x); setLavandaria(null); aviso('Lavandaria calculada com a tabela da Clothius.') }} />}
     </Cartao>
   )
@@ -334,13 +343,13 @@ const GRUPOS: { id: GrupoLavandaria; rotulo: string }[] = [{ id: 'crianca', rotu
 const fmt = (v: number) => String(Math.round(v * 10000) / 10000)
 
 /** Lavandaria pela tabela da Clothius: tingimento (€/kg × peso, conforme o labdip) ou lavagem e secos (€/peça, por grupo). */
-function LavandariaClothius({ l, tipoPeca, crianca, onFechar, aplicar }: { l: LinhaCusto; tipoPeca: string; crianca: boolean; onFechar: () => void; aplicar: (x: Partial<LinhaCusto>) => void }) {
+function LavandariaClothius({ l, tipoPeca, crianca, pesos, onFechar, aplicar }: { l: LinhaCusto; tipoPeca: string; crianca: boolean; pesos: { kg: number; onde: string }[]; onFechar: () => void; aplicar: (x: Partial<LinhaCusto>) => void }) {
   const tingimentos = useDb((s) => s.precosTingimento).filter((t) => CORES_LABDIP.some(([k]) => t[k] != null))
   const lavagens = useDb((s) => s.precosLavagem)
   const [modo, setModo] = useState<'ting' | 'lav'>(/ting|kg/i.test(`${l.descricao} ${l.unidade}`) ? 'ting' : 'lav')
   const [tipo, setTipo] = useState(tingimentos[0]?.tipo ?? '')
   const [cor, setCor] = useState<(typeof CORES_LABDIP)[number][0]>('medias')
-  const [peso, setPeso] = useState(l.unidade === 'kg' && l.consumo ? String(l.consumo).replace('.', ',') : '0,3')
+  const [peso, setPeso] = useState(l.unidade === 'kg' && l.consumo ? String(l.consumo).replace('.', ',') : '')
   const [gots, setGots] = useState(false)
   const [grupo, setGrupo] = useState<GrupoLavandaria>(grupoLavandaria(tipoPeca, crianca))
   const [escolhidas, setEscolhidas] = useState<Set<string>>(new Set())
@@ -379,8 +388,10 @@ function LavandariaClothius({ l, tipoPeca, crianca, onFechar, aplicar }: { l: Li
         {modo === 'ting' ? (<>
           <div className="grid grid-cols-2 gap-3">
             <Campo rotulo="Tipo de tingimento"><Seletor valor={tipo} onChange={setTipo} opcoes={tingimentos.map((x) => x.tipo)} /></Campo>
-            <Campo rotulo="Peso da peça (kg)"><Entrada value={peso} onChange={(e) => setPeso(e.target.value)} placeholder="ex.: 0,35" /></Campo>
+            <Campo rotulo="Peso da peça (kg)" ajuda="Depende do modelo: pesar a peça ou o protótipo."><Entrada value={peso} onChange={(e) => setPeso(e.target.value)} placeholder="ex.: 0,35" /></Campo>
           </div>
+          {pesos.length > 0 && <div className="text-[12px] text-suave flex flex-wrap items-center gap-1.5">Pesos noutras fichas deste modelo:
+            {pesos.map((x) => <button key={x.onde} onClick={() => setPeso(String(x.kg).replace('.', ','))} className="rounded border border-linha px-1.5 py-0.5 hover:bg-papel"><span className="num font-semibold">{num(x.kg)} kg</span> · {x.onde}</button>)}</div>}
           <Campo rotulo="Cor do labdip">
             <div className="flex flex-wrap gap-2">
               {CORES_LABDIP.map(([k, r]) => (
