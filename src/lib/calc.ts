@@ -152,16 +152,14 @@ export const EMPRESAS: Record<Empresa, { nome: string; papel: string }> = {
 export const ROTULO_EMPRESA: Record<Empresa, string> = { PC: 'P&C', PP: 'PP', FORA: 'FORA', CLIENTE: 'CLIENTE' }
 export const ORDEM_EMPRESAS: Empresa[] = ['PC', 'PP', 'FORA', 'CLIENTE']
 /**
- * Empresa que assume cada linha: a escolhida na ficha; senão a escrita na descrição («Corte - Pereira & Cruz»);
- * senão a regra: corte, confeção e revista são da Pereira & Cruz (confeção «fora» é subcontratada), o resto
+ * Empresa que assume cada linha: a escolhida na ficha; senão a regra (o nome escrito na descrição não conta:
+ * todos os materiais são comprados pela Pereira's Project, mesmo quando a ficha diz «Botão- Pereira & Cruz»): corte, confeção e revista são da Pereira & Cruz (confeção «fora» é subcontratada), o resto
  * (materiais, lavandaria, acabamento, embalagem) da Pereira's Project.
  */
 export function empresaDaLinha(l: Pick<LinhaCusto, 'descricao' | 'empresa'>): Empresa {
   if (l.empresa) return l.empresa
   const d = l.descricao.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
   if (/\bfora\b|subcontrat/.test(d)) return 'FORA'
-  if (/pereira'?s\s*project/.test(d)) return 'PP'
-  if (/pereira\s*(&|e)\s*cruz/.test(d)) return 'PC'
   return /^(corte|confec|controlo|revista|costura)/.test(d.trim()) ? 'PC' : 'PP'
 }
 export function totaisPorEmpresa(linhas: LinhaCusto[]): Record<Empresa, number> {

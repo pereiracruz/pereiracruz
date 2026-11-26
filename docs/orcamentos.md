@@ -48,10 +48,9 @@ Analisado a partir de `SS27.xlsx` (Longratex: Vaqueiro, Calção chino, Calção
   lavandaria, acabamento, embalagem e entrega.
 - **Pereira & Cruz** (produção): corte, confeção e controlo das peças.
 
-Na ficha de custo, cada linha tem a empresa que a assume (P&C ou PP, clica-se para trocar) e o total do
-custo mostra a parte de cada uma. Regra: a empresa escrita na descrição («Corte- Pereira & Cruz»); sem nada escrito,
-corte, confeção e revista são da Pereira & Cruz e o resto da Pereira's Project.
-Na SS27 (Longratex) há botão, bordado, elástico, botões de elástico e saco etiqueta escritos «Pereira & Cruz» (a confirmar).
+Na ficha de custo, cada linha tem a empresa que a assume (clica-se para trocar) e o total do custo mostra a parte de
+cada uma. Regra: corte, confeção e revista são da Pereira & Cruz; **todos os materiais e serviços são comprados pela
+Pereira's Project** (confirmado), mesmo quando a ficha antiga diz «Botão- Pereira & Cruz». Confeção «fora» é FORA.
 
 ## Regras de preço (respostas da Pereira & Cruz, 26/11/2026)
 
