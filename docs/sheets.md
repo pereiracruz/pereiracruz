@@ -1,49 +1,39 @@
 # Exportação para o Google Sheets
 
-- **Função:** `supabase/functions/exportar-sheets/index.ts` (ficheiro único).
-- **O que cria:** uma folha de cálculo por exportação, na pasta indicada do Google Drive da empresa,
-  com as mesmas folhas do livro Excel (uma por variante: corte e confeção + embalamento; packing list) e os totais
-  em fórmula. Cabeçalhos das tabelas a azul, títulos de secção a vermelho, larguras das colunas.
-- **Na aplicação:** Encomenda → **Google Sheets** (todas as fichas aprovadas + packing list) ou, na ficha,
-  **Exportar → Google Sheets**. O link da última exportação fica guardado na encomenda.
-- Usa a **mesma conta de serviço** da leitura com IA (`GOOGLE_SERVICE_ACCOUNT_JSON`). Não depende da quota do Claude.
+- **Onde ficam:** no Google Drive de quem autoriza (ex.: `pereiracruz.lda@gmail.com`), na pasta
+  **«Fichas de produção · Pereira & Cruz»**, criada pela aplicação na primeira exportação.
+- **Como:** no browser, com «Iniciar sessão com Google» (Google Identity Services), âmbito **`drive.file`**:
+  a aplicação só vê e altera os ficheiros que ela própria cria. Código: `src/lib/sheets.ts`.
+- **O que cria:** as mesmas folhas do livro Excel (corte e confeção + embalamento por variante, packing list),
+  totais em fórmula, cabeçalhos a azul, títulos de secção a vermelho, larguras das colunas.
+- **Na aplicação:** Encomenda → **Google Sheets** (fichas aprovadas + packing list) ou ficha → **Exportar → Google Sheets**.
+  O link da última exportação fica na encomenda.
+- Não depende do Supabase nem da quota do Claude.
 
-## Onde ficam os ficheiros (importante)
+## Configuração (uma vez, no projeto Google Cloud `pereiracruz-fichas`)
 
-As contas de serviço do Google não têm espaço próprio no Drive. Há duas formas de resolver:
+1. **APIs e serviços → Ativar APIs**: **Google Sheets API** e **Google Drive API**.
+2. **APIs e serviços → Ecrã de consentimento OAuth** (ou *Google Auth Platform → Branding*):
+   - Tipo de utilizador: **Externo**.
+   - Nome da aplicação: `Fichas Pereira & Cruz`; email de apoio: `pereiracruz.lda@gmail.com`.
+   - Domínio autorizado: `netlify.app`.
+   - Âmbitos (*Data access*): acrescentar `.../auth/drive.file`.
+   - **Utilizadores de teste** (*Audience*): acrescentar `pereiracruz.lda@gmail.com` (e quem mais for exportar).
+3. **APIs e serviços → Credenciais → Criar credenciais → ID de cliente OAuth** (*Clients → Create client*):
+   - Tipo: **Aplicação Web**; nome: `Fichas Pereira & Cruz`.
+   - **Origens JavaScript autorizadas:** `https://pereiracruz.netlify.app` (e `http://localhost:5173` para desenvolvimento).
+   - Criar e copiar o **ID de cliente** (`….apps.googleusercontent.com`). O ID de cliente é público;
+     o «segredo do cliente» não é preciso e não se partilha.
+4. Pôr o ID de cliente em `.env.production` como `VITE_GOOGLE_CLIENT_ID=…` e publicar.
 
-| Opção | Requisito | Dono dos ficheiros |
-|---|---|---|
-| **A. Drive partilhado** (recomendado) | Google Workspace com Drives partilhados | O Drive partilhado da empresa |
-| **B. Delegação em todo o domínio** | Google Workspace + administrador | O utilizador indicado em `GOOGLE_IMPERSONATE_EMAIL` |
-
-Com uma conta Gmail pessoal (`@gmail.com`) nenhuma das duas é possível.
-
-## Configuração (opção A)
-
-1. **Google Cloud → APIs e serviços → Ativar APIs**: ativar **Google Sheets API** e **Google Drive API** no projeto `pereiracruz-fichas`.
-2. **Google Drive → Drives partilhados → Novo** (ex.: «Fichas de produção»).
-3. Nesse Drive partilhado: **Gerir membros** → adicionar o email da conta de serviço
-   (`fichas-ia@pereiracruz-fichas.iam.gserviceaccount.com`, ou o `client_email` do ficheiro JSON) como **Gestor de conteúdos**.
-4. Abrir o Drive partilhado (ou uma pasta dentro dele) e copiar o **id** do endereço:
-   `https://drive.google.com/drive/folders/`**`ESTE_É_O_ID`**
-5. **Supabase → Edge Functions → Secrets**: `GOOGLE_DRIVE_FOLDER_ID` = esse id.
-6. **Supabase → Edge Functions → Deploy a new function → Via Editor**: nome `exportar-sheets`, colar
-   `supabase/functions/exportar-sheets/index.ts`, **Deploy**, «Verify JWT» ligado.
-
-## Opção B (delegação)
-
-1. Google Cloud → conta de serviço `fichas-ia` → **Detalhes** → copiar o **ID de cliente** (número).
-2. **admin.google.com → Segurança → Controlo de acesso e dados → Controlos de API → Delegação em todo o domínio →
-   Adicionar novo**: ID de cliente + âmbitos `https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/spreadsheets`.
-3. Segredo `GOOGLE_IMPERSONATE_EMAIL` = email da empresa em nome de quem se criam os ficheiros;
-   `GOOGLE_DRIVE_FOLDER_ID` = pasta do Drive desse utilizador.
+Enquanto a aplicação estiver em modo «Teste» no Google, só os utilizadores de teste podem autorizar e o Google
+mostra um aviso «A Google não validou esta app» → **Continuar**. Para uso interno é suficiente.
 
 ## Problemas comuns
 
 | Mensagem | Causa |
 |---|---|
-| «A conta de serviço não tem espaço próprio no Drive…» | A pasta está num «O meu Drive»: usar um Drive partilhado (opção A) ou a delegação (B) |
-| «Pasta do Drive não encontrada…» | Id errado, ou a conta de serviço não é membro do Drive partilhado |
+| «Error 400: redirect_uri_mismatch» / «origin_mismatch» | Falta a origem `https://pereiracruz.netlify.app` no passo 3 |
+| «Acesso bloqueado: a app não concluiu a verificação» | A conta não está em «Utilizadores de teste» (passo 2) |
+| «O browser bloqueou a janela do Google» | Autorizar janelas pop-up para pereiracruz.netlify.app |
 | «Ative a Google Sheets API e a Google Drive API…» | Passo 1 |
-| «Falta o segredo GOOGLE_DRIVE_FOLDER_ID» | Passo 5 |

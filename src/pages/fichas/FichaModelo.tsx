@@ -7,8 +7,7 @@ import { Botao, Cabecalho, Cartao, Entrada, Etiqueta, Modal, Seletor, aviso, typ
 import { Folha, NOME_FOLHA, folhasDoModelo } from '../../components/Folhas'
 import { idInterno, soma, totalVariante, verificarFicha } from '../../lib/calc'
 import { exportarLivro, exportarPDF, montarLivro, nomeLivro } from '../../lib/exportar'
-import { exportarSheets } from '../../lib/sheets'
-import { modoServidor } from '../../lib/supabase'
+import { exportarSheets, sheetsDisponivel } from '../../lib/sheets'
 import { hojeISO, parseNum, uid, num } from '../../lib/format'
 import type { EstadoFicha, FolhaTipo, LinhaMaterial, Modelo } from '../../types'
 
@@ -316,7 +315,7 @@ function ModalExportar({ aberto, onFechar, folhas, variantes, onExportar }: {
   const dest = useDb((s) => s.destinatarios)
   const toggle = <T,>(a: T[], x: T) => (a.includes(x) ? a.filter((y) => y !== x) : [...a, x])
   const formatos = [
-    { id: 'gs', icone: <Sheet size={17} />, t: 'Google Sheets', d: modoServidor ? 'Cria a folha na pasta do Drive' : 'Precisa do servidor', off: !modoServidor },
+    { id: 'gs', icone: <Sheet size={17} />, t: 'Google Sheets', d: sheetsDisponivel ? 'Cria a folha no Google Drive' : 'Falta ligar a conta Google', off: !sheetsDisponivel },
     { id: 'excel', icone: <FileSpreadsheet size={17} />, t: 'Excel', d: 'Um separador por folha, totais em fórmula' },
     { id: 'pdf', icone: <FileText size={17} />, t: 'PDF', d: 'Imprimir / guardar como PDF' },
   ] as const

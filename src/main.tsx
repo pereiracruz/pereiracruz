@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './index.css'
 import { useDb } from './store/db'
 import { iniciarServidor } from './store/servidor'
+import { prepararGoogle } from './lib/sheets'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Painel from './pages/Painel'
@@ -20,6 +21,7 @@ import Atividade from './pages/Atividade'
 import Conta from './pages/Conta'
 
 iniciarServidor()
+void prepararGoogle()?.catch(() => {})
 
 function App() {
   const sessao = useDb((s) => s.sessao)

@@ -6,8 +6,7 @@ import { Botao, Cabecalho, Cartao, Etiqueta, Kpi, Tabela, aviso } from '../../co
 import { NOME_FOLHA, folhasDoModelo } from '../../components/Folhas'
 import { fichasGeradas, idInternoEncomenda, pecasEncomenda, pecasModelo, referenciasEncomenda, valorEncomenda, verificarEncomenda } from '../../lib/calc'
 import { exportarLivro, montarLivro, nomeLivro } from '../../lib/exportar'
-import { exportarSheets } from '../../lib/sheets'
-import { modoServidor } from '../../lib/supabase'
+import { exportarSheets, sheetsDisponivel } from '../../lib/sheets'
 import { hojeISO } from '../../lib/format'
 import { gerarFichaDoTechPack } from '../../lib/gerarFicha'
 import type { TechPackLido } from '../../lib/ia'
@@ -44,7 +43,7 @@ export default function EncomendaDetalhe() {
             log('Livro Excel exportado', `${enc.cliente} · ${enc.colecao} · ${entradas.length} variantes`)
             aviso(fora ? `${nome} descarregado. ${fora} modelo(s) por aprovar ficaram de fora.` : `${nome} descarregado.`)
           }}>Livro Excel</Botao>
-          {modoServidor && <Botao icone={<Sheet size={15} />} disabled={!aprovadas.length || aExportar} onClick={async () => {
+          {sheetsDisponivel && <Botao icone={<Sheet size={15} />} disabled={!aprovadas.length || aExportar} onClick={async () => {
             const entradas = aprovadas.flatMap((m) => m.variantes.filter((v) => v.fichaGerada).map((v) => ({ m, v, folhas: folhasDoModelo(m).filter((f) => f === 'produto' || f === 'embalamento') })))
             const titulo = nomeLivro(enc, entradas).replace(/_/g, ' ')
             setAExportar(true)
