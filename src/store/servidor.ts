@@ -49,8 +49,8 @@ async function semear(): Promise<Linha[]> {
 }
 
 /** Versão dos dados mestre de origem: ao subir, junta-se ao servidor o que for novo (sem alterar nem repor o que existe). */
-const VERSAO_DADOS = 9
-const MESTRE: Colecao[] = ['fornecedores', 'tecidos', 'equivalencias', 'lavagens', 'acessorios', 'escalas', 'destinatarios', 'precosRef', 'clientes']
+const VERSAO_DADOS = 10
+const MESTRE: Colecao[] = ['fornecedores', 'tecidos', 'equivalencias', 'lavagens', 'acessorios', 'escalas', 'destinatarios', 'precosRef', 'precosTingimento', 'precosLavagem', 'clientes']
 
 const CORRECOES: { colecao: Colecao; id: string; antes: Record<string, unknown>; depois: Record<string, unknown> }[] = [
   { colecao: 'clientes', id: 'c1', antes: { comissao: 7 }, depois: { comissao: 0 } }, // v9: a agente da Imprevu já não existe

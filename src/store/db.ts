@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { modoServidor, supabase } from '../lib/supabase'
 import type {
   AcessorioCliente, Atividade, ClienteCfg, Destinatario, Encomenda, Equivalencia, Escala, Fornecedor, Lavagem,
-  Modelo, Pedido, PrecoHistorico, PrecoRef, Tecido,
+  Modelo, Pedido, PrecoHistorico, PrecoLavagem, PrecoRef, PrecoTingimento, Tecido,
 } from '../types'
 import * as seed from '../data/seed'
 import { agoraISO, uid } from '../lib/format'
@@ -17,12 +17,14 @@ export interface Tabelas {
   escalas: Escala[]
   destinatarios: Destinatario[]
   precosRef: PrecoRef[]
+  precosTingimento: PrecoTingimento[]
+  precosLavagem: PrecoLavagem[]
   clientes: ClienteCfg[]
 }
 export type NomeTabela = keyof Tabelas
 
 /** Coleções guardadas na tabela «documentos» do servidor. */
-export const COLECOES = ['encomendas', 'pedidos', 'historico', 'fornecedores', 'tecidos', 'equivalencias', 'lavagens', 'acessorios', 'escalas', 'destinatarios', 'precosRef', 'clientes'] as const
+export const COLECOES = ['encomendas', 'pedidos', 'historico', 'fornecedores', 'tecidos', 'equivalencias', 'lavagens', 'acessorios', 'escalas', 'destinatarios', 'precosRef', 'precosTingimento', 'precosLavagem', 'clientes'] as const
 export type Colecao = (typeof COLECOES)[number]
 
 interface Estado extends Tabelas {
@@ -74,6 +76,8 @@ export const dadosIniciais = () => ({
   escalas: seed.escalas,
   destinatarios: seed.destinatarios,
   precosRef: seed.precosRef,
+  precosTingimento: seed.precosTingimento,
+  precosLavagem: seed.precosLavagem,
   clientes: seed.clientes,
   encomendas: seed.encomendasIniciais(),
   pedidos: seed.pedidosIniciais(),
@@ -161,7 +165,7 @@ export const useDb = create<Estado>()(
       repor: () => { if (modoServidor) return; set(dadosIniciais()); get().log('Dados repostos', 'Dados de exemplo repostos') },
     }),
     {
-      name: 'pc-fichas-v1', version: 9,
+      name: 'pc-fichas-v1', version: 10,
       // com servidor, os dados vêm da base de dados: nada fica guardado no browser
       storage: createJSONStorage(() => (modoServidor ? { getItem: () => null, setItem: () => {}, removeItem: () => {} } : localStorage)),
       migrate: (antigo, versao) => {
@@ -198,6 +202,8 @@ export const useDb = create<Estado>()(
         // v7 → v8: tabela de preços das fichas de custo da Longratex
         if (versao < 8) b = { ...b, precosRef: juntar(b.precosRef, seed.precosRef) }
         // v8 → v9: a agente da Imprevu já não existe (SS27 e FW27)
+        // v9 → v10: tabelas de preços da Clothius
+        if (versao < 10) b = { ...b, precosTingimento: juntar(b.precosTingimento ?? [], seed.precosTingimento), precosLavagem: juntar(b.precosLavagem ?? [], seed.precosLavagem) }
         if (versao < 9) b = { ...b, clientes: b.clientes.map((c) => (c.id === 'c1' && c.comissao === 7 ? { ...c, comissao: 0 } : c)) }
         return b
       },

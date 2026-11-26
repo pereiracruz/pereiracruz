@@ -74,8 +74,20 @@ Na SS27 (Longratex) há botão, bordado, elástico, botões de elástico e saco 
 | Rebites | 3 (meses e anos) | — |
 | Botões de elástico | sim | sim |
 
-A ficha-modelo pede o tecido (Ganga / Sarja / Outro) e monta as linhas assim. Falta a tabela de preços da Clothius
-(lavagens à peça e tingimento ao kg por labdip) para os valores de referência.
+A ficha-modelo pede o tecido (Ganga / Sarja / Outro) e monta as linhas assim.
+
+## Tabelas da Clothius (Dados mestre)
+
+- **Clothius · tingimento** (tabela de 01/04/2023, para a Pereira's Project): € por kg por tipo (reativo, direto,
+  poliamida, acrílico, 2 fibras, retro dye, vegetal, pigmentos, sedas…) e cor do labdip (amostras, branco, clara,
+  média, escura, preto, especial). Inclui anti-pilling; GOTS +15 %; amostras com mínimo de 1 kg.
+- **Clothius · lavandaria** (ganga/tecidos): € por peça, lavagens (molhados) e secos, por grupo
+  (criança; A: top, calção, saia curta; B: calça, bermudas, camisa manga curta…; C: casaco, blusão, camisa…).
+- Fora das tabelas (sujeito a orçamento): stone bleach ao kg, coating, bigodes lixa 3, jato areia 2, rotos especiais,
+  cores e acabamentos especiais; tingimento degradé (t-shirt 2,10/4,20 €, sweat 3,85/7,70 €).
+- **Na ficha de custo**, a linha da lavandaria tem «Tabela Clothius»: tingimento (tipo, cor do labdip, peso da peça,
+  GOTS) → kg × €/kg; ou lavagem e secos (grupo escolhido pelo tipo de peça; criança se o cliente usa a escala de
+  bebé e criança) → soma por peça, com a fórmula guardada (ex.: 0.3+0.75+0.75).
 
 Empresas na ficha: **P&C**, **PP**, **FORA** (confeção subcontratada, separada do corte) e **CLIENTE**
 (corte ou material dado pelo cliente).

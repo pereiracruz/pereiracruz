@@ -132,6 +132,17 @@ export function packingList(qtd: number[], max: number): number[][] {
 // ---------------- Ficha de custo ----------------
 export const totalLinha = (l: LinhaCusto) => l.consumo * l.valor
 
+/** Grupo da tabela de lavandaria da Clothius: criança, A (top, calção, saia curta), B (calça, bermudas, camisa manga curta…), C (casaco, camisa…). */
+export type GrupoLavandaria = 'crianca' | 'grupoA' | 'grupoB' | 'grupoC'
+export function grupoLavandaria(tipoPeca: string, crianca = false): GrupoLavandaria {
+  if (crianca) return 'crianca'
+  const t = tipoPeca.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  if (/calcoes|calcao|saia curta|\btop\b|t-?shirt/.test(t)) return 'grupoA'
+  if (/calca|bermuda|vestido curto|saia|manga curta/.test(t)) return 'grupoB'
+  if (/casaco|blus|parka|gabard|sweat|camisa|vestido|jardineira/.test(t)) return 'grupoC'
+  return 'grupoB'
+}
+
 export const EMPRESAS: Record<Empresa, { nome: string; papel: string }> = {
   PC: { nome: 'Pereira & Cruz', papel: 'corte e confeção' },
   PP: { nome: "Pereira's Project", papel: 'materiais, lavandaria, acabamento e entrega' },

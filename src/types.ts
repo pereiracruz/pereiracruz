@@ -8,6 +8,18 @@ export interface Lavagem { id: string; sufixo: string; nome: string; cliente: st
 export interface AcessorioCliente { id: string; cliente: string; item: string; fornecedor: string; consumo: string }
 export interface Escala { id: string; nome: string; tamanhos: string[]; usadaEm: string }
 export interface Destinatario { id: string; folha: FolhaTipo; nome: string; contacto: string }
+/** Tabela de tingimento da Clothius: € por kg, por tipo de corante e cor do labdip (null = não há / orçamento). */
+export interface PrecoTingimento {
+  id: string; tipo: string
+  amostras: number | null; branco: number | null; claras: number | null; medias: number | null; escuras: number | null; preto: number | null; especiais: number | null
+  nota?: string
+}
+/** Tabela de lavandaria (ganga/tecidos) da Clothius: € por peça, por grupo de peça (null = não há / orçamento). */
+export interface PrecoLavagem {
+  id: string; seccao: 'Lavagem' | 'Secos'; descricao: string
+  crianca: number | null; grupoA: number | null; grupoB: number | null; grupoC: number | null
+  nota?: string
+}
 export interface PrecoRef { id: string; linha: string; valor: number; unidade: string; origem: string }
 export interface ClienteCfg {
   id: string; nome: string

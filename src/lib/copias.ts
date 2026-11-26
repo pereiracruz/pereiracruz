@@ -52,7 +52,8 @@ export async function lerCopia(f: File): Promise<Copia> {
 export type Diferenca = { colecao: Colecao; atual: number; copia: number; novos: number; removidos: number; alterados: number }
 export function compararCopia(estado: Record<Colecao, { id: string }[]>, c: Copia): Diferenca[] {
   return COLECOES.map((col) => {
-    const atual = estado[col] ?? [], copia = c.colecoes[col] ?? []
+    // coleção que não existia quando a cópia foi feita: fica como está
+    const atual = estado[col] ?? [], copia = c.colecoes[col] ?? atual
     const mapa = new Map(atual.map((x) => [x.id, JSON.stringify(x)]))
     const ids = new Set(copia.map((x) => x.id))
     return {

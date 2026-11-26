@@ -1,6 +1,6 @@
 import type {
   AcessorioCliente, Atividade, ClienteCfg, Destinatario, Encomenda, Equivalencia, Escala, Fornecedor, Lavagem,
-  LinhaCusto, LinhaMaterial, Medida, Modelo, Pedido, PrecoHistorico, PrecoRef, Tecido, Variante,
+  LinhaCusto, LinhaMaterial, Medida, Modelo, Pedido, PrecoHistorico, PrecoRef, Tecido, Variante, PrecoTingimento, PrecoLavagem,
 } from '../types'
 import { distribuir } from '../lib/calc'
 import { slug } from '../lib/format'
@@ -100,6 +100,71 @@ export const destinatarios: Destinatario[] = [
   { id: 'd8', folha: 'medidas', nome: 'Modelista', contacto: 'Pereira & Cruz' },
 ]
 
+
+// ---------------- Tabelas de preços da Clothius (tingimento e lavandaria), enviadas pela Pereira's Project ----------------
+/** Tabela de tingimento de 01/04/2023. Inclui anti-pilling; GOTS +15 %; amostras faturadas com mínimo de 1 kg. */
+export const TINGIMENTO_DATA = '01/04/2023'
+export const precosTingimento: PrecoTingimento[] = ([
+  ['Reativo', 7.5, 2.25, 2.85, 3.2, 3.55, 3.75, 4.1],
+  ['Direto', 7.5, null, 2.85, 3.2, 3.55, 3.75, 4.1],
+  ['Poliamida', 7.5, 2.55, 2.85, 3.2, 3.55, 3.75, 4.1],
+  ['Acrílico', 7.5, 2.65, 2.95, 3.3, 3.7, 3.75, 4.2],
+  ['2 Fibras', 7.5, 2.9, 4.95, 5.65, 6.75, 7.0, null],
+  ['Retro Dye', 10, null, 4.35, 4.6, 4.8, 5.05, 6.0],
+  ['Retro Dye Especial', 10, null, 4.6, 5.0, 5.15, 5.65, 6.6],
+  ['Vegetal', 10, null, 5.7, 6.0, 6.3, 6.6, 7.5],
+  ['Pigmentos', 10, null, 5.0, 5.0, 5.5, 5.5, 7.2],
+  ['Sedas', 10, 5.05, 9.85, 11.3, 12.25, 13.95, 15.0],
+] as [string, ...(number | null)[]][]).map(([tipo, amostras, branco, claras, medias, escuras, preto, especiais], i): PrecoTingimento => ({ id: `ting${i + 1}`, tipo, amostras, branco, claras, medias, escuras, preto, especiais }))
+  .concat([
+    { id: 'ting11', tipo: 'Pigmentos verdadeiros', amostras: null, branco: null, claras: null, medias: null, escuras: null, preto: null, especiais: null, nota: '7,20 €/kg (FX)' },
+    { id: 'ting12', tipo: 'Tingimento termosensível', amostras: null, branco: null, claras: null, medias: null, escuras: null, preto: null, especiais: null, nota: '36,00 €/kg' },
+    { id: 'ting13', tipo: 'Moffo', amostras: null, branco: null, claras: 8.05, medias: 8.05, escuras: 8.05, preto: 8.05, especiais: 8.05, nota: '8,05 €/kg todas as cores' },
+    { id: 'ting14', tipo: 'Meio branco · descarregar cor', amostras: null, branco: 1.45, claras: null, medias: null, escuras: null, preto: null, especiais: null, nota: '1,45 €/kg' },
+  ])
+
+/** Tabela de lavandaria ganga/tecidos (molhados e secos), € por peça. Grupo A: top, calção, saia curta; B: calça, vestido curto,
+ * bermudas, saia comprida, camisa manga curta, jardineira curta; C: parka, blusão, gabardina, vestido comprido, sweatshirt, camisa, jardineira comprida. */
+export const precosLavagem: PrecoLavagem[] = ([
+  ['Lavagem', 'Desencolado', 0.3, 0.4, 0.45, 0.55],
+  ['Lavagem', 'Lavagem normal', 0.25, 0.3, 0.4, 0.5],
+  ['Lavagem', 'Anti-pilling', 0.55, 0.8, 0.8, 1.0],
+  ['Lavagem', 'Anti-óleo', 0.25, 0.3, 0.45, 0.5],
+  ['Lavagem', 'Lavagem normal c/ silicone', 0.45, 0.55, 0.55, 0.75],
+  ['Lavagem', 'Stone wash', 0.6, 0.75, 0.85, 1.1],
+  ['Lavagem', 'Super stone wash', 0.7, 1.0, 1.2, 1.6],
+  ['Lavagem', 'Stone bleach', 0.75, 1.0, 1.2, 1.7],
+  ['Lavagem', 'Super stone bleach', 1.0, 1.35, 1.55, 2.15],
+  ['Lavagem', 'Trapo / fade out', null, 1.2, 1.8, 2.4],
+  ['Lavagem', 'Cubos', null, 1.8, 2.4, 3.0],
+  ['Lavagem', 'Tencel stone wash', null, 1.4, 1.8, 2.2],
+  ['Lavagem', 'Tencel stone bleach', null, 1.95, 2.2, 2.55],
+  ['Lavagem', 'Resina integral total', 1.2, 1.2, 1.2, 1.2],
+  ['Lavagem', 'Resina spray total', 1.6, 1.6, 1.6, 1.6],
+  ['Lavagem', 'Mergulho permanganato', null, 2.1, 2.1, 2.1],
+  ['Lavagem', 'Over dye', 0.45, 0.6, 0.85, 1.1],
+  ['Secos', 'Bigodes lixa 1 (frente)', 0.5, 0.75, 0.85, 1.4],
+  ['Secos', 'Bigodes lixa 2 (frente/trás)', 0.75, 0.85, 1.1, 1.8],
+  ['Secos', 'Jato lixa 1 (frente e trás)', 0.7, 0.8, 0.9, 1.45],
+  ['Secos', 'Jato lixa 2 (total)', 0.8, 1.0, 1.2, 1.8],
+  ['Secos', 'Jato areia 1 (frente/trás)', 0.75, 0.75, 0.85, 1.1],
+  ['Secos', 'Jato químico 1 (frente/trás)', 0.5, 0.6, 0.85, 1.2],
+  ['Secos', 'Jato químico 2 (integral c/ trincha)', 0.6, 0.75, 1.2, 1.8],
+  ['Secos', 'Jato químico 3 (total c/ trincha)', 0.75, 1.0, 1.8, 2.2],
+  ['Secos', 'Bigodes 3D 1 (só frente)', 1.5, 1.5, 1.5, 1.5],
+  ['Secos', 'Bigodes 3D 2 (frente e joelho)', 2.1, 2.1, 2.1, 2.1],
+  ['Secos', 'Bigodes 3D 3 (frente, trás e joelho)', 2.7, 2.7, 2.7, 2.7],
+  ['Secos', 'Krinkel', 0.5, 0.6, 0.75, 1.2],
+  ['Secos', 'Estrias', 0.5, 0.6, 0.75, 1.2],
+  ['Secos', 'Pinos (cada)', 0.15, 0.15, 0.15, 0.15],
+  ['Secos', 'Roto 1 (bolsos/bainhas)', 0.5, 0.5, 0.5, 0.7],
+  ['Secos', 'Roto 2 (bolsos e bainhas + 2R)', 0.75, 0.75, 0.75, 0.75],
+  ['Secos', 'Roto 3 (bolsos e bainhas + 4R)', 0.9, 0.9, 0.9, 0.9],
+  ['Secos', 'Abraçadeiras (cada)', 0.3, 0.3, 0.3, 0.3],
+] as ['Lavagem' | 'Secos', string, ...(number | null)[]][]).map(([seccao, descricao, crianca, grupoA, grupoB, grupoC], i): PrecoLavagem => ({ id: `lav${i + 1}`, seccao, descricao, crianca, grupoA, grupoB, grupoC }))
+/* Sujeito a orçamento (não entram na tabela): stone bleach ao kg, coating, bigodes lixa 3, jato areia 2, rotos especiais,
+   cores especiais, acabamentos especiais (silicone, antioxidante, cheiro…), tingimento degradé (t-shirt 2,10/4,20 €, sweat 3,85/7,70 €). */
+
 export const precosRef: PrecoRef[] = [
   { id: 'p1', linha: 'Corte', valor: 0.5, unidade: 'por peça', origem: 'Ficha de custo Shirt Mao' },
   { id: 'p2', linha: 'Plano de corte', valor: 2.6, unidade: 'por m (0,065 por peça)', origem: 'Ficha de custo Shirt Mao' },
@@ -145,8 +210,8 @@ export function linhasModeloPC(tipoPeca: string, tecido: 'Ganga' | 'Sarja' | 'Ou
     ganga && calcao
       ? L('Tecido', 'mts', 0.7, 4.1, 'Estimada', { nota: 'Média por excesso (0,7 m × 4,10 €): confirmar nos mini planos.' })
       : L('Tecido', 'mts', 0.4, 4, 'Estimada', { nota: 'Confirmar tecido e preço por metro; consumo nos mini planos.' }),
-    ganga ? L('Lavandaria - Clothius (lavagem)', 'un', 1, 0.55, 'Estimada', { nota: 'Ganga lava-se: preço à peça (tabela da Clothius).' })
-      : sarja ? L('Lavandaria - Clothius (tingimento)', 'kg', 0.3, 3.5, 'Estimada', { nota: 'Sarja tinge-se: preço ao kg conforme o labdip (branco, clara, média, escura, preto, especial) × peso da peça.' })
+    ganga ? L('Lavandaria - Clothius (lavagem normal)', 'un', 1, calcao ? 0.3 : 0.4, 'Estimada', { nota: `Ganga lava-se: à peça, grupo ${calcao ? 'A' : 'B'} da tabela Clothius. Escolher as lavagens e secos em «Tabela Clothius».` })
+      : sarja ? L('Lavandaria - Clothius (tingimento reativo, cor média)', 'kg', 0.3, 3.2, 'Estimada', { nota: 'Sarja tinge-se: ao kg conforme o labdip × peso da peça. Confirmar cor e peso em «Tabela Clothius».' })
         : L('Lavandaria - Clothius', 'kg', 0.3, 3.5, 'Estimada', { nota: 'Ganga: à peça (lavagem). Sarja: ao kg conforme o labdip (tingimento).' }),
     ...(ganga ? [
       L('Molas (meses) / botão (anos)', '€', 1, 0.1408, 'Confirmar', { valorExpr: '140.8/1000', nota: 'Molas nos tamanhos de meses; botão (70 € o milheiro) nos tamanhos de anos.' }),

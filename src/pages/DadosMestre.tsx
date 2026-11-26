@@ -7,12 +7,14 @@ import { NOME_FOLHA } from '../components/Folhas'
 
 type Linha = Record<string, unknown> & { id: string }
 interface Def {
-  campo: string; rotulo: string; tipo?: 'texto' | 'numero' | 'lista' | 'tamanhos' | 'linhas'; opcoes?: string[]; filtro?: 'texto' | 'lista'
+  campo: string; rotulo: string; tipo?: 'texto' | 'numero' | 'preco' | 'lista' | 'tamanhos' | 'linhas'; opcoes?: string[]; filtro?: 'texto' | 'lista'
   mostrar?: (l: Linha) => React.ReactNode
 }
 interface Separador { id: NomeTabela; rotulo: string; desc?: string; defs: Def[]; titulo: (l: Linha) => string }
 
 const FOLHAS = Object.keys(NOME_FOLHA)
+// preço que pode não existir (— = não há ou sujeito a orçamento)
+const preco = (campo: string, rotulo: string, un: string): Def => ({ campo, rotulo, tipo: 'preco', mostrar: (l) => (l[campo] == null ? <span className="text-tenue">—</span> : <span className="num">{eur(Number(l[campo]))}<span className="text-tenue text-[11px]">{un}</span></span>) })
 
 const SEPARADORES: Separador[] = [
   { id: 'fornecedores', rotulo: 'Fornecedores', titulo: (l) => String(l.nome), defs: [
@@ -71,6 +73,18 @@ const SEPARADORES: Separador[] = [
     { campo: 'unidade', rotulo: 'Unidade' },
     { campo: 'origem', rotulo: 'Origem' },
   ] },
+  { id: 'precosTingimento', rotulo: 'Clothius · tingimento', desc: 'Tabela da Clothius de 01/04/2023, € por kg conforme o labdip. Inclui anti-pilling; tingimento GOTS +15 %; amostras com mínimo de 1 kg; cores e acabamentos especiais sujeitos a orçamento.', titulo: (l) => String(l.tipo), defs: [
+    { campo: 'tipo', rotulo: 'Tingimento', mostrar: (l) => <span className="font-medium">{String(l.tipo)}</span> },
+    preco('amostras', 'Amostras (1–5 kg)', '/kg'), preco('branco', 'Branco', '/kg'), preco('claras', 'Cores claras', '/kg'), preco('medias', 'Cores médias', '/kg'),
+    preco('escuras', 'Cores escuras', '/kg'), preco('preto', 'Preto', '/kg'), preco('especiais', 'Cores especiais', '/kg'),
+    { campo: 'nota', rotulo: 'Nota' },
+  ] },
+  { id: 'precosLavagem', rotulo: 'Clothius · lavandaria', desc: 'Ganga e tecidos, € por peça. Grupo A: top, calção, saia curta. Grupo B: calça, vestido curto, bermudas, saia comprida, camisa de manga curta. Grupo C: parka, blusão, gabardina, vestido comprido, sweatshirt, camisa. Silicone, antioxidante, cheiro e outros acabamentos: sujeitos a orçamento.', titulo: (l) => String(l.descricao), defs: [
+    { campo: 'seccao', rotulo: 'Secção', tipo: 'lista', opcoes: ['Lavagem', 'Secos'], filtro: 'lista' },
+    { campo: 'descricao', rotulo: 'Processo', filtro: 'texto', mostrar: (l) => <span className="font-medium">{String(l.descricao)}</span> },
+    preco('crianca', 'Criança', ''), preco('grupoA', 'Grupo A', ''), preco('grupoB', 'Grupo B', ''), preco('grupoC', 'Grupo C', ''),
+    { campo: 'nota', rotulo: 'Nota' },
+  ] },
 ]
 
 export default function DadosMestre() {
@@ -89,7 +103,7 @@ export default function DadosMestre() {
 
   const abrirNova = () => {
     const l: Linha = { id: uid(sep.slice(0, 3)) }
-    s.defs.forEach((d) => { l[d.campo] = d.tipo === 'numero' ? 0 : d.tipo === 'tamanhos' || d.tipo === 'linhas' ? [] : d.opcoes?.[0] ?? '' })
+    s.defs.forEach((d) => { l[d.campo] = d.tipo === 'preco' ? null : d.tipo === 'numero' ? 0 : d.tipo === 'tamanhos' || d.tipo === 'linhas' ? [] : d.opcoes?.[0] ?? '' })
     setEdit(l); setNova(true)
   }
 
@@ -124,6 +138,9 @@ export default function DadosMestre() {
                     className="w-full rounded-controlo border border-linha p-3 text-[14px] outline-none focus:border-tinta-2" />
                 ) : d.tipo === 'tamanhos' ? (
                   <Entrada defaultValue={(edit[d.campo] as string[]).join(' ')} onChange={(e) => setEdit({ ...edit, [d.campo]: e.target.value.split(/[\s,·]+/).filter(Boolean) })} />
+                ) : d.tipo === 'preco' ? (
+                  <Entrada type="number" step="any" placeholder="— (não há ou orçamento)" value={edit[d.campo] == null ? '' : String(edit[d.campo])}
+                    onChange={(e) => setEdit({ ...edit, [d.campo]: e.target.value === '' ? null : Number(e.target.value) })} />
                 ) : (
                   <Entrada type={d.tipo === 'numero' ? 'number' : 'text'} step="any" value={String(edit[d.campo] ?? '')}
                     onChange={(e) => setEdit({ ...edit, [d.campo]: d.tipo === 'numero' ? Number(e.target.value) : e.target.value })} />

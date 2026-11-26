@@ -3,10 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 import clsx from 'clsx'
 import { AlertTriangle, ArrowLeft, Check, CheckCheck, ChevronDown, CircleCheck, Copy, CopyPlus, FilePlus2, FileText, Plus, Send, Trash2 } from 'lucide-react'
 import { useDb } from '../../store/db'
-import { Botao, Cabecalho, Campo, Cartao, Confianca, Entrada, Etiqueta, EtiquetaIA, Passos, Pilulas, Seletor, aviso, type Tom } from '../../components/ui'
+import { Botao, Cabecalho, Campo, Cartao, Confianca, Entrada, Etiqueta, EtiquetaIA, Modal, Passos, Pilulas, Seletor, aviso, type Tom } from '../../components/ui'
 import { TechPack } from '../../components/TechPack'
-import { linhasModeloPC, linhasShirtMao } from '../../data/seed'
-import { EMPRESAS, MARGEM_OBJETIVO, MIN_CASOS_INTERVALO, ORDEM_EMPRESAS, ROTULO_EMPRESA, avaliarExpr, calcularCusto, empresaDaLinha, precosSugeridos, totaisPorEmpresa, pecasParecidas, propostaIntervalo, totalLinha } from '../../lib/calc'
+import { TINGIMENTO_DATA, linhasModeloPC, linhasShirtMao } from '../../data/seed'
+import { EMPRESAS, MARGEM_OBJETIVO, grupoLavandaria, type GrupoLavandaria, MIN_CASOS_INTERVALO, ORDEM_EMPRESAS, ROTULO_EMPRESA, avaliarExpr, calcularCusto, empresaDaLinha, precosSugeridos, totaisPorEmpresa, pecasParecidas, propostaIntervalo, totalLinha } from '../../lib/calc'
 import { dataCurta, eur, hojeISO, num, uid } from '../../lib/format'
 import type { LinhaCusto, OrigemCusto, Pedido } from '../../types'
 import { TOM_PEDIDO } from './Pedidos'
@@ -229,6 +229,7 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
   const rotuloAgente = c.agenteFixo != null ? `(${eur(c.agenteFixo)} por peça)` : `(${String(c.pct).replace('.', ',')} % sobre ${p.comissaoSobreCusto ? 'o custo' : 'custo + N/ comissão'})`
   const tomMargem = c.margem < 0 ? 'text-vermelho font-semibold' : c.margemPct < MARGEM_OBJETIVO ? 'text-ambar' : 'text-verde'
   const [aberta, setAberta] = useState(!compacta)
+  const [lavandaria, setLavandaria] = useState<LinhaCusto | null>(null)
   const linha = (id: string, x: Partial<LinhaCusto>) => atualizar({ linhas: p.linhas.map((l) => (l.id === id ? { ...l, ...x } : l)) })
   // consumo/valor: aceita números ou fórmulas simples (3/32, 140.8/1000, 0,46+0,08)
   const campo = (l: LinhaCusto, k: 'consumo' | 'valor') => {
@@ -259,12 +260,13 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
               return (
                 <tr key={l.id} className="border-b border-linha align-top">
                   <td className="px-5 py-2">
-                    {editavel ? <input defaultValue={l.descricao} onBlur={(e) => e.target.value.trim() && e.target.value !== l.descricao && linha(l.id, { descricao: e.target.value.trim() })} className="w-full bg-transparent outline-none focus:bg-fundo rounded px-1 -mx-1" /> : <p>{l.descricao}</p>}
+                    {editavel ? <input key={l.descricao} defaultValue={l.descricao} onBlur={(e) => e.target.value.trim() && e.target.value !== l.descricao && linha(l.id, { descricao: e.target.value.trim() })} className="w-full bg-transparent outline-none focus:bg-fundo rounded px-1 -mx-1" /> : <p>{l.descricao}</p>}
                     {(() => { const e = empresaDaLinha(l); return (
                       <button disabled={!editavel} title={`${EMPRESAS[e].nome} (${EMPRESAS[e].papel})${editavel ? ' · clicar para trocar' : ''}`}
                         onClick={() => linha(l.id, { empresa: ORDEM_EMPRESAS[(ORDEM_EMPRESAS.indexOf(e) + 1) % ORDEM_EMPRESAS.length] })}
                         className={clsx('mt-0.5 whitespace-nowrap text-[10.5px] font-semibold tracking-wide rounded px-1.5 py-px border', { PC: 'text-azul border-azul/30', PP: 'text-ouro border-ouro/40', FORA: 'text-vermelho border-vermelho/30', CLIENTE: 'text-suave border-linha' }[e], editavel && 'hover:bg-fundo')}>
                         {ROTULO_EMPRESA[e]}</button>) })()}
+                    {editavel && /lavand|tingim|lavagem/i.test(l.descricao) && <button onClick={() => setLavandaria(l)} className="ml-2 text-[12px] text-azul hover:underline">Tabela Clothius</button>}
                     {l.nota && <p className={clsx('text-[12px] mt-0.5 flex gap-1', incoerente ? 'text-ambar' : 'text-suave')}>{incoerente && <AlertTriangle size={12} className="mt-0.5 shrink-0" />}{l.nota}</p>}
                   </td>
                   <td className="px-1 py-1.5 text-center text-suave">{editavel
@@ -321,7 +323,94 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
             : <span className="font-semibold text-[16px] num">{eur(c.final)}</span>}
         </div>
       </>}
+      {lavandaria && <LavandariaClothius l={lavandaria} tipoPeca={p.tipoPeca} crianca={/beb|crian/i.test(cfg?.escala ?? '')}
+        onFechar={() => setLavandaria(null)} aplicar={(x) => { linha(lavandaria.id, x); setLavandaria(null); aviso('Lavandaria calculada com a tabela da Clothius.') }} />}
     </Cartao>
+  )
+}
+
+const CORES_LABDIP = [['branco', 'Branco'], ['claras', 'Clara'], ['medias', 'Média'], ['escuras', 'Escura'], ['preto', 'Preto'], ['especiais', 'Especial'], ['amostras', 'Amostra']] as const
+const GRUPOS: { id: GrupoLavandaria; rotulo: string }[] = [{ id: 'crianca', rotulo: 'Criança' }, { id: 'grupoA', rotulo: 'A · calção, top' }, { id: 'grupoB', rotulo: 'B · calça' }, { id: 'grupoC', rotulo: 'C · casaco, camisa' }]
+const fmt = (v: number) => String(Math.round(v * 10000) / 10000)
+
+/** Lavandaria pela tabela da Clothius: tingimento (€/kg × peso, conforme o labdip) ou lavagem e secos (€/peça, por grupo). */
+function LavandariaClothius({ l, tipoPeca, crianca, onFechar, aplicar }: { l: LinhaCusto; tipoPeca: string; crianca: boolean; onFechar: () => void; aplicar: (x: Partial<LinhaCusto>) => void }) {
+  const tingimentos = useDb((s) => s.precosTingimento).filter((t) => CORES_LABDIP.some(([k]) => t[k] != null))
+  const lavagens = useDb((s) => s.precosLavagem)
+  const [modo, setModo] = useState<'ting' | 'lav'>(/ting|kg/i.test(`${l.descricao} ${l.unidade}`) ? 'ting' : 'lav')
+  const [tipo, setTipo] = useState(tingimentos[0]?.tipo ?? '')
+  const [cor, setCor] = useState<(typeof CORES_LABDIP)[number][0]>('medias')
+  const [peso, setPeso] = useState(l.unidade === 'kg' && l.consumo ? String(l.consumo).replace('.', ',') : '0,3')
+  const [gots, setGots] = useState(false)
+  const [grupo, setGrupo] = useState<GrupoLavandaria>(grupoLavandaria(tipoPeca, crianca))
+  const [escolhidas, setEscolhidas] = useState<Set<string>>(new Set())
+
+  const t = tingimentos.find((x) => x.tipo === tipo)
+  const kg = avaliarExpr(peso) ?? 0
+  const precoKg = t?.[cor] ?? null
+  const valorKg = precoKg == null ? null : gots ? precoKg * 1.15 : precoKg
+  const sel = lavagens.filter((x) => escolhidas.has(x.id) && x[grupo] != null)
+  const somaLav = sel.reduce((n, x) => n + (x[grupo] ?? 0), 0)
+  const corNome = CORES_LABDIP.find(([k]) => k === cor)![1].toLowerCase()
+  const grupoNome = GRUPOS.find((g) => g.id === grupo)!.rotulo.split(' ·')[0]
+
+  const ok = modo === 'ting' ? valorKg != null && kg > 0 : sel.length > 0
+  const usar = () => {
+    if (modo === 'ting') aplicar({
+      descricao: `Lavandaria - Clothius (tingimento ${tipo.toLowerCase()}, cor ${corNome}${gots ? ', GOTS' : ''})`, unidade: 'kg',
+      consumo: kg, consumoExpr: undefined, valor: valorKg!, valorExpr: gots ? `${fmt(precoKg!)}*1.15` : undefined, origem: 'Segura', confirmado: false, empresa: undefined,
+      nota: `Tabela de tingimento Clothius (${TINGIMENTO_DATA}): ${eur(precoKg!)}/kg${gots ? ' + 15 % GOTS' : ''} × ${num(kg)} kg por peça. Confirmar o peso da peça.`,
+    })
+    else aplicar({
+      descricao: `Lavandaria - Clothius (${sel.map((x) => x.descricao.toLowerCase()).join(' + ')})`, unidade: 'un',
+      consumo: 1, consumoExpr: undefined, valor: somaLav, valorExpr: sel.length > 1 ? sel.map((x) => fmt(x[grupo]!)).join('+') : undefined, origem: 'Segura', confirmado: false, empresa: undefined,
+      nota: `Tabela de lavandaria Clothius, à peça, grupo ${grupoNome}.`,
+    })
+  }
+  return (
+    <Modal aberto onFechar={onFechar} titulo="Lavandaria · tabela da Clothius" sub="Ganga lava-se (à peça); sarja tinge-se (ao kg, conforme o labdip)." largura="max-w-2xl"
+      rodape={<>
+        <span className="mr-auto font-semibold num">{ok ? (modo === 'ting' ? `${num(kg)} kg × ${eur(valorKg!)} = ${eur(kg * valorKg!)} por peça` : `${eur(somaLav)} por peça`) : ''}</span>
+        <Botao variante="fantasma" onClick={onFechar}>Cancelar</Botao>
+        <Botao variante="primario" disabled={!ok} onClick={usar}>Usar na ficha</Botao>
+      </>}>
+      <div className="space-y-4">
+        <Pilulas valor={modo} onChange={setModo} opcoes={[{ id: 'ting', rotulo: 'Tingimento (ao kg)' }, { id: 'lav', rotulo: 'Lavagem e secos (à peça)' }]} />
+        {modo === 'ting' ? (<>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo rotulo="Tipo de tingimento"><Seletor valor={tipo} onChange={setTipo} opcoes={tingimentos.map((x) => x.tipo)} /></Campo>
+            <Campo rotulo="Peso da peça (kg)"><Entrada value={peso} onChange={(e) => setPeso(e.target.value)} placeholder="ex.: 0,35" /></Campo>
+          </div>
+          <Campo rotulo="Cor do labdip">
+            <div className="flex flex-wrap gap-2">
+              {CORES_LABDIP.map(([k, r]) => (
+                <button key={k} disabled={t?.[k] == null} onClick={() => setCor(k)}
+                  className={clsx('rounded-md border px-2.5 py-1.5 text-[13px] disabled:opacity-40', cor === k ? 'border-tinta-2 bg-papel font-semibold' : 'border-linha')}>
+                  {r} <span className="num text-suave">{t?.[k] == null ? '—' : eur(t[k]!)}</span></button>
+              ))}
+            </div>
+          </Campo>
+          <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={gots} onChange={(e) => setGots(e.target.checked)} /> Tingimento GOTS (+15 %)</label>
+          {cor === 'amostras' && <p className="text-[12px] text-ambar">Amostras: faturadas com mínimo de 1 kg.</p>}
+        </>) : (<>
+          <Campo rotulo="Grupo da peça"><Pilulas valor={grupo} onChange={setGrupo} opcoes={GRUPOS.map((g) => ({ id: g.id, rotulo: g.rotulo }))} /></Campo>
+          {(['Lavagem', 'Secos'] as const).map((sec) => (
+            <div key={sec}>
+              <p className="text-[11px] uppercase tracking-wider text-suave mb-1.5">{sec === 'Lavagem' ? 'Lavagens' : 'Secos'}</p>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                {lavagens.filter((x) => x.seccao === sec).map((x) => (
+                  <label key={x.id} className={clsx('flex items-center justify-between gap-2 text-[13px]', x[grupo] == null && 'opacity-40')}>
+                    <span className="flex items-center gap-2"><input type="checkbox" disabled={x[grupo] == null} checked={escolhidas.has(x.id)}
+                      onChange={(e) => { const n = new Set(escolhidas); if (e.target.checked) n.add(x.id); else n.delete(x.id); setEscolhidas(n) }} />{x.descricao}</span>
+                    <span className="num text-suave">{x[grupo] == null ? '—' : eur(x[grupo]!)}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </>)}
+      </div>
+    </Modal>
   )
 }
 

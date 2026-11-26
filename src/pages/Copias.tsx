@@ -10,7 +10,7 @@ import { modoServidor } from '../lib/supabase'
 const NOMES: Record<Colecao, string> = {
   encomendas: 'Encomendas (com as fichas)', pedidos: 'Pedidos de orçamento', historico: 'Histórico de preços',
   fornecedores: 'Fornecedores', tecidos: 'Tecidos', equivalencias: 'Equivalências de tecido', lavagens: 'Lavagens e tingimentos',
-  acessorios: 'Acessórios por cliente', escalas: 'Tamanhos', destinatarios: 'Destinatários', precosRef: 'Tabela de preços', clientes: 'Clientes',
+  acessorios: 'Acessórios por cliente', escalas: 'Tamanhos', destinatarios: 'Destinatários', precosRef: 'Tabela de preços', precosTingimento: 'Clothius · tingimento', precosLavagem: 'Clothius · lavandaria', clientes: 'Clientes',
 }
 const DIAS_AVISO = 7
 
@@ -31,7 +31,7 @@ export default function Copias() {
   const descarregar = () => {
     const c = criarCopia(estado as unknown as Parameters<typeof criarCopia>[0])
     const nome = descarregarCopia(c)
-    const total = COLECOES.reduce((n, col) => n + c.colecoes[col].length, 0)
+    const total = COLECOES.reduce((n, col) => n + (c.colecoes[col]?.length ?? 0), 0)
     log('Cópia de segurança descarregada', `${nome} · ${total} registos`)
     aviso('Cópia de segurança descarregada.')
   }
@@ -47,7 +47,7 @@ export default function Copias() {
 
   const repor = () => {
     if (!copia) return
-    useDb.setState(Object.fromEntries(COLECOES.map((c) => [c, copia.colecoes[c] ?? []])) as Partial<ReturnType<typeof useDb.getState>>)
+    useDb.setState(Object.fromEntries(COLECOES.map((c) => [c, copia.colecoes[c] ?? useDb.getState()[c]])) as Partial<ReturnType<typeof useDb.getState>>)
     log('Cópia de segurança reposta', `Cópia de ${dataHora(copia.criadaEm)} · ${difs.reduce((n, d) => n + d.novos + d.alterados + d.removidos, 0)} alterações`)
     setCopia(null)
     aviso(modoServidor ? 'Cópia reposta. A gravar no servidor…' : 'Cópia reposta.')
