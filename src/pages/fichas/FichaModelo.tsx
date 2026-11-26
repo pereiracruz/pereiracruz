@@ -6,7 +6,9 @@ import { useDb } from '../../store/db'
 import { Botao, Cabecalho, Cartao, Entrada, Etiqueta, Modal, Seletor, aviso, type Tom } from '../../components/ui'
 import { Folha, NOME_FOLHA, folhasDoModelo } from '../../components/Folhas'
 import { idInterno, soma, totalVariante, verificarFicha } from '../../lib/calc'
-import { exportarLivro, exportarPDF } from '../../lib/exportar'
+import { exportarLivro, exportarPDF, montarLivro, nomeLivro } from '../../lib/exportar'
+import { exportarSheets } from '../../lib/sheets'
+import { modoServidor } from '../../lib/supabase'
 import { hojeISO, parseNum, uid, num } from '../../lib/format'
 import type { EstadoFicha, FolhaTipo, LinhaMaterial, Modelo } from '../../types'
 
@@ -159,8 +161,19 @@ export default function FichaModelo() {
             </Cartao>
           </div>
 
-          <ModalExportar aberto={exportar} onFechar={() => setExportar(false)} folhas={folhas} variantes={comFicha} onExportar={(formato, fs, vs) => {
+          <ModalExportar aberto={exportar} onFechar={() => setExportar(false)} folhas={folhas} variantes={comFicha} onExportar={async (formato, fs, vs) => {
             const variantes = comFicha.filter((x) => vs.includes(x.id))
+            if (formato === 'gs') {
+              const entradas = variantes.map((x) => ({ m, v: x, folhas: fs }))
+              const titulo = nomeLivro(enc, entradas).replace(/_/g, ' ')
+              const url = await exportarSheets(titulo, montarLivro(enc, entradas, () => dataFicha, destinatarios, false))
+              atualizarEncomenda(enc.id, (e) => ({ ...e, linkSheets: { url, data: hojeISO(), titulo } }))
+              log('Fichas exportadas (Google Sheets)', `${enc.cliente} · ${m.nome} · ${url}`)
+              aviso('Folha criada no Google Drive.')
+              window.open(url, '_blank')
+              setExportar(false)
+              return
+            }
             if (formato === 'excel') {
               const nome = exportarLivro(enc, variantes.map((x) => ({ m, v: x, folhas: fs })), () => dataFicha, destinatarios, false)
               aviso(`Livro Excel descarregado: ${nome}`)
@@ -293,25 +306,30 @@ function Producao({ m, v, guardar }: { m: Modelo; v: Modelo['variantes'][number]
 // ---------------- Exportar ----------------
 function ModalExportar({ aberto, onFechar, folhas, variantes, onExportar }: {
   aberto: boolean; onFechar: () => void; folhas: FolhaTipo[]; variantes: Modelo['variantes']
-  onExportar: (formato: 'excel' | 'pdf', folhas: FolhaTipo[], variantes: string[]) => void
+  onExportar: (formato: 'excel' | 'pdf' | 'gs', folhas: FolhaTipo[], variantes: string[]) => Promise<void> | void
 }) {
-  const [formato, setFormato] = useState<'excel' | 'pdf'>('excel')
+  const [formato, setFormato] = useState<'excel' | 'pdf' | 'gs'>('excel')
+  const [aExportar, setAExportar] = useState(false)
+  const [erro, setErro] = useState('')
   const [sel, setSel] = useState<FolhaTipo[]>(folhas)
   const [vs, setVs] = useState<string[]>(variantes.map((v) => v.id))
   const dest = useDb((s) => s.destinatarios)
   const toggle = <T,>(a: T[], x: T) => (a.includes(x) ? a.filter((y) => y !== x) : [...a, x])
   const formatos = [
-    { id: 'gs', icone: <Sheet size={17} />, t: 'Google Sheets', d: 'Precisa da conta Google (com o servidor)', off: true },
+    { id: 'gs', icone: <Sheet size={17} />, t: 'Google Sheets', d: modoServidor ? 'Cria a folha na pasta do Drive' : 'Precisa do servidor', off: !modoServidor },
     { id: 'excel', icone: <FileSpreadsheet size={17} />, t: 'Excel', d: 'Um separador por folha, totais em fórmula' },
     { id: 'pdf', icone: <FileText size={17} />, t: 'PDF', d: 'Imprimir / guardar como PDF' },
   ] as const
   return (
     <Modal aberto={aberto} onFechar={onFechar} titulo="Exportar fichas" sub="Escolha as folhas e o formato. O que sai é a ficha que a fábrica já conhece." largura="max-w-xl"
-      rodape={<><Botao variante="fantasma" onClick={onFechar}>Cancelar</Botao><Botao variante="primario" disabled={!sel.length || !vs.length} onClick={() => onExportar(formato, folhas.filter((f) => sel.includes(f)), vs)}>Exportar</Botao></>}>
+      rodape={<>{erro && <span className="mr-auto text-[13px] text-vermelho max-w-[60%]">{erro}</span>}<Botao variante="fantasma" onClick={onFechar}>Cancelar</Botao><Botao variante="primario" disabled={!sel.length || !vs.length || aExportar} onClick={async () => {
+        setErro(''); setAExportar(true)
+        try { await onExportar(formato, folhas.filter((f) => sel.includes(f)), vs) } catch (e) { setErro(e instanceof Error ? e.message : String(e)) } finally { setAExportar(false) }
+      }}>{aExportar ? 'A exportar…' : 'Exportar'}</Botao></>}>
       <p className="text-[13px] font-medium mb-2">Formato</p>
       <div className="grid grid-cols-3 gap-2 mb-5">
         {formatos.map((f) => (
-          <button key={f.id} disabled={'off' in f} onClick={() => setFormato(f.id as 'excel' | 'pdf')}
+          <button key={f.id} disabled={'off' in f && !!f.off} onClick={() => setFormato(f.id)}
             className={clsx('text-left p-3 rounded-controlo border disabled:opacity-45 disabled:cursor-not-allowed', formato === f.id ? 'border-tinta bg-fundo' : 'border-linha hover:border-linha-forte')}>
             <span className="text-suave">{f.icone}</span><p className="text-[14px] font-medium mt-2">{f.t}</p><p className="text-[12px] text-suave leading-snug">{f.d}</p>
           </button>

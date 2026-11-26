@@ -12,7 +12,7 @@ const F = (f: string, v: number) => ({ f, v })
 const col = (i: number) => XLSX.utils.encode_col(i)
 
 /** Constrói o separador de uma folha. Os totais são fórmulas (nunca valores fixos). */
-function separador(enc: Encomenda, m: Modelo, v: Variante, folha: FolhaTipo, idEnc: string, dataFicha: string, dest?: Destinatario) {
+function grelha(enc: Encomenda, m: Modelo, v: Variante, folha: FolhaTipo, idEnc: string, dataFicha: string, dest?: Destinatario): Celula[][] {
   const tam = m.escala.slice(0, v.qtd.length)
   const L: Celula[][] = []
   const push = (...r: Celula[]) => { L.push(r); return L.length } // devolve nº da linha (1-based)
@@ -105,13 +105,11 @@ function separador(enc: Encomenda, m: Modelo, v: Variante, folha: FolhaTipo, idE
       break
   }
 
-  const ws = XLSX.utils.aoa_to_sheet(L.map((r) => r.map((c) => (c && typeof c === 'object' ? { t: 'n', f: c.f, v: c.v } : c))))
-  ws['!cols'] = [{ wch: 30 }, { wch: 22 }, { wch: 22 }, ...Array(12).fill({ wch: 10 })]
-  return ws
+  return L
 }
 
 /** Packing list da encomenda (em inglês), por envio, com totais em fórmula. */
-function separadorPacking(enc: Encomenda) {
+function grelhaPacking(enc: Encomenda): Celula[][] {
   const L: Celula[][] = []
   const push = (...r: Celula[]) => { L.push(r); return L.length }
   push('', '', 'CLIENT', '', '', enc.cliente.toUpperCase())
@@ -132,9 +130,7 @@ function separadorPacking(enc: Encomenda) {
       push()
     }
   }
-  const ws = XLSX.utils.aoa_to_sheet(L.map((r) => r.map((c) => (c && typeof c === 'object' ? { t: 'n', f: c.f, v: c.v } : c))))
-  ws['!cols'] = [{ wch: 30 }, ...Array(14).fill({ wch: 8 })]
-  return ws
+  return L
 }
 
 const PROIBIDOS = new Set(['[', ']', ':', '*', '?', '/', '\\'])
@@ -148,25 +144,52 @@ const nomeSeparador = (s: string, usados: Set<string>) => {
 }
 
 export interface EntradaLivro { m: Modelo; v: Variante; folhas: FolhaTipo[] }
+export interface FolhaLivro { nome: string; linhas: Celula[][]; larguras: number[] }
 
-/** Um livro Excel por encomenda: uma folha por variante e por destinatário (+ packing list), como as fichas de hoje. */
-export function exportarLivro(enc: Encomenda, entradas: EntradaLivro[], dataFicha: (m: Modelo) => string, dest: Destinatario[], comPacking: boolean) {
-  const wb = XLSX.utils.book_new()
+/** Conteúdo do livro da encomenda (igual para Excel e Google Sheets): uma folha por variante e destinatário + packing list. */
+export function montarLivro(enc: Encomenda, entradas: EntradaLivro[], dataFicha: (m: Modelo) => string, dest: Destinatario[], comPacking: boolean): FolhaLivro[] {
   const usados = new Set<string>()
   const curto = (s: string) => s.split(' · ')[0].split(' ').join('_')
+  const out: FolhaLivro[] = []
   for (const { m, v, folhas } of entradas) {
     for (const f of folhas) {
       const prefixo = f === 'produto' ? '' : f === 'embalamento' ? 'Embalamento_' : `${NOME_FOLHA[f]}_`
-      XLSX.utils.book_append_sheet(wb, separador(enc, m, v, f, idInterno(enc, m), dataFicha(m), dest.find((d) => d.folha === f)),
-        nomeSeparador(`${prefixo}${curto(m.nome)}_${v.nome.split(' ').join('')}`, usados))
+      out.push({
+        nome: nomeSeparador(`${prefixo}${curto(m.nome)}_${v.nome.split(' ').join('')}`, usados),
+        linhas: grelha(enc, m, v, f, idInterno(enc, m), dataFicha(m), dest.find((d) => d.folha === f)),
+        larguras: [30, 22, 22, ...Array(12).fill(10)],
+      })
     }
   }
-  if (comPacking && enc.envios?.length) XLSX.utils.book_append_sheet(wb, separadorPacking(enc), nomeSeparador('Packing_list', usados))
+  if (comPacking && enc.envios?.length) out.push({ nome: nomeSeparador('Packing_list', usados), linhas: grelhaPacking(enc), larguras: [30, ...Array(14).fill(8)] })
+  return out
+}
+
+export const nomeLivro = (enc: Encomenda, entradas: EntradaLivro[]) => {
   const umModelo = entradas.length > 0 && new Set(entradas.map((e) => e.m.id)).size === 1
-  const nome = `FichaProduto_${slug(enc.cliente)}_${slug(enc.colecao)}${umModelo ? `_${slug(entradas[0].m.nome)}` : ''}.xlsx`
+  return `FichaProduto_${slug(enc.cliente)}_${slug(enc.colecao)}${umModelo ? `_${slug(entradas[0].m.nome)}` : ''}`
+}
+
+/** Um livro Excel por encomenda, como as fichas de hoje. Totais em fórmula. */
+export function exportarLivro(enc: Encomenda, entradas: EntradaLivro[], dataFicha: (m: Modelo) => string, dest: Destinatario[], comPacking: boolean) {
+  const wb = XLSX.utils.book_new()
+  for (const f of montarLivro(enc, entradas, dataFicha, dest, comPacking)) {
+    const ws = XLSX.utils.aoa_to_sheet(f.linhas.map((r) => r.map((c) => (c && typeof c === 'object' ? { t: 'n', f: c.f, v: c.v } : c))))
+    ws['!cols'] = f.larguras.map((wch) => ({ wch }))
+    XLSX.utils.book_append_sheet(wb, ws, f.nome)
+  }
+  const nome = `${nomeLivro(enc, entradas)}.xlsx`
   XLSX.writeFile(wb, nome)
   return nome
 }
+
+/** Folhas para o Google Sheets: as fórmulas vão como texto «=…» (o Sheets calcula-as). */
+export const paraSheets = (folhas: FolhaLivro[]) =>
+  folhas.map((f) => ({
+    nome: f.nome,
+    larguras: f.larguras,
+    linhas: f.linhas.map((r) => r.map((c) => (c && typeof c === 'object' ? `=${c.f}` : c ?? ''))),
+  }))
 
 /** Abre uma janela de impressão com as folhas escolhidas (guardar como PDF). */
 export function exportarPDF(props: { enc: Encomenda; m: Modelo; variantes: Variante[]; folhas: FolhaTipo[]; ids: Record<string, string>; dataFicha: string; dest: Destinatario[] }) {

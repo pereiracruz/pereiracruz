@@ -1,10 +1,14 @@
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, Check, CheckCheck, FileSpreadsheet, Info, Package, Trash2, Upload } from 'lucide-react'
+import { AlertTriangle, Check, CheckCheck, ExternalLink, FileSpreadsheet, Info, Package, Sheet, Trash2, Upload } from 'lucide-react'
+import { useState } from 'react'
 import { useDb } from '../../store/db'
 import { Botao, Cabecalho, Cartao, Etiqueta, Kpi, Tabela, aviso } from '../../components/ui'
 import { NOME_FOLHA, folhasDoModelo } from '../../components/Folhas'
 import { fichasGeradas, idInternoEncomenda, pecasEncomenda, pecasModelo, referenciasEncomenda, valorEncomenda, verificarEncomenda } from '../../lib/calc'
-import { exportarLivro } from '../../lib/exportar'
+import { exportarLivro, montarLivro, nomeLivro } from '../../lib/exportar'
+import { exportarSheets } from '../../lib/sheets'
+import { modoServidor } from '../../lib/supabase'
+import { hojeISO } from '../../lib/format'
 import { gerarFichaDoTechPack } from '../../lib/gerarFicha'
 import type { TechPackLido } from '../../lib/ia'
 import { dataCurta, eur, int } from '../../lib/format'
@@ -17,6 +21,7 @@ export default function EncomendaDetalhe() {
   const nav = useNavigate()
   const { encomendas, destinatarios, fornecedores, tecidos, equivalencias, acessorios, clientes, atualizarEncomenda, atualizarModelo, apagarEncomenda, log } = useDb()
   const enc = encomendas.find((e) => e.id === encId)
+  const [aExportar, setAExportar] = useState(false)
   if (!enc) return <Navigate to="/fichas" replace />
 
   const verif = verificarEncomenda(enc)
@@ -29,7 +34,7 @@ export default function EncomendaDetalhe() {
     <>
       <Cabecalho migalhas={[{ rotulo: 'Encomendas', para: '/fichas' }, { rotulo: `${enc.cliente} · ${enc.colecao}` }]} sobre="Fichas de produção"
         titulo={`${enc.cliente} · ${enc.colecao}`} extra={<><Etiqueta tom={tomEstado(enc.estado)}>{enc.estado}</Etiqueta><Etiqueta ponto={false}>{enc.modoServico}</Etiqueta><Etiqueta tom="azul" ponto={false}>{idInternoEncomenda(enc)}</Etiqueta></>}
-        sub={<>{enc.numeroDocumento && `Documento ${enc.numeroDocumento} de ${dataCurta(enc.dataDocumento)} · `}{referenciasEncomenda(enc)} referências · {int(pecasEncomenda(enc))} peças · ficheiros: {enc.ficheiros.join(', ')}</>}
+        sub={<>{enc.linkSheets && <a href={enc.linkSheets.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-azul hover:underline mr-2"><ExternalLink size={12} />Google Sheets ({enc.linkSheets.data.split('-').reverse().join('/')})</a>}{enc.numeroDocumento && `Documento ${enc.numeroDocumento} de ${dataCurta(enc.dataDocumento)} · `}{referenciasEncomenda(enc)} referências · {int(pecasEncomenda(enc))} peças · ficheiros: {enc.ficheiros.join(', ')}</>}
         acoes={<>
           <Botao icone={<Package size={15} />} onClick={() => nav(`/fichas/${enc.id}/packing`)}>Packing list</Botao>
           <Botao icone={<FileSpreadsheet size={15} />} disabled={!aprovadas.length} title={aprovadas.length ? '' : 'Ainda não há fichas aprovadas'} onClick={() => {
@@ -39,6 +44,18 @@ export default function EncomendaDetalhe() {
             log('Livro Excel exportado', `${enc.cliente} · ${enc.colecao} · ${entradas.length} variantes`)
             aviso(fora ? `${nome} descarregado. ${fora} modelo(s) por aprovar ficaram de fora.` : `${nome} descarregado.`)
           }}>Livro Excel</Botao>
+          {modoServidor && <Botao icone={<Sheet size={15} />} disabled={!aprovadas.length || aExportar} onClick={async () => {
+            const entradas = aprovadas.flatMap((m) => m.variantes.filter((v) => v.fichaGerada).map((v) => ({ m, v, folhas: folhasDoModelo(m).filter((f) => f === 'produto' || f === 'embalamento') })))
+            const titulo = nomeLivro(enc, entradas).replace(/_/g, ' ')
+            setAExportar(true)
+            try {
+              const url = await exportarSheets(titulo, montarLivro(enc, entradas, (m) => m.versoes[m.versoes.length - 1]?.data ?? enc.criadaEm, destinatarios, true))
+              atualizarEncomenda(enc.id, (e) => ({ ...e, linkSheets: { url, data: hojeISO(), titulo } }))
+              log('Fichas exportadas (Google Sheets)', `${enc.cliente} · ${enc.colecao} · ${url}`)
+              aviso('Folha criada no Google Drive.')
+              window.open(url, '_blank')
+            } catch (e) { alert(`Google Sheets: ${e instanceof Error ? e.message : String(e)}`) } finally { setAExportar(false) }
+          }}>{aExportar ? 'A criar…' : 'Google Sheets'}</Botao>}
           <Botao variante="fantasma" icone={<Trash2 size={15} />} onClick={() => {
             if (confirm(`Apagar a encomenda ${enc.cliente} · ${enc.colecao} e as suas fichas?`)) { apagarEncomenda(enc.id); log('Encomenda apagada', `${enc.cliente} · ${enc.colecao}`); nav('/fichas') }
           }}>Apagar</Botao>

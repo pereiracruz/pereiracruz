@@ -102,6 +102,7 @@ export interface Encomenda {
   totaisDocumento?: { pecas: number; valor: number; porTamanho?: number[] }
   numeroInterno?: number // nº da encomenda na Pereira & Cruz (E26-082-…)
   ficheirosGuardados?: { nome: string; caminho: string }[] // no bucket «documentos»
+  linkSheets?: { url: string; data: string; titulo: string } // última exportação para o Google Sheets
   techPacks?: { ficheiro: string; caminho: string; dados: unknown }[] // leitura da IA (TechPackLido)
   envios?: Envio[]
   criadaEm: string
