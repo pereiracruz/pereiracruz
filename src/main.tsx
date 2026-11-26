@@ -17,6 +17,7 @@ import DadosMestre from './pages/DadosMestre'
 import Pedidos from './pages/orcamentos/Pedidos'
 import NovoPedido from './pages/orcamentos/NovoPedido'
 import Historico from './pages/orcamentos/Historico'
+import Margens from './pages/orcamentos/Margens'
 import Atividade from './pages/Atividade'
 import Conta from './pages/Conta'
 import Copias from './pages/Copias'
@@ -51,6 +52,7 @@ function App() {
         <Route path="orcamentos/novo" element={<NovoPedido />} />
         <Route path="orcamentos/:pedId" element={<NovoPedido />} />
         <Route path="historico" element={<Historico />} />
+        <Route path="margens" element={<Margens />} />
         <Route path="atividade" element={<Atividade />} />
         <Route path="conta" element={<Conta />} />
         <Route path="copias" element={<Copias />} />

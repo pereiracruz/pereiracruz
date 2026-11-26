@@ -32,7 +32,10 @@ export default function Pedidos() {
     if (!lidas) return
     let n = 0
     const novosClientes = new Set<string>()
-    for (const f of lidas.fichas.filter((x) => escolhidas.has(x.folha))) {
+    const sel = lidas.fichas.filter((x) => escolhidas.has(x.folha))
+    // o mesmo código em várias folhas (cabeçalho copiado) não pode fazer uma ficha apagar a outra
+    const repetido = (f: (typeof sel)[number]) => sel.filter((g) => (g.codigo || g.nome) === (f.codigo || f.nome) && g.variante === f.variante).length > 1
+    for (const f of sel) {
       const cliente = clientes.find((c) => c.nome.toLowerCase() === f.cliente.toLowerCase())?.nome ?? (f.cliente || '—')
       if (cliente !== '—' && !clientes.some((c) => c.nome === cliente) && !novosClientes.has(cliente)) {
         novosClientes.add(cliente)
@@ -41,7 +44,7 @@ export default function Pedidos() {
           idPrefixo: cliente.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() }, `Clientes: ${cliente} (criado ao importar fichas de custo${f.marca ? `, marca ${f.marca}` : ''})`)
       }
       const tecido = f.linhas.find((l) => /^tecido/i.test(l.descricao))?.descricao.replace(/^tecido\s*-?\s*/i, '').trim() || '—'
-      const id = `fc-${slug(`${cliente}-${f.codigo || f.nome}-${f.variante}`)}`
+      const id = `fc-${slug(`${cliente}-${f.codigo || f.nome}-${f.variante}${repetido(f) ? `-${f.folha}` : ''}`)}`
       const pedido: Pedido = {
         id, cliente, peca: titulo(f.nome), variante: titulo(f.variante), tipoPeca: f.tipoPeca, tecido, tratamento: '—', entrega: '',
         linhas: f.linhas.map(({ totalFicheiro: _t, fixo: _f, ...l }) => l), estado: f.precoFinal != null ? 'Fechado' : 'Rascunho',

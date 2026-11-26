@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Archive, Bell, CalendarClock, Check, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Receipt } from 'lucide-react'
+import { Archive, Bell, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Receipt } from 'lucide-react'
 import { useDb } from '../store/db'
 import { fichasPorAprovar } from '../lib/calc'
 import { situacaoPrazos } from '../lib/prazos'
@@ -124,6 +124,7 @@ export default function Layout() {
           <Grupo titulo="Pré-orçamentação">
             <Item para="/orcamentos" icone={<Receipt size={17} />}>Pedidos</Item>
             <Item para="/historico" icone={<History size={17} />}>Histórico de preços</Item>
+            <Item para="/margens" icone={<Percent size={17} />}>Margens</Item>
           </Grupo>
         </nav>
 

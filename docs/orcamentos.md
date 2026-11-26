@@ -90,3 +90,11 @@ A ficha-modelo pede o tecido (Ganga / Sarja / Outro) e monta as linhas assim.
 
 Empresas na ficha: **P&C**, **PP**, **FORA** (confeção subcontratada, separada do corte) e **CLIENTE**
 (corte ou material dado pelo cliente).
+
+## Painel de margens (Pré-orçamentação → Margens)
+
+- Todas as fichas com preço final (importadas, fechadas ou validadas): custo, preço, margem em € e % sobre o custo.
+- Totais por cliente e por coleção (a coleção vem do nome do ficheiro: SS27, FW27…, ou mês/ano, ex.: 09/2026),
+  com mínimo, máximo e quantas ficam abaixo do objetivo de 25 % ou abaixo do custo.
+- Lista ordenada da margem mais baixa para a mais alta, com o preço que daria 25 % (incluindo o agente, se houver).
+- Importação: folhas com o mesmo código (cabeçalho copiado) já não se sobrepõem.
