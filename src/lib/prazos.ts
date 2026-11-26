@@ -5,16 +5,22 @@ import { resumoCompras } from './compras'
 /**
  * Etapas de uma encomenda até à entrega. Quem trata: materiais e lavandaria/expedição pela Pereira's Project,
  * corte e confeção pela Pereira & Cruz, lavandaria na Clothius, embalamento pelo Paulo e pela Marta.
- * Dias antes da entrega usados no planeamento automático (editáveis em cada encomenda).
+ * Prazo habitual: 4 semanas da encomenda à entrega (depende do modelo, da lavagem e do planeamento anterior).
+ * Dias antes da entrega usados no planeamento automático, dentro dessas 4 semanas (editáveis em cada encomenda).
  */
+export const PRAZO_HABITUAL = 28
 export const ETAPAS: { etapa: Etapa; quem: string; diasAntes: number }[] = [
-  { etapa: 'Materiais', quem: "Pereira's Project", diasAntes: 35 },
-  { etapa: 'Corte', quem: 'Pereira & Cruz', diasAntes: 28 },
-  { etapa: 'Confeção', quem: 'Pereira & Cruz', diasAntes: 18 },
-  { etapa: 'Lavandaria', quem: 'Clothius', diasAntes: 10 },
-  { etapa: 'Embalamento', quem: 'Paulo e Marta', diasAntes: 3 },
+  { etapa: 'Materiais', quem: "Pereira's Project", diasAntes: 24 },
+  { etapa: 'Corte', quem: 'Pereira & Cruz', diasAntes: 21 },
+  { etapa: 'Confeção', quem: 'Pereira & Cruz', diasAntes: 12 },
+  { etapa: 'Lavandaria', quem: 'Clothius', diasAntes: 6 },
+  { etapa: 'Embalamento', quem: 'Paulo e Marta', diasAntes: 2 },
   { etapa: 'Expedição', quem: "Pereira's Project", diasAntes: 0 },
 ]
+
+/** Data da encomenda (documento do cliente, ou quando foi criada) e entrega habitual 4 semanas depois. */
+export const dataEncomenda = (e: Encomenda) => (e.dataDocumento || e.criadaEm || '').slice(0, 10)
+export const entregaHabitual = (e: Encomenda) => (dataEncomenda(e) ? somarDias(dataEncomenda(e), PRAZO_HABITUAL) : '')
 
 const dia = 864e5
 export const somarDias = (iso: string, n: number) => new Date(new Date(`${iso}T12:00:00`).getTime() + n * dia).toISOString().slice(0, 10)

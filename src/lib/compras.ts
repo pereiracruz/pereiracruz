@@ -23,7 +23,7 @@ export interface LinhaCompra {
   semConsumo: boolean // ex.: linha (só cor e fornecedor)
 }
 
-export const MARGEM_COMPRAS = { tecido: 3, acessorios: 2 }
+export const MARGEM_COMPRAS = { tecido: 5, acessorios: 5 }
 export const ESTADOS_COMPRA: EstadoCompraTipo[] = ['Por encomendar', 'Encomendado', 'Recebido']
 
 const daCliente = (f: string) => /cliente/i.test(f)

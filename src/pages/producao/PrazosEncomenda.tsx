@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { AlertTriangle, CalendarClock, Check } from 'lucide-react'
 import { useDb } from '../../store/db'
 import { Botao, Cartao, Etiqueta, aviso } from '../../components/ui'
-import { ETAPAS, diasAte, planear, prazoDe, situacaoPrazos } from '../../lib/prazos'
+import { ETAPAS, PRAZO_HABITUAL, dataEncomenda, diasAte, entregaHabitual, planear, prazoDe, situacaoPrazos } from '../../lib/prazos'
 import { dataCurta, hojeISO } from '../../lib/format'
 import type { Encomenda, Etapa, Prazo } from '../../types'
 
@@ -20,7 +20,8 @@ export default function PrazosEncomenda({ enc }: { enc: Encomenda }) {
       <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-3 flex-wrap">
         <div>
           <h3 className="font-semibold">Prazos</h3>
-          <p className="text-[13px] text-suave">{enc.entrega ? <>Entrega a <b>{dataCurta(enc.entrega)}</b> ({textoDias(diasAte(enc.entrega))}).</> : 'Sem data de entrega: vem no email do cliente.'} Datas previstas de cada etapa; marque quando estiver feita.</p>
+          <p className="text-[13px] text-suave">{enc.entrega ? <>Entrega a <b>{dataCurta(enc.entrega)}</b> ({textoDias(diasAte(enc.entrega))}).</> : <>Sem data de entrega: vem no email do cliente.{entregaHabitual(enc) && <> Com o prazo habitual de 4 semanas seria a <b>{dataCurta(entregaHabitual(enc))}</b>.</>}</>} Datas previstas de cada etapa; marque quando estiver feita.</p>
+          {enc.entrega && dataEncomenda(enc) && diasAte(enc.entrega, dataEncomenda(enc)) < PRAZO_HABITUAL && <p className="text-[12.5px] text-ambar mt-0.5">Prazo de {diasAte(enc.entrega, dataEncomenda(enc))} dias desde a encomenda ({dataCurta(dataEncomenda(enc))}): mais curto do que as 4 semanas habituais.</p>}
         </div>
         <Botao pequeno icone={<CalendarClock size={14} />} disabled={!enc.entrega || !emFalta} title={!enc.entrega ? 'Falta a data de entrega' : emFalta ? '' : 'Todas as etapas já têm data'}
           onClick={() => { atualizarEncomenda(enc.id, (e) => ({ ...e, prazos: planear(e) })); log('Prazos planeados', `${enc.cliente} · ${enc.colecao} · a partir da entrega ${dataCurta(enc.entrega)}`); aviso('Datas em falta preenchidas a partir da entrega. Ajuste o que for preciso.') }}>
@@ -56,7 +57,7 @@ export default function PrazosEncomenda({ enc }: { enc: Encomenda }) {
           })}
         </tbody>
       </table>
-      <p className="px-5 py-3 text-[12px] text-tenue">Os dias antes da entrega usados no planeamento são uma referência (materiais 35, corte 28, confeção 18, lavandaria 10, embalamento 3): ajuste em cada encomenda.</p>
+      <p className="px-5 py-3 text-[12px] text-tenue">Prazo habitual: 4 semanas, mas depende do modelo, da lavagem e do planeamento anterior. O planeamento automático usa, dentro dessas 4 semanas, materiais 24 dias antes da entrega, corte 21, confeção 12, lavandaria 6 e embalamento 2: ajuste em cada encomenda.</p>
     </Cartao>
   )
 }
