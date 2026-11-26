@@ -165,7 +165,7 @@ export const useDb = create<Estado>()(
       repor: () => { if (modoServidor) return; set(dadosIniciais()); get().log('Dados repostos', 'Dados de exemplo repostos') },
     }),
     {
-      name: 'pc-fichas-v1', version: 10,
+      name: 'pc-fichas-v1', version: 11,
       // com servidor, os dados vêm da base de dados: nada fica guardado no browser
       storage: createJSONStorage(() => (modoServidor ? { getItem: () => null, setItem: () => {}, removeItem: () => {} } : localStorage)),
       migrate: (antigo, versao) => {
@@ -204,6 +204,8 @@ export const useDb = create<Estado>()(
         // v8 → v9: a agente da Imprevu já não existe (SS27 e FW27)
         // v9 → v10: tabelas de preços da Clothius
         if (versao < 10) b = { ...b, precosTingimento: juntar(b.precosTingimento ?? [], seed.precosTingimento), precosLavagem: juntar(b.precosLavagem ?? [], seed.precosLavagem) }
+        // v10 → v11: botão de massa do chino na tabela de preços
+        if (versao < 11) b = { ...b, precosRef: juntar(b.precosRef, seed.precosRef) }
         if (versao < 9) b = { ...b, clientes: b.clientes.map((c) => (c.id === 'c1' && c.comissao === 7 ? { ...c, comissao: 0 } : c)) }
         return b
       },

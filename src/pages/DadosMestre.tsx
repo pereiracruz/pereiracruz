@@ -73,7 +73,7 @@ const SEPARADORES: Separador[] = [
     { campo: 'unidade', rotulo: 'Unidade' },
     { campo: 'origem', rotulo: 'Origem' },
   ] },
-  { id: 'precosTingimento', rotulo: 'Clothius · tingimento', desc: 'Tabela da Clothius de 01/04/2023, € por kg conforme o labdip. Inclui anti-pilling; tingimento GOTS +15 %; amostras com mínimo de 1 kg; cores e acabamentos especiais sujeitos a orçamento.', titulo: (l) => String(l.tipo), defs: [
+  { id: 'precosTingimento', rotulo: 'Clothius · tingimento', desc: 'Tabela da Clothius de 01/04/2023 (em vigor), € por kg conforme o labdip. Inclui anti-pilling; tingimento GOTS +15 %; amostras com mínimo de 1 kg; cores e acabamentos especiais sujeitos a orçamento.', titulo: (l) => String(l.tipo), defs: [
     { campo: 'tipo', rotulo: 'Tingimento', mostrar: (l) => <span className="font-medium">{String(l.tipo)}</span> },
     preco('amostras', 'Amostras (1–5 kg)', '/kg'), preco('branco', 'Branco', '/kg'), preco('claras', 'Cores claras', '/kg'), preco('medias', 'Cores médias', '/kg'),
     preco('escuras', 'Cores escuras', '/kg'), preco('preto', 'Preto', '/kg'), preco('especiais', 'Cores especiais', '/kg'),

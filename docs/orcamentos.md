@@ -70,7 +70,7 @@ Na SS27 (Longratex) há botão, bordado, elástico, botões de elástico e saco 
 | | Ganga (vaqueiro) | Sarja (chino) |
 |---|---|---|
 | Lavandaria (Clothius) | lavagem, **à peça** | tingimento, **ao kg** conforme o labdip (branco, clara, média, escura, preto, especial) |
-| Fecho da cintura | molas nos tamanhos de meses, botão nos de anos | botão de massa (preço por confirmar) |
+| Fecho da cintura | molas nos tamanhos de meses, botão nos de anos | botão de massa, 40,85 € o milheiro |
 | Rebites | 3 (meses e anos) | — |
 | Botões de elástico | sim | sim |
 
@@ -78,7 +78,7 @@ A ficha-modelo pede o tecido (Ganga / Sarja / Outro) e monta as linhas assim.
 
 ## Tabelas da Clothius (Dados mestre)
 
-- **Clothius · tingimento** (tabela de 01/04/2023, para a Pereira's Project): € por kg por tipo (reativo, direto,
+- **Clothius · tingimento** (tabela de 01/04/2023, em vigor, para a Pereira's Project): € por kg por tipo (reativo, direto,
   poliamida, acrílico, 2 fibras, retro dye, vegetal, pigmentos, sedas…) e cor do labdip (amostras, branco, clara,
   média, escura, preto, especial). Inclui anti-pilling; GOTS +15 %; amostras com mínimo de 1 kg.
 - **Clothius · lavandaria** (ganga/tecidos): € por peça, lavagens (molhados) e secos, por grupo

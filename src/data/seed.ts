@@ -102,7 +102,7 @@ export const destinatarios: Destinatario[] = [
 
 
 // ---------------- Tabelas de preços da Clothius (tingimento e lavandaria), enviadas pela Pereira's Project ----------------
-/** Tabela de tingimento de 01/04/2023. Inclui anti-pilling; GOTS +15 %; amostras faturadas com mínimo de 1 kg. */
+/** Tabela de tingimento de 01/04/2023 (em vigor, confirmado a 26/11/2026). Inclui anti-pilling; GOTS +15 %; amostras faturadas com mínimo de 1 kg. */
 export const TINGIMENTO_DATA = '01/04/2023'
 export const precosTingimento: PrecoTingimento[] = ([
   ['Reativo', 7.5, 2.25, 2.85, 3.2, 3.55, 3.75, 4.1],
@@ -190,6 +190,7 @@ export const precosRef: PrecoRef[] = [
   { id: 'p22', linha: 'Saco de embalamento', valor: 0.01585, unidade: 'por peça (31,70 € / 2000)', origem: 'Fichas de custo Longratex SS27' },
   { id: 'p23', linha: 'Saco da etiqueta', valor: 0.01, unidade: 'por peça', origem: 'Fichas de custo Longratex SS27' },
   { id: 'p24', linha: 'Acabamento (Longratex)', valor: 1, unidade: 'por peça', origem: 'Fichas de custo Longratex SS27' },
+  { id: 'p25', linha: 'Botão de massa (chino)', valor: 0.04085, unidade: 'por unidade (40,85 € o milheiro)', origem: 'Pereira & Cruz, 26/11/2026' },
 ]
 
 /** Ficha de custo-modelo da Pereira & Cruz (as 15 linhas das fichas de custo atuais), com valores de referência. */
@@ -216,7 +217,7 @@ export function linhasModeloPC(tipoPeca: string, tecido: 'Ganga' | 'Sarja' | 'Ou
     ...(ganga ? [
       L('Molas (meses) / botão (anos)', '€', 1, 0.1408, 'Confirmar', { valorExpr: '140.8/1000', nota: 'Molas nos tamanhos de meses; botão (70 € o milheiro) nos tamanhos de anos.' }),
       L('Rebites', '€', 3, 0.082, 'Confirmar', { nota: '3 rebites (meses e anos).' }),
-    ] : sarja ? [L('Botão de massa', '€', 1, 0, 'Confirmar', { nota: 'Preço do botão de massa por confirmar (diferente do botão do vaqueiro).' })]
+    ] : sarja ? [L('Botão de massa', '€', 1, 0.04085, 'Segura', { valorExpr: '40.85/1000', nota: '40,85 € o milheiro.' })]
       : [L('Botão / molas', '€', 1, 0.07, 'Confirmar', { valorExpr: '70/1000' })]),
     L('Botões elástico', '€', calcao ? 2 : 1, 0.012, 'Segura'),
     L('Fechos', '€', 1, 0.199, 'Segura'),
