@@ -34,13 +34,17 @@ export default function PrazosEncomenda({ enc }: { enc: Encomenda }) {
           <th className="text-left px-5 py-2 font-medium">Etapa</th><th className="text-left px-2 font-medium">Quem</th><th className="text-left px-2 font-medium w-44">Data prevista</th>
           <th className="text-left px-2 font-medium">Situação</th><th className="text-right px-5 font-medium">Feita</th></tr></thead>
         <tbody>
-          {ETAPAS.map(({ etapa, quem, diasAntes }) => {
+          {ETAPAS.map(({ etapa, quem, diasAntes, opcoesQuem }) => {
             const p = prazoDe(enc, etapa)
             const d = p.data ? diasAte(p.data, hoje) : null
             return (
               <tr key={etapa} className="border-b border-linha">
                 <td className="px-5 py-2.5 font-medium">{etapa}</td>
-                <td className="px-2 py-2 text-suave">{quem}</td>
+                <td className="px-2 py-2 text-suave">{opcoesQuem ? (
+                  <select value={p.quem ?? quem} onChange={(ev) => { mudar(etapa, { quem: ev.target.value === quem ? undefined : ev.target.value }); log('Responsável da etapa', `${enc.cliente} · ${enc.colecao} · ${etapa}: ${ev.target.value}`) }}
+                    className="h-8 px-2 rounded-md border border-linha bg-papel text-[13px] text-tinta outline-none focus:border-tinta-2">
+                    {opcoesQuem.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>) : quem}</td>
                 <td className="px-2 py-1.5"><input type="date" value={p.data ?? ''} onChange={(ev) => mudar(etapa, { data: ev.target.value || undefined })}
                   className="h-8 px-2 rounded-md border border-linha bg-papel text-[13px] outline-none focus:border-tinta-2" />
                   {!p.data && enc.entrega && <p className="text-[11px] text-tenue">sugestão: {diasAntes ? `${diasAntes} dias antes da entrega` : 'dia da entrega'}</p>}</td>
