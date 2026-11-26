@@ -21,6 +21,7 @@
 2. **SQL Editor → New query** → colar `supabase/migrations/20261125000000_inicial.sql` → **Run**.
    Depois, numa nova query, `supabase/migrations/20261125000100_permissoes.sql` → **Run**
    (os projetos novos não dão permissões automáticas às tabelas).
+   Depois, `supabase/migrations/20261126000000_colecoes.sql` (aceita as coleções novas, ex.: tabelas da Clothius).
 3. **Authentication → Sign In / Providers → Email**: desligar **«Allow new users to sign up»** (só a Pereira & Cruz cria contas).
 4. **Authentication → Users → Add user → Create new user**: email e palavra-passe do Admin, com «Auto Confirm User».
 5. **Project Settings → API** (ou «Data API» / «API Keys»): copiar

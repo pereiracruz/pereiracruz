@@ -83,7 +83,12 @@ async function carregar(user: User) {
     let linhas = await lerTudo()
     if (!linhas.length) linhas = await semear()
     else {
-      const novas = await atualizarMestre(linhas)
+      // dados mestre novos: se falhar (ex.: falta um script no Supabase), avisa mas não impede a entrada
+      const novas = await atualizarMestre(linhas).catch((e: { message?: string }) => {
+        console.error(e)
+        aviso(/check constraint/i.test(e.message ?? '') ? 'Falta correr no Supabase o script 20261126000000_colecoes.sql (tabelas da Clothius).' : 'Não foi possível atualizar os dados mestre no servidor.')
+        return [] as Linha[]
+      })
       const k = (l: Linha) => `${l.colecao}/${l.id}`
       const porChave = new Map(novas.map((l) => [k(l), l]))
       linhas = [...linhas.map((l) => porChave.get(k(l)) ?? l), ...novas.filter((l) => !linhas.some((x) => k(x) === k(l)))]
@@ -115,7 +120,7 @@ async function despejar() {
   fila.clear()
   const { error } = await supabase!.from('documentos').upsert(linhas)
   useDb.setState((s) => ({ aGuardar: Math.max(0, s.aGuardar - linhas.length) }))
-  if (error) { console.error(error); aviso('Não foi possível guardar no servidor. Verifique a ligação.') }
+  if (error) { console.error(error); aviso(/check constraint/i.test(error.message) ? 'Falta correr no Supabase o script 20261126000000_colecoes.sql.' : 'Não foi possível guardar no servidor. Verifique a ligação.') }
 }
 
 function agendar(l: Linha) {
