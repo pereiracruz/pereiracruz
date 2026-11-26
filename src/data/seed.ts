@@ -95,7 +95,7 @@ export const destinatarios: Destinatario[] = [
   { id: 'd3', folha: 'lavandaria', nome: 'Clothius', contacto: 'Lavandaria' },
   { id: 'd4', folha: 'bordador', nome: 'Hugo Gomes', contacto: 'Bordados' },
   { id: 'd5', folha: 'estampador', nome: 'Neivacor', contacto: 'Estampados' },
-  { id: 'd6', folha: 'embalamento', nome: 'Embalamento', contacto: 'Pereira & Cruz' },
+  { id: 'd6', folha: 'embalamento', nome: 'Paulo e Marta', contacto: 'Embalamento' },
   { id: 'd7', folha: 'packing', nome: 'Expedição', contacto: 'Packing list' },
   { id: 'd8', folha: 'medidas', nome: 'Modelista', contacto: 'Pereira & Cruz' },
 ]
