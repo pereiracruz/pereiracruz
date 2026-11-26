@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import clsx from 'clsx'
-import { Check, Smartphone } from 'lucide-react'
+import { Check, Link2, Smartphone } from 'lucide-react'
+import { NOME_EMPRESA_TOC, consultarTOC, testarTOC, tocDisponivel, type EmpresaTOC, type TesteTOC } from '../lib/toconline'
+import { dataCurta, eur } from '../lib/format'
 import { aoMudarInstalacao, appInstalada, eIOS, instalar, podeInstalar } from '../lib/app'
 import { useDb } from '../store/db'
 import { Botao, Cabecalho, Campo, Cartao, Entrada, aviso } from '../components/ui'
@@ -50,6 +52,7 @@ export default function Conta() {
           </form>
         </Cartao>
         <AppTelemovel />
+        <LigacaoTOC />
       </div>
     </>
   )
@@ -76,6 +79,64 @@ function AppTelemovel() {
             <ol className="list-decimal pl-5 space-y-0.5 text-tinta-2"><li>Abrir o site no <b>Chrome</b>.</li><li>Menu <b>⋮</b> → <b>Instalar app</b> (ou <b>Adicionar ao ecrã principal</b>).</li><li>Confirmar <b>Instalar</b>.</li></ol>
           </div>
         </div>
+      </>}
+    </Cartao>
+  )
+}
+
+/** Fase 1 da ligação ao TOConline: só leitura (testar e ver a estrutura de guias e faturas existentes). */
+function LigacaoTOC() {
+  const [empresa, setEmpresa] = useState<EmpresaTOC>('PP')
+  const [aTestar, setATestar] = useState(false)
+  const [teste, setTeste] = useState<TesteTOC | null>(null)
+  const [erro, setErro] = useState('')
+  const [json, setJson] = useState('')
+  const testar = async () => {
+    setATestar(true); setErro(''); setTeste(null); setJson('')
+    try { setTeste(await testarTOC(empresa)) } catch (e) { setErro(e instanceof Error ? e.message : String(e)) } finally { setATestar(false) }
+  }
+  const ver = async (id: string) => {
+    setJson('A ler…')
+    try { setJson(JSON.stringify(await consultarTOC(empresa, `commercial_sales_documents/${id}?include=lines`), null, 2)) } catch (e) { setJson(`Erro: ${e instanceof Error ? e.message : String(e)}`) }
+  }
+  return (
+    <Cartao className="p-6 lg:col-span-2">
+      <h3 className="font-semibold mb-1 flex items-center gap-2"><Link2 size={17} />Ligação ao TOConline</h3>
+      <p className="text-[14px] text-suave mb-3">Fase de teste, só leitura: confirma a ligação e mostra as séries e os últimos documentos. Não cria nada no TOConline.</p>
+      {!tocDisponivel ? <p className="text-[13px] text-tenue">Disponível no site publicado (com servidor).</p> : <>
+        <div className="flex items-center gap-2 flex-wrap">
+          {(['PP', 'PC'] as const).map((e) => (
+            <button key={e} onClick={() => { setEmpresa(e); setTeste(null); setErro('') }}
+              className={clsx('h-9 px-3 rounded-md border text-[14px]', empresa === e ? 'bg-tinta border-tinta text-white' : 'bg-papel border-linha')}>{NOME_EMPRESA_TOC[e]}</button>
+          ))}
+          <Botao variante="primario" disabled={aTestar} onClick={testar}>{aTestar ? 'A testar…' : 'Testar ligação'}</Botao>
+        </div>
+        {erro && <p className="mt-3 text-[13px] text-vermelho">{erro}</p>}
+        {teste && <div className="mt-4 space-y-4">
+          <p className="text-[13px] text-verde flex items-center gap-1.5"><Check size={14} />Ligação a {NOME_EMPRESA_TOC[empresa]} feita.</p>
+          <div>
+            <p className="text-[12px] uppercase tracking-wider text-suave mb-1">Séries</p>
+            <p className="text-[13px]">{teste.series.map((x) => `${x.document_type ?? '?'} ${x.prefix ?? x.name ?? ''}`).join(' · ') || '—'}</p>
+          </div>
+          <div className="overflow-x-auto">
+            <p className="text-[12px] uppercase tracking-wider text-suave mb-1">Últimos documentos</p>
+            <table className="w-full text-[13px] min-w-[620px]"><tbody>
+              {teste.documentos.map((d) => (
+                <tr key={d.id} className="border-b border-linha">
+                  <td className="py-1.5 pr-2 font-medium">{d.document_type} {d.document_no}</td><td className="pr-2">{dataCurta(d.date)}</td>
+                  <td className="pr-2">{d.customer_business_name}</td><td className="pr-2 text-right num">{d.gross_total != null ? eur(Number(d.gross_total)) : ''}</td>
+                  <td className="pr-2 text-suave">{d.vehicle_registration ?? ''}</td>
+                  <td className="text-right"><button onClick={() => ver(d.id)} className="text-azul text-[12px] hover:underline">ver estrutura</button></td>
+                </tr>
+              ))}
+            </tbody></table>
+          </div>
+          {json && <div>
+            <div className="flex justify-between items-center mb-1"><p className="text-[12px] uppercase tracking-wider text-suave">Estrutura do documento (para copiar e enviar ao Claude)</p>
+              <Botao pequeno onClick={() => navigator.clipboard?.writeText(json).then(() => aviso('Copiado.'), () => {})}>Copiar</Botao></div>
+            <textarea readOnly value={json} rows={12} className="w-full font-mono text-[11.5px] rounded-controlo border border-linha p-2" />
+          </div>}
+        </div>}
       </>}
     </Cartao>
   )
