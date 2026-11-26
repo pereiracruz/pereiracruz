@@ -6,7 +6,7 @@ import { useDb } from '../../store/db'
 import { Botao, Cabecalho, Campo, Cartao, Confianca, Entrada, Etiqueta, EtiquetaIA, Passos, Pilulas, Seletor, aviso, type Tom } from '../../components/ui'
 import { TechPack } from '../../components/TechPack'
 import { linhasModeloPC, linhasShirtMao } from '../../data/seed'
-import { MIN_CASOS_INTERVALO, avaliarExpr, calcularCusto, pecasParecidas, propostaIntervalo, totalLinha } from '../../lib/calc'
+import { EMPRESAS, MIN_CASOS_INTERVALO, avaliarExpr, calcularCusto, empresaDaLinha, totaisPorEmpresa, pecasParecidas, propostaIntervalo, totalLinha } from '../../lib/calc'
 import { dataCurta, eur, hojeISO, num, uid } from '../../lib/format'
 import type { LinhaCusto, OrigemCusto, Pedido } from '../../types'
 import { TOM_PEDIDO } from './Pedidos'
@@ -221,6 +221,7 @@ export default function NovoPedido() {
 function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar: (x: Partial<Pedido>) => void; editavel: boolean; compacta?: boolean }) {
   const cfg = useDb((s) => s.clientes.find((c) => c.nome === p.cliente))
   const c = calcularCusto(p.linhas, cfg, p.precoFinal, p)
+  const porEmpresa = totaisPorEmpresa(p.linhas)
   const [aberta, setAberta] = useState(!compacta)
   const linha = (id: string, x: Partial<LinhaCusto>) => atualizar({ linhas: p.linhas.map((l) => (l.id === id ? { ...l, ...x } : l)) })
   // consumo/valor: aceita números ou fórmulas simples (3/32, 140.8/1000, 0,46+0,08)
@@ -253,6 +254,11 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
                 <tr key={l.id} className="border-b border-linha align-top">
                   <td className="px-5 py-2">
                     {editavel ? <input defaultValue={l.descricao} onBlur={(e) => e.target.value.trim() && e.target.value !== l.descricao && linha(l.id, { descricao: e.target.value.trim() })} className="w-full bg-transparent outline-none focus:bg-fundo rounded px-1 -mx-1" /> : <p>{l.descricao}</p>}
+                    {(() => { const e = empresaDaLinha(l); return (
+                      <button disabled={!editavel} title={`${EMPRESAS[e].nome} (${EMPRESAS[e].papel})${editavel ? ' · clicar para trocar' : ''}`}
+                        onClick={() => linha(l.id, { empresa: e === 'PC' ? 'PP' : 'PC' })}
+                        className={clsx('mt-0.5 whitespace-nowrap text-[10.5px] font-semibold tracking-wide rounded px-1.5 py-px border', e === 'PC' ? 'text-azul border-azul/30' : 'text-ouro border-ouro/40', editavel && 'hover:bg-fundo')}>
+                        {e === 'PC' ? 'P&C' : 'PP'}</button>) })()}
                     {l.nota && <p className={clsx('text-[12px] mt-0.5 flex gap-1', incoerente ? 'text-ambar' : 'text-suave')}>{incoerente && <AlertTriangle size={12} className="mt-0.5 shrink-0" />}{l.nota}</p>}
                   </td>
                   <td className="px-1 py-1.5 text-center text-suave">{editavel
@@ -274,6 +280,9 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
         {editavel && <div className="px-5 pt-2"><Botao pequeno variante="fantasma" icone={<Plus size={13} />} onClick={() => atualizar({ linhas: [...p.linhas, { id: uid('c'), descricao: 'Nova linha', unidade: '€', consumo: 1, valor: 0, origem: 'Confirmar' }] })}>Acrescentar linha</Botao></div>}
         <div className="px-5 py-3 text-[13px] space-y-1.5">
           <div className="flex justify-between"><span>Total do custo</span><span className="font-semibold num">{eur(c.total)}</span></div>
+          {(['PC', 'PP'] as const).map((e) => (
+            <div key={e} className="flex justify-between text-suave text-[12px] pl-3"><span>{EMPRESAS[e].nome} <span className="text-tenue">· {EMPRESAS[e].papel}</span></span><span className="num">{eur(porEmpresa[e])}</span></div>
+          ))}
           {c.fixado ? (<>
             <div className={clsx('flex justify-between', c.margem < 0 ? 'text-vermelho font-semibold' : 'text-suave')}><span>Margem total {c.margem < 0 && '· preço abaixo do custo'}</span><span className="num">{eur(c.margem)} · {c.margemPct.toFixed(1).replace('.', ',')} %</span></div>
             {(p.margemFixa != null || p.comissaoPct != null) && Math.abs(c.ajuste) > 0.005 && (

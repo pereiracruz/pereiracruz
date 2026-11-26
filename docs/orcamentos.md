@@ -40,3 +40,14 @@ Analisado a partir de `SS27.xlsx` (Longratex: Vaqueiro, Calção chino, Calção
   (percentagem, ex.: `E28*0.07`) **· Preço final**. A ficha importada guarda a margem e a comissão próprias.
 - Avisos novos: preço final à mão diferente do cálculo, linha sem consumo, cor da folha ≠ nome,
   mesmo código ou nome de cabeçalho noutra folha (cabeçalho copiado?), preço abaixo do custo.
+
+## As duas empresas
+
+- **Pereira's Project** (comercial): fala com os clientes, compra tecidos e acessórios, coordena prazos,
+  lavandaria, acabamento, embalagem e entrega.
+- **Pereira & Cruz** (produção): corte, confeção e controlo das peças.
+
+Na ficha de custo, cada linha tem a empresa que a assume (P&C ou PP, clica-se para trocar) e o total do
+custo mostra a parte de cada uma. Regra: a empresa escrita na descrição («Corte- Pereira & Cruz»); sem nada escrito,
+corte, confeção e revista são da Pereira & Cruz e o resto da Pereira's Project.
+Na SS27 (Longratex) há botão, bordado, elástico, botões de elástico e saco etiqueta escritos «Pereira & Cruz» (a confirmar).

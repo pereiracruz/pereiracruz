@@ -1,4 +1,4 @@
-import type { ClienteCfg, Encomenda, LinhaCusto, LinhaMaterial, Modelo, PrecoHistorico, Variante } from '../types'
+import type { ClienteCfg, Encomenda, LinhaCusto, LinhaMaterial, Modelo, PrecoHistorico, Variante, Empresa } from '../types'
 
 export const soma = (a: number[]) => a.reduce((s, x) => s + x, 0)
 
@@ -131,6 +131,28 @@ export function packingList(qtd: number[], max: number): number[][] {
 
 // ---------------- Ficha de custo ----------------
 export const totalLinha = (l: LinhaCusto) => l.consumo * l.valor
+
+export const EMPRESAS: Record<Empresa, { nome: string; papel: string }> = {
+  PC: { nome: 'Pereira & Cruz', papel: 'produção: corte, confeção e controlo' },
+  PP: { nome: "Pereira's Project", papel: 'comercial: materiais, lavandaria, acabamento e entrega' },
+}
+/**
+ * Empresa que assume cada linha: a escolhida na ficha; senão a escrita na descrição («Corte - Pereira & Cruz»);
+ * senão a regra: corte, confeção e controlo/revista são da Pereira & Cruz, o resto (materiais, lavandaria,
+ * acabamento, embalagem) da Pereira's Project.
+ */
+export function empresaDaLinha(l: Pick<LinhaCusto, 'descricao' | 'empresa'>): Empresa {
+  if (l.empresa) return l.empresa
+  const d = l.descricao.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  if (/pereira'?s\s*project/.test(d)) return 'PP'
+  if (/pereira\s*(&|e)\s*cruz/.test(d)) return 'PC'
+  return /^(corte|confec|controlo|revista|costura)/.test(d.trim()) ? 'PC' : 'PP'
+}
+export function totaisPorEmpresa(linhas: LinhaCusto[]): Record<Empresa, number> {
+  const t: Record<Empresa, number> = { PC: 0, PP: 0 }
+  for (const l of linhas) t[empresaDaLinha(l)] += totalLinha(l)
+  return t
+}
 /**
  * Ficha de custo. Duas formas de chegar ao preço:
  * - preço final fixado (como nas fichas da Pereira & Cruz): margem total = preço final − custo;

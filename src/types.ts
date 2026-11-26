@@ -120,7 +120,10 @@ export interface LinhaCusto {
   unidade?: string // €, mts, kg…
   consumoExpr?: string // como foi escrito (ex.: «3/32» = 3 m de plano para 32 peças)
   valorExpr?: string // ex.: «140.8/1000» = preço por milheiro
+  empresa?: Empresa // quem assume o custo (por omissão: o que diz a descrição, ou a regra por tipo de linha)
 }
+/** PC = Pereira & Cruz (produção: corte, confeção, controlo); PP = Pereira's Project (comercial: materiais, lavandaria, acabamento, entrega). */
+export type Empresa = 'PC' | 'PP'
 export type EstadoPedido = 'Rascunho' | 'Por validar' | 'Validado' | 'Enviado' | 'Fechado'
 export interface Pedido {
   id: string
