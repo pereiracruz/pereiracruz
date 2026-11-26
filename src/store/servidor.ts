@@ -44,7 +44,26 @@ async function semear(): Promise<Linha[]> {
     if (error) throw error
   }
   await supabase!.from('atividade').insert({ acao: 'Dados iniciais carregados', detalhe: `${linhas.length} registos (clientes, dados mestre, encomendas de exemplo)` })
+  await supabase!.from('atividade').insert({ acao: 'Dados mestre atualizados', detalhe: `v${VERSAO_DADOS} · dados iniciais` })
   return linhas
+}
+
+/** Versão dos dados mestre de origem: ao subir, junta-se ao servidor o que for novo (sem alterar nem repor o que existe). */
+const VERSAO_DADOS = 8
+const MESTRE: Colecao[] = ['fornecedores', 'tecidos', 'equivalencias', 'lavagens', 'acessorios', 'escalas', 'destinatarios', 'precosRef', 'clientes']
+
+async function atualizarMestre(linhas: Linha[]): Promise<Linha[]> {
+  const { data: feito } = await supabase!.from('atividade').select('id').eq('acao', 'Dados mestre atualizados').like('detalhe', `v${VERSAO_DADOS} %`).limit(1)
+  if (feito?.length) return []
+  const ini = dadosIniciais() as unknown as Record<Colecao, { id: string }[]>
+  const existe = new Set(linhas.map((l) => `${l.colecao}/${l.id}`))
+  const novas: Linha[] = MESTRE.flatMap((c) => ini[c].filter((d) => !existe.has(`${c}/${d.id}`)).map((d) => ({ colecao: c, id: d.id, dados: d })))
+  if (novas.length) {
+    const { error } = await supabase!.from('documentos').upsert(novas)
+    if (error) throw error
+  }
+  await supabase!.from('atividade').insert({ acao: 'Dados mestre atualizados', detalhe: `v${VERSAO_DADOS} · ${novas.length} registos novos` })
+  return novas
 }
 
 async function carregar(user: User) {
@@ -52,6 +71,7 @@ async function carregar(user: User) {
   try {
     let linhas = await lerTudo()
     if (!linhas.length) linhas = await semear()
+    else linhas = [...linhas, ...(await atualizarMestre(linhas))]
     const porColecao = Object.fromEntries(COLECOES.map((c) => [c, ordenar(c, linhas.filter((l) => l.colecao === c).map((l) => l.dados as { id: string }))]))
     const { data: act } = await supabase!.from('atividade').select('id,data,acao,detalhe').order('data', { ascending: false }).limit(500)
     const { data: perfil } = await supabase!.from('perfis').select('nome').eq('id', user.id).maybeSingle()

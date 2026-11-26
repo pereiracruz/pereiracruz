@@ -161,7 +161,7 @@ export const useDb = create<Estado>()(
       repor: () => { if (modoServidor) return; set(dadosIniciais()); get().log('Dados repostos', 'Dados de exemplo repostos') },
     }),
     {
-      name: 'pc-fichas-v1', version: 7,
+      name: 'pc-fichas-v1', version: 8,
       // com servidor, os dados vêm da base de dados: nada fica guardado no browser
       storage: createJSONStorage(() => (modoServidor ? { getItem: () => null, setItem: () => {}, removeItem: () => {} } : localStorage)),
       migrate: (antigo, versao) => {
@@ -195,6 +195,8 @@ export const useDb = create<Estado>()(
         }
         // v6 → v7: acessórios da Longratex (etiqueta de marca e hangtag da cliente)
         if (versao < 7) b = { ...b, acessorios: juntar(b.acessorios, seed.acessoriosCliente) }
+        // v7 → v8: tabela de preços das fichas de custo da Longratex
+        if (versao < 8) b = { ...b, precosRef: juntar(b.precosRef, seed.precosRef) }
         return b
       },
     },

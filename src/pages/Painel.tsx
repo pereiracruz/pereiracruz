@@ -17,7 +17,7 @@ export default function Painel() {
   const maxPecas = modelos.length ? pecasModelo(modelos[0]) : 1
   const totalPecas = soma(modelos.map(pecasModelo))
 
-  const precos = pedidos.map((p) => p.precoMin ?? calcularCusto(p.linhas, clientes.find((c) => c.nome === p.cliente)).final)
+  const precos = pedidos.map((p) => p.precoMin ?? calcularCusto(p.linhas, clientes.find((c) => c.nome === p.cliente), p.precoFinal).final)
 
   return (
     <>

@@ -109,7 +109,47 @@ export const precosRef: PrecoRef[] = [
   { id: 'p6', linha: 'Revista', valor: 0.15, unidade: 'por peça', origem: 'Ficha de custo Shirt Mao' },
   { id: 'p7', linha: 'Lavandaria · lavagem simples', valor: 0.55, unidade: 'por peça', origem: 'Ficha de custo Shirt Mao' },
   { id: 'p8', linha: 'Bordado do peito', valor: 0.34, unidade: 'por peça', origem: 'Ficha de custo Shirt Mao' },
+  { id: 'p9', linha: 'Corte (Longratex)', valor: 0.25, unidade: 'por peça', origem: 'Fichas de custo Longratex SS27' },
+  { id: 'p10', linha: 'Plano de corte (Longratex)', valor: 2.5, unidade: 'por m de plano ÷ peças por plano', origem: 'Fichas de custo Longratex SS27' },
+  { id: 'p11', linha: 'Confeção · calça 5 bolsos (criança)', valor: 7, unidade: 'por peça', origem: 'Ficha de custo Longratex SS27' },
+  { id: 'p12', linha: 'Confeção · calção chino (criança)', valor: 7, unidade: 'por peça', origem: 'Ficha de custo Longratex SS27' },
+  { id: 'p13', linha: 'Confeção · calção vaqueiro (criança)', valor: 6.25, unidade: 'por peça', origem: 'Ficha de custo Longratex SS27' },
+  { id: 'p14', linha: 'Forro', valor: 1.4, unidade: 'por m', origem: 'Fichas de custo Longratex SS27' },
+  { id: 'p15', linha: 'Lavandaria Clothius', valor: 3.5, unidade: 'por kg (3,50–4,10)', origem: 'Fichas de custo Longratex SS27' },
+  { id: 'p16', linha: 'Fecho', valor: 0.199, unidade: 'por peça', origem: 'Fichas de custo Longratex SS27' },
+  { id: 'p17', linha: 'Botões de elástico', valor: 0.012, unidade: 'por unidade', origem: 'Fichas de custo Longratex SS27' },
+  { id: 'p18', linha: 'Botão latão ref. 0335', valor: 0.07, unidade: 'por unidade (70 € o milheiro)', origem: 'Fichas de custo Longratex SS27' },
+  { id: 'p19', linha: 'Molas latão ref. 0481B', valor: 0.1408, unidade: 'por unidade (140,80 € o milheiro)', origem: 'Ficha de custo Longratex SS27' },
+  { id: 'p20', linha: 'Bordado (criança)', valor: 0.3, unidade: 'por peça (0,30–0,35)', origem: 'Fichas de custo Longratex SS27' },
+  { id: 'p21', linha: 'Elástico', valor: 0.12, unidade: 'por m (0,12–0,15)', origem: 'Fichas de custo Longratex SS27' },
+  { id: 'p22', linha: 'Saco de embalamento', valor: 0.01585, unidade: 'por peça (31,70 € / 2000)', origem: 'Fichas de custo Longratex SS27' },
+  { id: 'p23', linha: 'Saco da etiqueta', valor: 0.01, unidade: 'por peça', origem: 'Fichas de custo Longratex SS27' },
+  { id: 'p24', linha: 'Acabamento (Longratex)', valor: 1, unidade: 'por peça', origem: 'Fichas de custo Longratex SS27' },
 ]
+
+/** Ficha de custo-modelo da Pereira & Cruz (as 15 linhas das fichas de custo atuais), com valores de referência. */
+export function linhasModeloPC(tipoPeca: string): LinhaCusto[] {
+  const calcao = /cal[çc][õo]es|cal[çc][ãa]o/i.test(tipoPeca)
+  const L = (descricao: string, unidade: string, consumo: number, valor: number, origem: LinhaCusto['origem'], extra: Partial<LinhaCusto> = {}): LinhaCusto =>
+    ({ id: `c${Math.random().toString(36).slice(2, 8)}`, descricao, unidade, consumo, valor, origem, ...extra })
+  return [
+    L('Corte - Pereira & Cruz', '€', 1, 0.25, 'Segura'),
+    L("Plano de corte - Pereira's Project", '€', 3 / 32, 2.5, 'Segura', { consumoExpr: '3/32', nota: 'Metros de plano ÷ peças por plano.' }),
+    L('Confeção - Pereira & Cruz', '€', 1, calcao ? 6.25 : 7, 'Confirmar', { nota: 'Valor de referência: confirmar para este modelo.' }),
+    L("Forro - Pereira's Project", '€', 0.2, 1.4, 'Segura'),
+    L('Tecido', 'mts', 0.4, 4, 'Estimada', { nota: 'Confirmar tecido, consumo e preço por metro.' }),
+    L('Lavandaria - Clothius', 'kg', 0.3, 3.5, 'Estimada', { nota: 'Preço por kg conforme a lavagem.' }),
+    L('Botão / molas', '€', 1, 0.07, 'Confirmar', { valorExpr: '70/1000' }),
+    L('Botões elástico - Pereira & Cruz', '€', calcao ? 2 : 1, 0.012, 'Segura'),
+    L("Fechos - Pereira's Project", '€', 1, 0.199, 'Segura'),
+    L('Bordado - Pereira & Cruz', '€', 1, 0.3, 'Confirmar'),
+    L('Elástico - Pereira & Cruz', 'mts', 0.5, 0.12, 'Confirmar'),
+    L('Saco etiqueta - Pereira & Cruz', '€', 0, 0.01, 'Segura'),
+    L('Saco embalamento', '€', 1, 31.7 / 2000, 'Segura', { valorExpr: '31.7/2000' }),
+    L('Revista', '€', 1, 0.15, 'Segura'),
+    L('Acabamento', '€', 1, 1, 'Segura'),
+  ]
+}
 
 export const clientes: ClienteCfg[] = [
   { id: 'c1', nome: 'Imprevu', margemTipo: 'fixa', margem: 3, comissao: 7, idPrefixo: 'IMP' },

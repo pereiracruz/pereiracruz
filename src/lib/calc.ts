@@ -131,12 +131,32 @@ export function packingList(qtd: number[], max: number): number[][] {
 
 // ---------------- Ficha de custo ----------------
 export const totalLinha = (l: LinhaCusto) => l.consumo * l.valor
-export function calcularCusto(linhas: LinhaCusto[], cfg?: ClienteCfg) {
+/**
+ * Ficha de custo. Duas formas de chegar ao preço:
+ * - preço final fixado (como nas fichas da Pereira & Cruz): margem total = preço final − custo;
+ * - calculado: custo + margem do cliente (fixa ou %) + comissão do agente (% sobre o custo).
+ */
+export function calcularCusto(linhas: LinhaCusto[], cfg?: ClienteCfg, precoFinal?: number) {
   const total = soma(linhas.map(totalLinha))
+  if (precoFinal != null) {
+    const margem = precoFinal - total
+    return { total, margem, comissao: 0, final: precoFinal, margemPct: precoFinal ? (margem / precoFinal) * 100 : 0, fixado: true }
+  }
   const margem = !cfg ? 0 : cfg.margemTipo === 'fixa' ? cfg.margem : (total * cfg.margem) / 100
   const comissao = cfg ? (total * cfg.comissao) / 100 : 0
   const final = total + margem + comissao
-  return { total, margem, comissao, final }
+  return { total, margem, comissao, final, margemPct: final ? ((margem + comissao) / final) * 100 : 0, fixado: false }
+}
+
+/** Lê «3/32», «0,46+0,08», «140.8/1000» ou «1,2» (só números e + − × ÷). */
+export function avaliarExpr(s: string): number | null {
+  const t = s.trim().replace(/\s/g, '').replace(/,/g, '.').replace(/^=/, '').replace(/[x×]/g, '*').replace(/÷/g, '/')
+  if (!t || !/^[\d.+\-*/()]+$/.test(t)) return null
+  try {
+    // eslint-disable-next-line no-new-func
+    const v = Function(`"use strict"; return (${t})`)() as number
+    return Number.isFinite(v) ? v : null
+  } catch { return null }
 }
 
 // ---------------- Peças parecidas ----------------

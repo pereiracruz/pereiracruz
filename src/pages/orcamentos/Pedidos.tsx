@@ -1,27 +1,70 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CheckCheck, Plus, Send, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Check, CheckCheck, FileSpreadsheet, Plus, Send, ShieldCheck } from 'lucide-react'
 import { useDb } from '../../store/db'
-import { Botao, Cabecalho, Etiqueta, Kpi, Tabela, type Tom } from '../../components/ui'
+import { Botao, Cabecalho, Etiqueta, Kpi, Modal, Tabela, aviso, type Tom } from '../../components/ui'
+import { lerFichasCusto, type FichaCustoLida } from '../../lib/lerFichaCusto'
 import { calcularCusto } from '../../lib/calc'
-import { dataCurta, eur } from '../../lib/format'
+import { dataCurta, eur, hojeISO, slug } from '../../lib/format'
 import type { EstadoPedido, Pedido } from '../../types'
 
 export const TOM_PEDIDO: Record<EstadoPedido, Tom> = { Rascunho: 'neutro', 'Por validar': 'ambar', Validado: 'verde', Enviado: 'azul', Fechado: 'neutro' }
 
 export default function Pedidos() {
-  const { pedidos, clientes } = useDb()
+  const { pedidos, clientes, guardarPedido, adicionarHistorico, log } = useDb()
+  const input = useRef<HTMLInputElement>(null)
+  const [lidas, setLidas] = useState<{ ficheiro: string; fichas: FichaCustoLida[] } | null>(null)
+  const [escolhidas, setEscolhidas] = useState<Set<string>>(new Set())
+  const [erroImp, setErroImp] = useState('')
+  const titulo = (t: string) => t.toLowerCase().replace(/(^|\s|-)\S/g, (c) => c.toUpperCase())
+
+  const abrir = async (f: File) => {
+    setErroImp('')
+    try {
+      const fichas = lerFichasCusto(await f.arrayBuffer())
+      if (!fichas.length) throw new Error('Não encontrei nenhuma ficha de custo (tabela com «Descrição», «Consumo» e «Valor Unitário»).')
+      setLidas({ ficheiro: f.name, fichas }); setEscolhidas(new Set(fichas.map((x) => x.folha)))
+    } catch (e) { setErroImp(e instanceof Error ? e.message : String(e)) }
+  }
+
+  const importar = () => {
+    if (!lidas) return
+    let n = 0
+    for (const f of lidas.fichas.filter((x) => escolhidas.has(x.folha))) {
+      const cliente = clientes.find((c) => c.nome.toLowerCase() === f.cliente.toLowerCase())?.nome ?? (f.cliente || '—')
+      const tecido = f.linhas.find((l) => /^tecido/i.test(l.descricao))?.descricao.replace(/^tecido\s*-?\s*/i, '').trim() || '—'
+      const id = `fc-${slug(`${cliente}-${f.codigo || f.nome}-${f.variante}`)}`
+      const pedido: Pedido = {
+        id, cliente, peca: titulo(f.nome), variante: titulo(f.variante), tipoPeca: f.tipoPeca, tecido, tratamento: '—', entrega: '',
+        linhas: f.linhas.map(({ totalFicheiro: _t, fixo: _f, ...l }) => l), estado: f.precoFinal != null ? 'Fechado' : 'Rascunho',
+        precoFinal: f.precoFinal ?? undefined, precoMin: f.precoFinal ?? undefined, precoMax: f.precoFinal ?? undefined,
+        validadoPor: f.precoFinal != null ? 'Importado' : undefined, criadoEm: hojeISO(), referencia: f.codigo || undefined,
+        origem: 'importado', origemFicheiro: `${lidas.ficheiro} · ${f.folha}`,
+      }
+      guardarPedido(pedido)
+      if (f.precoFinal != null) adicionarHistorico({ id: `${id}-h`, cliente, peca: pedido.peca, variante: pedido.variante, tipoPeca: f.tipoPeca, tecido, tratamento: pedido.variante || '—', preco: f.precoFinal, pecas: null, origem: 'Ficha de custo', data: hojeISO() })
+      n++
+    }
+    log('Fichas de custo importadas', `${lidas.ficheiro} · ${n} fichas`)
+    aviso(`${n} ${n === 1 ? 'ficha importada' : 'fichas importadas'}.`)
+    setLidas(null)
+  }
   const nav = useNavigate()
   const [kpi, setKpi] = useState<EstadoPedido | ''>('')
   const preco = (p: Pedido) => p.precoMin != null && p.precoMax != null
     ? (p.precoMin === p.precoMax ? eur(p.precoMin) : `${eur(p.precoMin)} – ${eur(p.precoMax)}`)
-    : eur(calcularCusto(p.linhas, clientes.find((c) => c.nome === p.cliente)).final)
+    : eur(calcularCusto(p.linhas, clientes.find((c) => c.nome === p.cliente), p.precoFinal).final)
   const k = (e: EstadoPedido) => ({ ativo: kpi === e, onClick: () => setKpi(kpi === e ? '' : e), valor: pedidos.filter((p) => p.estado === e).length })
 
   return (
     <>
       <Cabecalho sobre="Pré-orçamentação" titulo="Pedidos" sub={`${pedidos.length} ${pedidos.length === 1 ? 'pedido' : 'pedidos'}`}
-        acoes={<Botao variante="primario" icone={<Plus size={16} />} onClick={() => nav('/orcamentos/novo')}>Novo pedido</Botao>} />
+        acoes={<>
+          <Botao icone={<FileSpreadsheet size={15} />} onClick={() => input.current?.click()}>Importar fichas de custo</Botao>
+          <input ref={input} type="file" hidden accept=".xlsx,.xls" onChange={(e) => { const f = e.target.files?.[0]; if (f) void abrir(f); e.target.value = '' }} />
+          <Botao variante="primario" icone={<Plus size={16} />} onClick={() => nav('/orcamentos/novo')}>Novo pedido</Botao>
+        </>} />
+      {erroImp && <p className="mb-4 text-[13px] text-vermelho bg-vermelho-fraco border border-vermelho-borda rounded-controlo px-3 py-2">{erroImp}</p>}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <Kpi rotulo="Por validar" icone={<ShieldCheck size={14} />} tom="ambar" {...k('Por validar')} />
         <Kpi rotulo="Enviados" icone={<Send size={14} />} {...k('Enviado')} />
@@ -37,6 +80,36 @@ export default function Pedidos() {
           { id: 'val', rotulo: 'Validado por', valor: (p) => p.validadoPor ?? '—', alinhar: 'centro' },
           { id: 'estado', rotulo: 'Estado', valor: (p) => p.estado, filtro: 'lista', alinhar: 'centro', render: (p) => <Etiqueta tom={TOM_PEDIDO[p.estado]}>{p.estado}</Etiqueta> },
         ]} />
+
+      <Modal aberto={!!lidas} onFechar={() => setLidas(null)} titulo="Importar fichas de custo" largura="max-w-3xl"
+        sub={lidas ? `${lidas.ficheiro} · ${lidas.fichas.length} ${lidas.fichas.length === 1 ? 'ficha' : 'fichas'}. Os totais são recalculados por fórmula (consumo × valor).` : ''}
+        rodape={<><Botao variante="fantasma" onClick={() => setLidas(null)}>Cancelar</Botao><Botao variante="primario" disabled={!escolhidas.size} onClick={importar}>Importar {escolhidas.size} {escolhidas.size === 1 ? 'ficha' : 'fichas'}</Botao></>}>
+        <div className="space-y-3">
+          {lidas?.fichas.map((f) => {
+            const sel = escolhidas.has(f.folha)
+            const margem = f.precoFinal != null ? f.precoFinal - f.totalCalculado : null
+            return (
+              <label key={f.folha} className={`block rounded-cartao border p-4 cursor-pointer ${sel ? 'border-tinta' : 'border-linha opacity-70'}`}>
+                <div className="flex items-start gap-3">
+                  <input type="checkbox" className="mt-1 size-4 accent-[#1c1b19]" checked={sel} onChange={() => { const n = new Set(escolhidas); if (sel) n.delete(f.folha); else n.add(f.folha); setEscolhidas(n) }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium">{titulo(f.nome)} {f.variante && <span className="text-suave font-normal">· {titulo(f.variante)}</span>}</p>
+                    <p className="text-[12px] text-suave">Folha «{f.folha}» · {f.cliente || 'cliente?'} · {f.tipoPeca}{f.codigo && ` · ref. ${f.codigo}`} · {f.linhas.length} linhas</p>
+                    <div className="flex gap-x-5 gap-y-1 flex-wrap text-[13px] mt-2 num">
+                      <span>Custo <b>{eur(f.totalCalculado)}</b>{f.totalFicheiro != null && Math.abs(f.totalFicheiro - f.totalCalculado) > 0.005 && <span className="text-ambar"> (na ficha: {eur(f.totalFicheiro)})</span>}</span>
+                      <span>Preço final <b>{f.precoFinal != null ? eur(f.precoFinal) : '—'}</b></span>
+                      {margem != null && <span className={margem < 0 ? 'text-vermelho' : ''}>Margem <b>{eur(margem)}</b> ({((margem / f.precoFinal!) * 100).toFixed(1).replace('.', ',')} %)</span>}
+                    </div>
+                    {f.avisos.length > 0
+                      ? <ul className="mt-2 space-y-0.5">{f.avisos.map((a) => <li key={a} className="text-[12px] text-ambar flex gap-1.5"><AlertTriangle size={12} className="mt-0.5 shrink-0" />{a}</li>)}</ul>
+                      : <p className="mt-2 text-[12px] text-verde flex items-center gap-1.5"><Check size={12} />Sem avisos.</p>}
+                  </div>
+                </div>
+              </label>
+            )
+          })}
+        </div>
+      </Modal>
     </>
   )
 }

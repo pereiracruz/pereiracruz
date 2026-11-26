@@ -115,7 +115,12 @@ export interface Encomenda {
 
 // ---------- Orçamentação ----------
 export type OrigemCusto = 'Segura' | 'Estimada' | 'Confirmar'
-export interface LinhaCusto { id: string; descricao: string; consumo: number; valor: number; origem: OrigemCusto; nota?: string; confirmado?: boolean }
+export interface LinhaCusto {
+  id: string; descricao: string; consumo: number; valor: number; origem: OrigemCusto; nota?: string; confirmado?: boolean
+  unidade?: string // €, mts, kg…
+  consumoExpr?: string // como foi escrito (ex.: «3/32» = 3 m de plano para 32 peças)
+  valorExpr?: string // ex.: «140.8/1000» = preço por milheiro
+}
 export type EstadoPedido = 'Rascunho' | 'Por validar' | 'Validado' | 'Enviado' | 'Fechado'
 export interface Pedido {
   id: string
@@ -133,6 +138,10 @@ export interface Pedido {
   estado: EstadoPedido
   validadoPor?: string
   criadoEm: string
+  precoFinal?: number // preço fixado pela Pereira & Cruz; a margem = preço final − custo
+  referencia?: string // código do modelo na ficha de custo
+  origemFicheiro?: string // ficha de custo importada (ficheiro · folha)
+  origem?: 'ia' | 'modelo' | 'importado' // como foi criada a ficha de custo
 }
 export interface PrecoHistorico {
   id: string; cliente: string; peca: string; variante: string; tipoPeca: string; tecido: string; tratamento: string
