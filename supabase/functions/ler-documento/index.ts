@@ -137,14 +137,21 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return resposta({ erro: 'Método não permitido' }, 405)
 
   try {
+    // só utilizadores com sessão iniciada na aplicação (não depende da opção «Verify JWT»)
+    const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
+    if (!token) return resposta({ erro: 'Sessão necessária.' }, 401)
+    const chave = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, chave, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+    const { data: quem, error: eSessao } = await supabase.auth.getUser(token)
+    if (eSessao || !quem.user) return resposta({ erro: 'Sessão inválida ou expirada. Volte a entrar na aplicação.' }, 401)
+
     const { caminho, tipo, contexto } = await req.json() as { caminho: string; tipo: 'encomenda' | 'techpack'; contexto?: string }
     if (!caminho || (tipo !== 'encomenda' && tipo !== 'techpack')) return resposta({ erro: 'Pedido inválido' }, 400)
 
     // descarregar o ficheiro com a sessão de quem pediu (respeita as regras de acesso)
-    const chave = Deno.env.get('SUPABASE_ANON_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, chave, {
-      global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
-    })
     const { data: ficheiro, error } = await supabase.storage.from('documentos').download(caminho)
     if (error || !ficheiro) return resposta({ erro: 'Não consegui abrir o ficheiro guardado.' }, 404)
 
