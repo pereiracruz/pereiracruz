@@ -29,8 +29,10 @@ export const totalMaterial = (l: LinhaMaterial, v: Variante) => (l.consumo == nu
 
 /** Quantidade de referência para o embalamento: confecionado (se já houver) ou encomenda. */
 export const qtdConfecionada = (v: Variante) => v.qtdConfecionado ?? v.qtd
+/** Embalado só conta se tiver alguma peça; tudo a 0 = ainda por preencher (fica em branco nas folhas). */
+export const qtdEmbaladaPreenchida = (v: Variante) => (v.qtdEmbalado && soma(v.qtdEmbalado) > 0 ? v.qtdEmbalado : undefined)
 /** Quantidade a pôr nas caixas: embalado → confecionado → encomenda. */
-export const qtdParaEmbalar = (v: Variante) => v.qtdEmbalado ?? v.qtdConfecionado ?? v.qtd
+export const qtdParaEmbalar = (v: Variante) => qtdEmbaladaPreenchida(v) ?? v.qtdConfecionado ?? v.qtd
 
 /** ID interno: E + ano (2 dígitos) + nº da encomenda + nº do modelo na encomenda. Ex.: E26-082-3 */
 export function idInterno(e: Encomenda, m: Modelo) {
@@ -74,10 +76,11 @@ export function verificarFicha(m: Modelo, v: Variante): Verificacao[] {
     const abaixo = v.qtdConfecionado.some((q, i) => q < v.qtd[i])
     out.push({ ok: !abaixo, aviso: true, texto: abaixo ? 'Confecionado abaixo da encomenda nalgum tamanho' : `Confecionado: ${soma(v.qtdConfecionado)} peças` })
   }
-  if (v.qtdEmbalado) {
+  const embalado = qtdEmbaladaPreenchida(v)
+  if (embalado) {
     const ref = v.qtdConfecionado ?? v.qtd
-    const mais = v.qtdEmbalado.some((q, i) => q > ref[i])
-    out.push({ ok: !mais, aviso: true, texto: mais ? 'Embalado acima do confecionado nalgum tamanho' : `Embalado: ${soma(v.qtdEmbalado)} peças` })
+    const mais = embalado.some((q, i) => q > ref[i])
+    out.push({ ok: !mais, aviso: true, texto: mais ? 'Embalado acima do confecionado nalgum tamanho' : `Embalado: ${soma(embalado)} peças` })
   }
   return out
 }

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { createElement } from 'react'
 import type { Destinatario, Encomenda, FolhaTipo, Modelo, Variante } from '../types'
 import { Folha, NOME_FOLHA } from '../components/Folhas'
-import { idInterno, soma } from './calc'
+import { idInterno, qtdEmbaladaPreenchida, soma } from './calc'
 import { calcularEnvio } from './packing'
 import { dataCurta, slug } from './format'
 
@@ -39,9 +39,12 @@ function grelha(enc: Encomenda, m: Modelo, v: Variante, folha: FolhaTipo, idEnc:
     const rc = L.length + 1
     push('', 'TOTAL CONFECIONADO', ...(v.qtdConfecionado ?? tam.map(() => '')), v.qtdConfecionado ? somaLinha(rc, soma(v.qtdConfecionado)) : '')
     const re = L.length + 1
-    push('', 'TOTAL EMBALADO', ...(v.qtdEmbalado ?? tam.map(() => '')), v.qtdEmbalado ? somaLinha(re, soma(v.qtdEmbalado)) : '')
-    if (v.qtdConfecionado && v.qtdEmbalado) {
-      push('', 'SOBRAS', ...tam.map((_, i) => F(`${col(c0 + i)}${rc}-${col(c0 + i)}${re}`, v.qtdConfecionado![i] - v.qtdEmbalado![i])))
+    const embalado = qtdEmbaladaPreenchida(v) // sem embalado: linha em branco para escrever à mão
+    push('', 'TOTAL EMBALADO', ...(embalado ?? tam.map(() => '')), embalado ? somaLinha(re, soma(embalado)) : '')
+    if (v.qtdConfecionado && embalado) {
+      push('', 'SOBRAS', ...tam.map((_, i) => F(`${col(c0 + i)}${rc}-${col(c0 + i)}${re}`, v.qtdConfecionado![i] - embalado[i])))
+    } else {
+      push('', 'SOBRAS', ...tam.map(() => ''), '')
     }
     // acessórios de embalamento sobre o confecionado (se houver)
     if (v.qtdConfecionado) { totalRef = `$${col(cN + 1)}$${rc}`; base = soma(v.qtdConfecionado) }
