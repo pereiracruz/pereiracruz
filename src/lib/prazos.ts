@@ -9,10 +9,10 @@ import { resumoCompras } from './compras'
  * Dias antes da entrega usados no planeamento automático, dentro dessas 4 semanas (editáveis em cada encomenda).
  */
 export const PRAZO_HABITUAL = 28
-export const ETAPAS: { etapa: Etapa; quem: string; diasAntes: number }[] = [
+export const ETAPAS: { etapa: Etapa; quem: string; diasAntes: number; opcoesQuem?: string[] }[] = [
   { etapa: 'Materiais', quem: "Pereira's Project", diasAntes: 24 },
   { etapa: 'Corte', quem: 'Pereira & Cruz', diasAntes: 21 },
-  { etapa: 'Confeção', quem: 'Pereira & Cruz', diasAntes: 12 },
+  { etapa: 'Confeção', quem: 'Pereira & Cruz', diasAntes: 12, opcoesQuem: ['Pereira & Cruz', 'Fora'] }, // por vezes a confeção é feita fora
   { etapa: 'Lavandaria', quem: 'Clothius', diasAntes: 6 },
   { etapa: 'Embalamento', quem: 'Paulo e Marta', diasAntes: 2 },
   { etapa: 'Expedição', quem: "Pereira's Project", diasAntes: 0 },

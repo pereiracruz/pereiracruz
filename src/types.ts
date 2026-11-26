@@ -104,7 +104,7 @@ export interface Envio { id: string; nome: string; data: string; itens: { modelo
 export type EstadoCompraTipo = 'Por encomendar' | 'Encomendado' | 'Recebido'
 export interface EstadoCompra { chave: string; estado: EstadoCompraTipo; data?: string; nota?: string }
 export type Etapa = 'Materiais' | 'Corte' | 'Confeção' | 'Lavandaria' | 'Embalamento' | 'Expedição'
-export interface Prazo { etapa: Etapa; data?: string; feito?: string }
+export interface Prazo { etapa: Etapa; data?: string; feito?: string; quem?: string } // quem: escolhido na encomenda (ex.: confeção feita fora)
 
 export type EstadoEncomenda = 'Em revisão' | 'Fichas geradas' | 'Concluída'
 
