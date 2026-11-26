@@ -55,12 +55,13 @@ const SEPARADORES: Separador[] = [
     { campo: 'nome', rotulo: 'Destinatário', mostrar: (l) => <span className="font-medium">{String(l.nome)}</span> },
     { campo: 'contacto', rotulo: 'Contacto / departamento' },
   ] },
-  { id: 'clientes', rotulo: 'Clientes', desc: 'Margem (fixa ou percentual) e comissão do agente por cliente, usadas na ficha de custo.', titulo: (l) => String(l.nome), defs: [
+  { id: 'clientes', rotulo: 'Clientes', desc: 'N/ comissão (fixa em € ou % sobre o custo) e agente por cliente, usadas no preço sugerido da ficha de custo. Objetivo: 25 % sobre o custo.', titulo: (l) => String(l.nome), defs: [
     { campo: 'nome', rotulo: 'Cliente', mostrar: (l) => <span className="font-medium">{String(l.nome)}</span> },
     { campo: 'idPrefixo', rotulo: 'Prefixo do ID', mostrar: (l) => <span className="font-mono text-[13px]">{String(l.idPrefixo)}</span> },
     { campo: 'margemTipo', rotulo: 'Tipo de margem', tipo: 'lista', opcoes: ['fixa', 'percentual'] },
     { campo: 'margem', rotulo: 'Margem', tipo: 'numero', mostrar: (l) => (l.margemTipo === 'fixa' ? eur(Number(l.margem)) : `${l.margem} %`) },
-    { campo: 'comissao', rotulo: 'Comissão do agente (%)', tipo: 'numero', mostrar: (l) => `${l.comissao} %` },
+    { campo: 'comissaoTipo', rotulo: 'Agente: tipo de comissão', tipo: 'lista', opcoes: ['percentual', 'fixa'] },
+    { campo: 'comissao', rotulo: 'Comissão do agente (% sobre custo + N/ comissão, ou € por peça)', tipo: 'numero', mostrar: (l) => (!Number(l.comissao) ? <span className="text-tenue">sem agente</span> : l.comissaoTipo === 'fixa' ? `${eur(Number(l.comissao))}/peça` : `${l.comissao} %`) },
     { campo: 'escala', rotulo: 'Escala de tamanhos' },
     { campo: 'notasFixas', rotulo: 'Notas fixas (uma por linha)', tipo: 'linhas', mostrar: (l) => ((l.notasFixas as string[] | undefined)?.length ? <span className="text-[13px] text-suave">{(l.notasFixas as string[]).length} notas</span> : <span className="text-tenue">—</span>) },
   ] },

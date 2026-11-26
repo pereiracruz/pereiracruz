@@ -133,42 +133,69 @@ export function packingList(qtd: number[], max: number): number[][] {
 export const totalLinha = (l: LinhaCusto) => l.consumo * l.valor
 
 export const EMPRESAS: Record<Empresa, { nome: string; papel: string }> = {
-  PC: { nome: 'Pereira & Cruz', papel: 'produção: corte, confeção e controlo' },
-  PP: { nome: "Pereira's Project", papel: 'comercial: materiais, lavandaria, acabamento e entrega' },
+  PC: { nome: 'Pereira & Cruz', papel: 'corte e confeção' },
+  PP: { nome: "Pereira's Project", papel: 'materiais, lavandaria, acabamento e entrega' },
+  FORA: { nome: 'Confeção fora', papel: 'subcontratada' },
+  CLIENTE: { nome: 'Cliente', papel: 'corte ou material dado pelo cliente' },
 }
+export const ROTULO_EMPRESA: Record<Empresa, string> = { PC: 'P&C', PP: 'PP', FORA: 'FORA', CLIENTE: 'CLIENTE' }
+export const ORDEM_EMPRESAS: Empresa[] = ['PC', 'PP', 'FORA', 'CLIENTE']
 /**
  * Empresa que assume cada linha: a escolhida na ficha; senão a escrita na descrição («Corte - Pereira & Cruz»);
- * senão a regra: corte, confeção e controlo/revista são da Pereira & Cruz, o resto (materiais, lavandaria,
- * acabamento, embalagem) da Pereira's Project.
+ * senão a regra: corte, confeção e revista são da Pereira & Cruz (confeção «fora» é subcontratada), o resto
+ * (materiais, lavandaria, acabamento, embalagem) da Pereira's Project.
  */
 export function empresaDaLinha(l: Pick<LinhaCusto, 'descricao' | 'empresa'>): Empresa {
   if (l.empresa) return l.empresa
   const d = l.descricao.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  if (/\bfora\b|subcontrat/.test(d)) return 'FORA'
   if (/pereira'?s\s*project/.test(d)) return 'PP'
   if (/pereira\s*(&|e)\s*cruz/.test(d)) return 'PC'
   return /^(corte|confec|controlo|revista|costura)/.test(d.trim()) ? 'PC' : 'PP'
 }
 export function totaisPorEmpresa(linhas: LinhaCusto[]): Record<Empresa, number> {
-  const t: Record<Empresa, number> = { PC: 0, PP: 0 }
+  const t: Record<Empresa, number> = { PC: 0, PP: 0, FORA: 0, CLIENTE: 0 }
   for (const l of linhas) t[empresaDaLinha(l)] += totalLinha(l)
   return t
 }
+/** Margem desejada sobre o custo (nem sempre possível: o preço final é sempre decidido pela Pereira & Cruz). */
+export const MARGEM_OBJETIVO = 25
+type OpcoesFicha = { margemFixa?: number; comissaoPct?: number; comissaoFixa?: number; comissaoSobreCusto?: boolean }
+const arredondarCima = (v: number) => Math.ceil(v * 100 - 1e-9) / 100
+
+/** Agente: € por peça, ou % sobre (custo + N/ comissão); nas fichas antigas, % só sobre o custo. */
+function agente(base: number, custo: number, cfg?: ClienteCfg, ficha?: OpcoesFicha) {
+  const fixa = ficha?.comissaoFixa ?? (ficha?.comissaoPct == null && cfg?.comissaoTipo === 'fixa' ? cfg.comissao : undefined)
+  if (fixa != null) return { comissao: fixa, pct: 0, fixa }
+  const pct = ficha?.comissaoPct ?? cfg?.comissao ?? 0
+  return { comissao: ((ficha?.comissaoSobreCusto ? custo : base) * pct) / 100, pct, fixa: undefined as number | undefined }
+}
+
 /**
  * Ficha de custo. Duas formas de chegar ao preço:
- * - preço final fixado (como nas fichas da Pereira & Cruz): margem total = preço final − custo;
- * - calculado: custo + margem do cliente (fixa ou %) + comissão do agente (% sobre o custo).
+ * - preço final fixado (decidido à mão): margem total = preço final − custo (− agente);
+ * - calculado: custo + N/ comissão do cliente (fixa ou %) + agente (% sobre custo + N/ comissão, ou € por peça).
+ * margemPct é sempre sobre o custo (como os 20 % e o objetivo de 25 %).
  */
-export function calcularCusto(linhas: LinhaCusto[], cfg?: ClienteCfg, precoFinal?: number, ficha?: { margemFixa?: number; comissaoPct?: number }) {
+export function calcularCusto(linhas: LinhaCusto[], cfg?: ClienteCfg, precoFinal?: number, ficha?: OpcoesFicha) {
   const total = soma(linhas.map(totalLinha))
   const nMargem = ficha?.margemFixa ?? (!cfg ? 0 : cfg.margemTipo === 'fixa' ? cfg.margem : (total * cfg.margem) / 100)
-  const pct = ficha?.comissaoPct ?? cfg?.comissao ?? 0
-  const comissao = (total * pct) / 100
-  const valorTotal = total + nMargem + comissao
+  const ag = agente(total + nMargem, total, cfg, ficha)
+  const valorTotal = total + nMargem + ag.comissao
+  const pctCusto = (m: number) => (total ? (m / total) * 100 : 0)
   if (precoFinal != null) {
-    const margem = precoFinal - total
-    return { total, margem, comissao: 0, final: precoFinal, margemPct: precoFinal ? (margem / precoFinal) * 100 : 0, fixado: true, nMargem, pct, valorTotal, ajuste: precoFinal - valorTotal }
+    const margem = precoFinal - total - ag.comissao
+    return { total, margem, comissao: ag.comissao, final: precoFinal, margemPct: pctCusto(margem), fixado: true, nMargem, pct: ag.pct, agenteFixo: ag.fixa, valorTotal, ajuste: precoFinal - valorTotal }
   }
-  return { total, margem: nMargem, comissao, final: valorTotal, margemPct: valorTotal ? ((nMargem + comissao) / valorTotal) * 100 : 0, fixado: false, nMargem, pct, valorTotal, ajuste: 0 }
+  return { total, margem: nMargem, comissao: ag.comissao, final: valorTotal, margemPct: pctCusto(nMargem), fixado: false, nMargem, pct: ag.pct, agenteFixo: ag.fixa, valorTotal, ajuste: 0 }
+}
+
+/** Preços sugeridos (arredondados ao cêntimo para cima): a regra do cliente e o objetivo de 25 % sobre o custo. */
+export function precosSugeridos(linhas: LinhaCusto[], cfg?: ClienteCfg, ficha?: OpcoesFicha) {
+  const c = calcularCusto(linhas, cfg, undefined, ficha)
+  const nObjetivo = (c.total * MARGEM_OBJETIVO) / 100
+  const objetivo = c.total + nObjetivo + agente(c.total + nObjetivo, c.total, cfg, ficha).comissao
+  return { regra: arredondarCima(c.valorTotal), objetivo: arredondarCima(objetivo), custo: c.total }
 }
 
 /** Lê «3/32», «0,46+0,08», «140.8/1000» ou «1,2» (só números e + − × ÷). */

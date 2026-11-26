@@ -36,7 +36,8 @@ export default function Pedidos() {
       const cliente = clientes.find((c) => c.nome.toLowerCase() === f.cliente.toLowerCase())?.nome ?? (f.cliente || '—')
       if (cliente !== '—' && !clientes.some((c) => c.nome === cliente) && !novosClientes.has(cliente)) {
         novosClientes.add(cliente)
-        guardarLinha('clientes', { id: `cli-${slug(cliente)}`, nome: cliente, margemTipo: 'fixa', margem: f.margemFixa ?? 0, comissao: f.comissaoPct ?? 0,
+        // a comissão de agente fica em cada ficha; o cliente novo fica sem agente
+        guardarLinha('clientes', { id: `cli-${slug(cliente)}`, nome: cliente, ...(f.margemFixa != null ? { margemTipo: 'fixa' as const, margem: f.margemFixa } : { margemTipo: 'percentual' as const, margem: 20 }), comissao: 0,
           idPrefixo: cliente.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() }, `Clientes: ${cliente} (criado ao importar fichas de custo${f.marca ? `, marca ${f.marca}` : ''})`)
       }
       const tecido = f.linhas.find((l) => /^tecido/i.test(l.descricao))?.descricao.replace(/^tecido\s*-?\s*/i, '').trim() || '—'
@@ -45,7 +46,7 @@ export default function Pedidos() {
         id, cliente, peca: titulo(f.nome), variante: titulo(f.variante), tipoPeca: f.tipoPeca, tecido, tratamento: '—', entrega: '',
         linhas: f.linhas.map(({ totalFicheiro: _t, fixo: _f, ...l }) => l), estado: f.precoFinal != null ? 'Fechado' : 'Rascunho',
         // preço igual ao cálculo da ficha → fica calculado (custo + N/ comissão + agente); escrito à mão → preço fixado
-        margemFixa: f.margemFixa ?? undefined, comissaoPct: f.comissaoPct ?? (f.margemFixa != null ? 0 : undefined),
+        margemFixa: f.margemFixa ?? undefined, comissaoPct: f.comissaoPct ?? (f.margemFixa != null ? 0 : undefined), comissaoSobreCusto: f.comissaoSobreCusto || undefined,
         precoFinal: f.precoFinal != null && (f.precoAjustado || f.margemFixa == null) ? f.precoFinal : undefined,
         precoMin: f.precoFinal ?? undefined, precoMax: f.precoFinal ?? undefined,
         validadoPor: f.precoFinal != null ? 'Importado' : undefined, criadoEm: hojeISO(), referencia: f.codigo || undefined,

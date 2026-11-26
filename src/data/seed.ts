@@ -128,23 +128,36 @@ export const precosRef: PrecoRef[] = [
 ]
 
 /** Ficha de custo-modelo da Pereira & Cruz (as 15 linhas das fichas de custo atuais), com valores de referência. */
-export function linhasModeloPC(tipoPeca: string): LinhaCusto[] {
+/**
+ * Ficha-modelo. Corte e confeção numa só linha (só se separam quando a confeção é feita fora).
+ * Ganga (vaqueiro): lava-se, à peça; molas nos tamanhos de meses, botão nos de anos, 3 rebites.
+ * Sarja (chino): tinge-se, ao kg conforme o labdip; botão de massa. Ambos levam botões de elástico.
+ */
+export function linhasModeloPC(tipoPeca: string, tecido: 'Ganga' | 'Sarja' | 'Outro' = 'Outro'): LinhaCusto[] {
   const calcao = /cal[çc][õo]es|cal[çc][ãa]o/i.test(tipoPeca)
+  const ganga = tecido === 'Ganga', sarja = tecido === 'Sarja'
   const L = (descricao: string, unidade: string, consumo: number, valor: number, origem: LinhaCusto['origem'], extra: Partial<LinhaCusto> = {}): LinhaCusto =>
     ({ id: `c${Math.random().toString(36).slice(2, 8)}`, descricao, unidade, consumo, valor, origem, ...extra })
   return [
-    L('Corte - Pereira & Cruz', '€', 1, 0.25, 'Segura'),
+    L('Corte e confeção - Pereira & Cruz', '€', 1, calcao ? 6.5 : 7.25, 'Confirmar', { nota: 'Corte e confeção juntos (valor de referência: confirmar para este modelo). Separar só se a confeção for feita fora.' }),
     L("Plano de corte - Pereira's Project", '€', 3 / 32, 2.5, 'Segura', { consumoExpr: '3/32', nota: 'Metros de plano ÷ peças por plano.' }),
-    L('Confeção - Pereira & Cruz', '€', 1, calcao ? 6.25 : 7, 'Confirmar', { nota: 'Valor de referência: confirmar para este modelo.' }),
-    L("Forro - Pereira's Project", '€', 0.2, 1.4, 'Segura'),
-    L('Tecido', 'mts', 0.4, 4, 'Estimada', { nota: 'Confirmar tecido, consumo e preço por metro.' }),
-    L('Lavandaria - Clothius', 'kg', 0.3, 3.5, 'Estimada', { nota: 'Preço por kg conforme a lavagem.' }),
-    L('Botão / molas', '€', 1, 0.07, 'Confirmar', { valorExpr: '70/1000' }),
-    L('Botões elástico - Pereira & Cruz', '€', calcao ? 2 : 1, 0.012, 'Segura'),
-    L("Fechos - Pereira's Project", '€', 1, 0.199, 'Segura'),
-    L('Bordado - Pereira & Cruz', '€', 1, 0.3, 'Confirmar'),
-    L('Elástico - Pereira & Cruz', 'mts', 0.5, 0.12, 'Confirmar'),
-    L('Saco etiqueta - Pereira & Cruz', '€', 0, 0.01, 'Segura'),
+    L('Forro', '€', 0.2, 1.4, 'Segura'),
+    ganga && calcao
+      ? L('Tecido', 'mts', 0.7, 4.1, 'Estimada', { nota: 'Média por excesso (0,7 m × 4,10 €): confirmar nos mini planos.' })
+      : L('Tecido', 'mts', 0.4, 4, 'Estimada', { nota: 'Confirmar tecido e preço por metro; consumo nos mini planos.' }),
+    ganga ? L('Lavandaria - Clothius (lavagem)', 'un', 1, 0.55, 'Estimada', { nota: 'Ganga lava-se: preço à peça (tabela da Clothius).' })
+      : sarja ? L('Lavandaria - Clothius (tingimento)', 'kg', 0.3, 3.5, 'Estimada', { nota: 'Sarja tinge-se: preço ao kg conforme o labdip (branco, clara, média, escura, preto, especial) × peso da peça.' })
+        : L('Lavandaria - Clothius', 'kg', 0.3, 3.5, 'Estimada', { nota: 'Ganga: à peça (lavagem). Sarja: ao kg conforme o labdip (tingimento).' }),
+    ...(ganga ? [
+      L('Molas (meses) / botão (anos)', '€', 1, 0.1408, 'Confirmar', { valorExpr: '140.8/1000', nota: 'Molas nos tamanhos de meses; botão (70 € o milheiro) nos tamanhos de anos.' }),
+      L('Rebites', '€', 3, 0.082, 'Confirmar', { nota: '3 rebites (meses e anos).' }),
+    ] : sarja ? [L('Botão de massa', '€', 1, 0, 'Confirmar', { nota: 'Preço do botão de massa por confirmar (diferente do botão do vaqueiro).' })]
+      : [L('Botão / molas', '€', 1, 0.07, 'Confirmar', { valorExpr: '70/1000' })]),
+    L('Botões elástico', '€', calcao ? 2 : 1, 0.012, 'Segura'),
+    L('Fechos', '€', 1, 0.199, 'Segura'),
+    L('Bordado', '€', 1, 0.3, 'Confirmar'),
+    L('Elástico', 'mts', 0.5, 0.12, 'Confirmar'),
+    L('Saco etiqueta', '€', 0, 0.01, 'Segura'),
     L('Saco embalamento', '€', 1, 31.7 / 2000, 'Segura', { valorExpr: '31.7/2000' }),
     L('Revista', '€', 1, 0.15, 'Segura'),
     L('Acabamento', '€', 1, 1, 'Segura'),
@@ -152,7 +165,7 @@ export function linhasModeloPC(tipoPeca: string): LinhaCusto[] {
 }
 
 export const clientes: ClienteCfg[] = [
-  { id: 'c1', nome: 'Imprevu', margemTipo: 'fixa', margem: 3, comissao: 7, idPrefixo: 'IMP' },
+  { id: 'c1', nome: 'Imprevu', margemTipo: 'fixa', margem: 3, comissao: 0, idPrefixo: 'IMP' },
   { id: 'c2', nome: 'Dr. Collectors', margemTipo: 'fixa', margem: 3, comissao: 0, idPrefixo: 'DRC' },
   {
     id: 'c3', nome: 'Longratex', margemTipo: 'fixa', margem: 0, comissao: 0, idPrefixo: 'LGX', escala: 'Bebé e criança',

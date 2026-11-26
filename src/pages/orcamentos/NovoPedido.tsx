@@ -6,7 +6,7 @@ import { useDb } from '../../store/db'
 import { Botao, Cabecalho, Campo, Cartao, Confianca, Entrada, Etiqueta, EtiquetaIA, Passos, Pilulas, Seletor, aviso, type Tom } from '../../components/ui'
 import { TechPack } from '../../components/TechPack'
 import { linhasModeloPC, linhasShirtMao } from '../../data/seed'
-import { EMPRESAS, MIN_CASOS_INTERVALO, avaliarExpr, calcularCusto, empresaDaLinha, totaisPorEmpresa, pecasParecidas, propostaIntervalo, totalLinha } from '../../lib/calc'
+import { EMPRESAS, MARGEM_OBJETIVO, MIN_CASOS_INTERVALO, ORDEM_EMPRESAS, ROTULO_EMPRESA, avaliarExpr, calcularCusto, empresaDaLinha, precosSugeridos, totaisPorEmpresa, pecasParecidas, propostaIntervalo, totalLinha } from '../../lib/calc'
 import { dataCurta, eur, hojeISO, num, uid } from '../../lib/format'
 import type { LinhaCusto, OrigemCusto, Pedido } from '../../types'
 import { TOM_PEDIDO } from './Pedidos'
@@ -29,11 +29,12 @@ export default function NovoPedido() {
   const [mPeca, setMPeca] = useState('')
   const [mVariante, setMVariante] = useState('')
   const [mTipo, setMTipo] = useState('Calças')
+  const [mTecido, setMTecido] = useState<'Ganga' | 'Sarja' | 'Outro'>('Ganga')
   const [mEntrega, setMEntrega] = useState('')
   const criarDoModelo = () => {
     const p: Pedido = {
-      id: uid('ped'), cliente: mCliente, peca: mPeca.trim(), variante: mVariante.trim(), tipoPeca: mTipo, tecido: '—', tratamento: '—',
-      entrega: mEntrega, linhas: linhasModeloPC(mTipo), estado: 'Rascunho', criadoEm: hojeISO(), origem: 'modelo',
+      id: uid('ped'), cliente: mCliente, peca: mPeca.trim(), variante: mVariante.trim(), tipoPeca: mTipo, tecido: mTecido === 'Outro' ? '—' : mTecido, tratamento: mTecido === 'Ganga' ? 'Lavagem' : mTecido === 'Sarja' ? 'Tingimento' : '—',
+      entrega: mEntrega, linhas: linhasModeloPC(mTipo, mTecido), estado: 'Rascunho', criadoEm: hojeISO(), origem: 'modelo',
     }
     guardarPedido(p); log('Pedido de orçamento criado', `${p.cliente} · ${p.peca} (ficha-modelo)`)
     nav(`/orcamentos/${p.id}`, { replace: true })
@@ -106,10 +107,11 @@ export default function NovoPedido() {
 
             <Cartao className="p-5 mt-6">
               <h3 className="font-semibold">Ou começar com a ficha-modelo da Pereira & Cruz</h3>
-              <p className="text-[13px] text-suave mb-4">Sem tech pack nem IA: as 15 linhas das vossas fichas de custo (corte, plano de corte, confeção, forro, tecido, lavandaria…) com os valores de referência, para ajustar.</p>
+              <p className="text-[13px] text-suave mb-4">Sem tech pack nem IA: as linhas das vossas fichas de custo (corte e confeção, plano de corte, tecido, lavandaria, acessórios…) com os valores de referência, para ajustar. Ganga: lavagem à peça, molas/botão e 3 rebites. Sarja: tingimento ao kg e botão de massa.</p>
               <div className="grid grid-cols-2 gap-3">
                 <Campo rotulo="Cliente"><Seletor valor={mCliente} onChange={setMCliente} vazio="Escolher…" opcoes={clientes.map((c) => c.nome)} /></Campo>
                 <Campo rotulo="Tipo de peça"><Seletor valor={mTipo} onChange={setMTipo} opcoes={['Calças', 'Calções', 'Camisa', 'Casaco', 'Outra']} /></Campo>
+                <Campo rotulo="Tecido"><Seletor valor={mTecido} onChange={(v) => setMTecido(v as typeof mTecido)} opcoes={['Ganga', 'Sarja', 'Outro']} /></Campo>
                 <Campo rotulo="Peça / modelo"><Entrada value={mPeca} onChange={(e) => setMPeca(e.target.value)} placeholder="ex.: Mini Boy City" /></Campo>
                 <Campo rotulo="Variante (opcional)"><Entrada value={mVariante} onChange={(e) => setMVariante(e.target.value)} placeholder="ex.: Vaqueiro" /></Campo>
                 <Campo rotulo="Data de entrega (opcional)"><Entrada type="date" value={mEntrega} onChange={(e) => setMEntrega(e.target.value)} /></Campo>
@@ -222,6 +224,10 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
   const cfg = useDb((s) => s.clientes.find((c) => c.nome === p.cliente))
   const c = calcularCusto(p.linhas, cfg, p.precoFinal, p)
   const porEmpresa = totaisPorEmpresa(p.linhas)
+  const sug = precosSugeridos(p.linhas, cfg, p)
+  const pctTxt = (v: number) => `${v.toFixed(1).replace('.', ',')} %`
+  const rotuloAgente = c.agenteFixo != null ? `(${eur(c.agenteFixo)} por peça)` : `(${String(c.pct).replace('.', ',')} % sobre ${p.comissaoSobreCusto ? 'o custo' : 'custo + N/ comissão'})`
+  const tomMargem = c.margem < 0 ? 'text-vermelho font-semibold' : c.margemPct < MARGEM_OBJETIVO ? 'text-ambar' : 'text-verde'
   const [aberta, setAberta] = useState(!compacta)
   const linha = (id: string, x: Partial<LinhaCusto>) => atualizar({ linhas: p.linhas.map((l) => (l.id === id ? { ...l, ...x } : l)) })
   // consumo/valor: aceita números ou fórmulas simples (3/32, 140.8/1000, 0,46+0,08)
@@ -256,9 +262,9 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
                     {editavel ? <input defaultValue={l.descricao} onBlur={(e) => e.target.value.trim() && e.target.value !== l.descricao && linha(l.id, { descricao: e.target.value.trim() })} className="w-full bg-transparent outline-none focus:bg-fundo rounded px-1 -mx-1" /> : <p>{l.descricao}</p>}
                     {(() => { const e = empresaDaLinha(l); return (
                       <button disabled={!editavel} title={`${EMPRESAS[e].nome} (${EMPRESAS[e].papel})${editavel ? ' · clicar para trocar' : ''}`}
-                        onClick={() => linha(l.id, { empresa: e === 'PC' ? 'PP' : 'PC' })}
-                        className={clsx('mt-0.5 whitespace-nowrap text-[10.5px] font-semibold tracking-wide rounded px-1.5 py-px border', e === 'PC' ? 'text-azul border-azul/30' : 'text-ouro border-ouro/40', editavel && 'hover:bg-fundo')}>
-                        {e === 'PC' ? 'P&C' : 'PP'}</button>) })()}
+                        onClick={() => linha(l.id, { empresa: ORDEM_EMPRESAS[(ORDEM_EMPRESAS.indexOf(e) + 1) % ORDEM_EMPRESAS.length] })}
+                        className={clsx('mt-0.5 whitespace-nowrap text-[10.5px] font-semibold tracking-wide rounded px-1.5 py-px border', { PC: 'text-azul border-azul/30', PP: 'text-ouro border-ouro/40', FORA: 'text-vermelho border-vermelho/30', CLIENTE: 'text-suave border-linha' }[e], editavel && 'hover:bg-fundo')}>
+                        {ROTULO_EMPRESA[e]}</button>) })()}
                     {l.nota && <p className={clsx('text-[12px] mt-0.5 flex gap-1', incoerente ? 'text-ambar' : 'text-suave')}>{incoerente && <AlertTriangle size={12} className="mt-0.5 shrink-0" />}{l.nota}</p>}
                   </td>
                   <td className="px-1 py-1.5 text-center text-suave">{editavel
@@ -280,18 +286,29 @@ function FichaCusto({ p, atualizar, editavel, compacta }: { p: Pedido; atualizar
         {editavel && <div className="px-5 pt-2"><Botao pequeno variante="fantasma" icone={<Plus size={13} />} onClick={() => atualizar({ linhas: [...p.linhas, { id: uid('c'), descricao: 'Nova linha', unidade: '€', consumo: 1, valor: 0, origem: 'Confirmar' }] })}>Acrescentar linha</Botao></div>}
         <div className="px-5 py-3 text-[13px] space-y-1.5">
           <div className="flex justify-between"><span>Total do custo</span><span className="font-semibold num">{eur(c.total)}</span></div>
-          {(['PC', 'PP'] as const).map((e) => (
+          {ORDEM_EMPRESAS.filter((e) => e === 'PC' || e === 'PP' || p.linhas.some((l) => empresaDaLinha(l) === e)).map((e) => (
             <div key={e} className="flex justify-between text-suave text-[12px] pl-3"><span>{EMPRESAS[e].nome} <span className="text-tenue">· {EMPRESAS[e].papel}</span></span><span className="num">{eur(porEmpresa[e])}</span></div>
           ))}
           {c.fixado ? (<>
-            <div className={clsx('flex justify-between', c.margem < 0 ? 'text-vermelho font-semibold' : 'text-suave')}><span>Margem total {c.margem < 0 && '· preço abaixo do custo'}</span><span className="num">{eur(c.margem)} · {c.margemPct.toFixed(1).replace('.', ',')} %</span></div>
-            {(p.margemFixa != null || p.comissaoPct != null) && Math.abs(c.ajuste) > 0.005 && (
-              <div className="flex justify-between text-tenue text-[12px]"><span>Cálculo da ficha: custo + N/ comissão {eur(c.nMargem)}{c.pct ? ` + agente ${String(c.pct).replace('.', ',')} %` : ''} = {eur(c.valorTotal)} · preço ajustado à mão</span><span className="num">{c.ajuste > 0 ? '+' : ''}{eur(c.ajuste)}</span></div>
-            )}
+            {c.comissao > 0 && <div className="flex justify-between text-suave"><span>Agente {rotuloAgente}</span><span className="num">{eur(c.comissao)}</span></div>}
+            <div className={clsx('flex justify-between', tomMargem)}><span>Margem total {c.margem < 0 ? '· preço abaixo do custo' : c.margemPct < MARGEM_OBJETIVO && `· abaixo do objetivo de ${MARGEM_OBJETIVO} %`}</span><span className="num">{eur(c.margem)} · {pctTxt(c.margemPct)} sobre o custo</span></div>
           </>) : <>
-            <div className="flex justify-between text-suave"><span>N/ comissão{p.margemFixa == null && ` (${cfg?.margemTipo === 'percentual' ? `${cfg.margem} %` : 'fixa'})`}</span><span className="num">{eur(c.margem)}</span></div>
-            <div className="flex justify-between text-suave"><span>Comissão do agente ({String(c.pct).replace('.', ',')} %)</span><span className="num">{eur(c.comissao)}</span></div>
+            <div className="flex justify-between text-suave"><span>N/ comissão{p.margemFixa == null && ` (${cfg?.margemTipo === 'percentual' ? `${cfg.margem} % sobre o custo` : 'fixa'})`}</span><span className="num">{eur(c.margem)}</span></div>
+            {c.comissao > 0 && <div className="flex justify-between text-suave"><span>Agente {rotuloAgente}</span><span className="num">{eur(c.comissao)}</span></div>}
+            <div className={clsx('flex justify-between text-[12px]', tomMargem)}><span>Margem {c.margemPct < MARGEM_OBJETIVO && `· abaixo do objetivo de ${MARGEM_OBJETIVO} %`}</span><span className="num">{pctTxt(c.margemPct)} sobre o custo</span></div>
           </>}
+          {editavel && c.total > 0 && (
+            <div className="mt-2 rounded-controlo border border-linha bg-fundo/50 px-3 py-2.5">
+              <p className="text-[12px] text-suave mb-1.5">Preço sugerido: o preço final é sempre confirmado ou alterado por si.</p>
+              <div className="flex flex-wrap gap-2">
+                {[{ r: `Regra do cliente${cfg ? ` (${cfg.margemTipo === 'fixa' ? `+${eur(c.nMargem)}` : `+${cfg.margem} %`})` : ''}`, v: sug.regra }, { r: `Objetivo ${MARGEM_OBJETIVO} %`, v: sug.objetivo }].map((o) => (
+                  <button key={o.r} onClick={() => atualizar({ precoFinal: o.v })}
+                    className={clsx('rounded-md border px-2.5 py-1 text-[12.5px] hover:bg-papel', c.fixado && Math.abs(c.final - o.v) < 0.005 ? 'border-tinta-2 bg-papel font-semibold' : 'border-linha')}>
+                    {o.r}: <span className="num font-semibold">{eur(o.v)}</span></button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-linha bg-fundo/40 rounded-b-cartao flex-wrap">
           <div>

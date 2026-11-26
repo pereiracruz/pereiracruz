@@ -49,8 +49,12 @@ async function semear(): Promise<Linha[]> {
 }
 
 /** Versão dos dados mestre de origem: ao subir, junta-se ao servidor o que for novo (sem alterar nem repor o que existe). */
-const VERSAO_DADOS = 8
+const VERSAO_DADOS = 9
 const MESTRE: Colecao[] = ['fornecedores', 'tecidos', 'equivalencias', 'lavagens', 'acessorios', 'escalas', 'destinatarios', 'precosRef', 'clientes']
+
+const CORRECOES: { colecao: Colecao; id: string; antes: Record<string, unknown>; depois: Record<string, unknown> }[] = [
+  { colecao: 'clientes', id: 'c1', antes: { comissao: 7 }, depois: { comissao: 0 } }, // v9: a agente da Imprevu já não existe
+]
 
 async function atualizarMestre(linhas: Linha[]): Promise<Linha[]> {
   const { data: feito } = await supabase!.from('atividade').select('id').eq('acao', 'Dados mestre atualizados').like('detalhe', `v${VERSAO_DADOS} %`).limit(1)
@@ -58,6 +62,12 @@ async function atualizarMestre(linhas: Linha[]): Promise<Linha[]> {
   const ini = dadosIniciais() as unknown as Record<Colecao, { id: string }[]>
   const existe = new Set(linhas.map((l) => `${l.colecao}/${l.id}`))
   const novas: Linha[] = MESTRE.flatMap((c) => ini[c].filter((d) => !existe.has(`${c}/${d.id}`)).map((d) => ({ colecao: c, id: d.id, dados: d })))
+  // correções a registos existentes, só se ainda tiverem o valor antigo
+  for (const k of CORRECOES) {
+    const l = linhas.find((x) => x.colecao === k.colecao && x.id === k.id)
+    const d = l?.dados as Record<string, unknown> | undefined
+    if (l && d && Object.entries(k.antes).every(([c, v]) => d[c] === v)) novas.push({ ...l, dados: { ...d, ...k.depois } })
+  }
   if (novas.length) {
     const { error } = await supabase!.from('documentos').upsert(novas)
     if (error) throw error
@@ -71,7 +81,12 @@ async function carregar(user: User) {
   try {
     let linhas = await lerTudo()
     if (!linhas.length) linhas = await semear()
-    else linhas = [...linhas, ...(await atualizarMestre(linhas))]
+    else {
+      const novas = await atualizarMestre(linhas)
+      const k = (l: Linha) => `${l.colecao}/${l.id}`
+      const porChave = new Map(novas.map((l) => [k(l), l]))
+      linhas = [...linhas.map((l) => porChave.get(k(l)) ?? l), ...novas.filter((l) => !linhas.some((x) => k(x) === k(l)))]
+    }
     const porColecao = Object.fromEntries(COLECOES.map((c) => [c, ordenar(c, linhas.filter((l) => l.colecao === c).map((l) => l.dados as { id: string }))]))
     const { data: act } = await supabase!.from('atividade').select('id,data,acao,detalhe').order('data', { ascending: false }).limit(500)
     const { data: perfil } = await supabase!.from('perfis').select('nome').eq('id', user.id).maybeSingle()

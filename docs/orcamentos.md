@@ -12,14 +12,15 @@ Analisado a partir de `SS27.xlsx` (Longratex: Vaqueiro, Calção chino, Calção
 - Consumos e valores escritos como fórmulas: plano de corte `3/32` (metros de plano ÷ peças por plano),
   molas `140.8/1000` (preço por milheiro), saco `31.7/2000`, elástico `0.46+0.08`.
 - **Preço final escrito à mão** e **Margem total = Preço final − Total** (não há comissão de agente nestas fichas).
+- Corte e confeção vêm **juntos** numa linha (ainda não há forma de custear o corte por modelo); só se separam quando a confeção é feita fora.
 
 ## O que a verificação encontrou (a confirmar pela Pereira & Cruz)
 
 | Folha | O quê |
 |---|---|
-| Vaqueiro | Corte a 7,00 € e Confeção a 0,00 € (nas outras: corte 0,25 €, confeção 6,25–7,00 €) → valores trocados? O total não muda. |
+| Vaqueiro | Corte 7,00 € e Confeção 0,00 €: **corte e confeção juntos** (confirmado, não é erro). |
 | Calção chino e Calção vaqueiro | Linha do botão: total escrito à mão 0,11 € quando consumo × valor dá 0,07 € → os totais da ficha têm +0,04 € (12,58 € em vez de 12,54 €; 10,20 € em vez de 10,16 €). |
-| Calção vaqueiro | «Ref.» diz CALÇÃO CHINO num modelo vaqueiro; tecido 3,952/150 = 0,026 m (nas outras 0,4 m). |
+| Calção vaqueiro | «Ref.» diz CALÇÃO CHINO num modelo vaqueiro; tecido 0,026 m: deve rondar 0,7 m × 4,10 € = 2,87 € (por excesso), **confirmar nos mini planos**. |
 | Preços | Coluna «Preço SS26» num ficheiro SS27; no chino o preço é `12,9 + 0,65`. |
 
 ## No software
@@ -51,3 +52,30 @@ Na ficha de custo, cada linha tem a empresa que a assume (P&C ou PP, clica-se pa
 custo mostra a parte de cada uma. Regra: a empresa escrita na descrição («Corte- Pereira & Cruz»); sem nada escrito,
 corte, confeção e revista são da Pereira & Cruz e o resto da Pereira's Project.
 Na SS27 (Longratex) há botão, bordado, elástico, botões de elástico e saco etiqueta escritos «Pereira & Cruz» (a confirmar).
+
+## Regras de preço (respostas da Pereira & Cruz, 26/11/2026)
+
+- **Objetivo: 25 % de margem sobre o custo**, nem sempre possível. O preço final é decidido à mão a partir do custo.
+  Regras por cliente: Imprevu margem fixa (N/ comissão 3,00 €); outros 20 %; Longratex margem pequena.
+- **Com agente:** preço = custo + N/ comissão + % do agente × (custo + N/ comissão). O agente pode também ser um valor
+  fixo por peça (ex.: 1–2 € quando a cliente tem preços target). Fichas antigas com a % só sobre o custo
+  (`E28*0.07`) são importadas como estão.
+- **Imprevu:** a agente saiu; não há agente na SS27 nem na FW27 (comissão do cliente passou a 0).
+- **No software:** a ficha de custo sugere dois preços (regra do cliente e objetivo de 25 %), mostra a margem real
+  sobre o custo (verde ≥ 25 %, âmbar abaixo, vermelho abaixo do custo) e o preço só muda quando o utilizador escolhe
+  ou escreve. A importação já não avisa preços finais à mão.
+
+## Acessórios e lavandaria por tipo de tecido
+
+| | Ganga (vaqueiro) | Sarja (chino) |
+|---|---|---|
+| Lavandaria (Clothius) | lavagem, **à peça** | tingimento, **ao kg** conforme o labdip (branco, clara, média, escura, preto, especial) |
+| Fecho da cintura | molas nos tamanhos de meses, botão nos de anos | botão de massa (preço por confirmar) |
+| Rebites | 3 (meses e anos) | — |
+| Botões de elástico | sim | sim |
+
+A ficha-modelo pede o tecido (Ganga / Sarja / Outro) e monta as linhas assim. Falta a tabela de preços da Clothius
+(lavagens à peça e tingimento ao kg por labdip) para os valores de referência.
+
+Empresas na ficha: **P&C**, **PP**, **FORA** (confeção subcontratada, separada do corte) e **CLIENTE**
+(corte ou material dado pelo cliente).

@@ -28,6 +28,7 @@ export interface FichaCustoLida {
   valorTotal: number // total + margem + comissão (calculado)
   precoFinal: number | null
   precoAjustado: boolean // preço final escrito à mão, diferente do valor total
+  comissaoSobreCusto: boolean // a % do agente foi calculada só sobre o total do custo (ex.: E28*0.07)
   nomeDaFolha: boolean // a folha não tinha nome no cabeçalho (nome tirado do nome da folha)
   avisos: string[]
 }
@@ -126,7 +127,7 @@ export function lerFichasCusto(buf: ArrayBuffer, clientesConhecidos: string[] = 
     // ---- linhas da ficha e bloco final
     const linhas: FichaCustoLida['linhas'] = []
     let totalFicheiro: number | null = null, precoFinal: number | null = null, margemFixa: number | null = null, comissaoPct: number | null = null
-    let precoEFormula = false, rTotal = -1
+    let precoEFormula = false, rTotal = -1, comissaoSobreCusto = false
     for (let R = rCab + 1; R <= fimLinhas; R++) {
       const d = txt(cel(R, col.desc))
       const rotulos = Array.from({ length: fimCols + 1 }, (_, C) => [C, txt(cel(R, C))] as const).filter(([, t]) => t)
@@ -140,7 +141,7 @@ export function lerFichasCusto(buf: ArrayBuffer, clientesConhecidos: string[] = 
       if (ca) {
         const c = cel(R, ca[0] + 1)
         const m = c?.f?.match(/\*\s*([\d.]+)\s*$/) ?? c?.f?.match(/^\s*([\d.]+)\s*\*/)
-        if (m) comissaoPct = Math.round(Number(m[1]) * 10000) / 100
+        if (m) { comissaoPct = Math.round(Number(m[1]) * 10000) / 100; comissaoSobreCusto = rTotal >= 0 && new RegExp(`^\\$?[A-Z]+\\$?${rTotal + 1}\\b`).test(c!.f!.replace(/\s/g, '').replace(/^[\d.]+\*/, '')) }
         else if (totalFicheiro && Number.isFinite(num(c))) comissaoPct = Math.round((num(c) / totalFicheiro) * 10000) / 100
         continue
       }
@@ -165,16 +166,21 @@ export function lerFichasCusto(buf: ArrayBuffer, clientesConhecidos: string[] = 
     if (!linhas.length) continue
 
     const totalCalculado = soma(linhas.map((l) => l.consumo * l.valor))
-    const valorTotal = totalCalculado + (margemFixa ?? 0) + (totalCalculado * (comissaoPct ?? 0)) / 100
+    const valorTotal = totalCalculado + (margemFixa ?? 0) + ((comissaoSobreCusto ? totalCalculado : totalCalculado + (margemFixa ?? 0)) * (comissaoPct ?? 0)) / 100
     const precoAjustado = precoFinal != null && !precoEFormula && Math.abs(precoFinal - valorTotal) > 0.005 && (margemFixa != null || comissaoPct != null)
     const avisos: string[] = []
     for (const l of linhas.filter((x) => x.fixo)) avisos.push(`«${l.descricao}»: total escrito à mão (${l.totalFicheiro.toFixed(2)} €) diferente de consumo × valor (${(l.consumo * l.valor).toFixed(2)} €).`)
     for (const l of linhas.filter((x) => x.nota && x.consumo === 0)) avisos.push(`«${l.descricao}» sem consumo: total a 0 €.`)
-    for (const l of linhas.filter((x) => x.consumo > 0 && x.valor === 0)) avisos.push(`«${l.descricao}» com valor 0 € (confirmar).`)
+    const corteJunto = linhas.find((l) => /^corte/.test(norm(l.descricao)) && l.valor > 2)
+    for (const l of linhas.filter((x) => x.consumo > 0 && x.valor === 0 && !(corteJunto && /^confec/.test(norm(x.descricao))))) avisos.push(`«${l.descricao}» com valor 0 € (confirmar).`)
     const corte = linhas.find((l) => /^corte/.test(norm(l.descricao))), confec = linhas.find((l) => /^confec/.test(norm(l.descricao)))
-    if (corte && confec && corte.valor > confec.valor && corte.valor > 2) avisos.push(`Corte (${corte.valor.toFixed(2)} €) mais caro do que a confeção (${confec.valor.toFixed(2)} €): valores trocados?`)
+    // corte e confeção vêm juntos numa só linha (só se separam com confeção fora): não é erro
+    if (corte && confec && corte.valor > 2 && confec.valor === 0) corte.nota = corte.nota ?? 'Corte e confeção juntos nesta linha.'
+    for (const l of linhas.filter((x) => /^tecido/.test(norm(x.descricao)) && x.consumo > 0 && x.consumo < 0.1)) {
+      l.nota = 'Consumo de tecido muito baixo: confirmar nos mini planos.'
+      avisos.push(`«${l.descricao}»: consumo de tecido ${l.consumo.toFixed(3)} m muito baixo: confirmar nos mini planos.`)
+    }
     if (totalFicheiro != null && Math.abs(totalFicheiro - totalCalculado) > 0.005) avisos.push(`Total da ficha ${totalFicheiro.toFixed(2)} € ≠ total calculado ${totalCalculado.toFixed(2)} €.`)
-    if (precoAjustado) avisos.push(`Preço final ${precoFinal!.toFixed(2)} € escrito à mão (o cálculo dá ${valorTotal.toFixed(2)} €: ${precoFinal! > valorTotal ? '+' : ''}${(precoFinal! - valorTotal).toFixed(2)} €).`)
     if (tipoTexto && /chino/i.test(tipoTexto) && !/chino/i.test(`${nomeFinal} ${varianteFinal}`)) avisos.push(`Tipo de peça «${tipoTexto}» não condiz com o modelo «${nomeFinal} ${varianteFinal}».`)
     const corFolha = cor(nomeFolha), corNome = cor(nome)
     if (corFolha && corNome && corFolha !== corNome) avisos.push(`A folha «${nomeFolha}» é ${corFolha} mas o nome diz «${nome}» (cabeçalho copiado de outra ficha?).`)
@@ -184,7 +190,7 @@ export function lerFichasCusto(buf: ArrayBuffer, clientesConhecidos: string[] = 
     out.push({
       folha: nomeFolha, cliente, marca, tipoPeca: tipoDePeca(`${tipoTexto} ${nomeFinal} ${varianteFinal} ${nomeFolha}`),
       nome: nomeFinal, variante: varianteFinal, codigo, linhas, totalFicheiro, totalCalculado,
-      margemFixa, comissaoPct, valorTotal, precoFinal, precoAjustado, avisos, nomeDaFolha: !nome,
+      margemFixa, comissaoPct, valorTotal, precoFinal, precoAjustado, avisos, comissaoSobreCusto, nomeDaFolha: !nome,
     })
   }
   // mesmo nome ou código em folhas de modelos diferentes → cabeçalho copiado

@@ -12,7 +12,8 @@ export interface PrecoRef { id: string; linha: string; valor: number; unidade: s
 export interface ClienteCfg {
   id: string; nome: string
   margemTipo: 'fixa' | 'percentual'; margem: number
-  comissao: number // % do agente sobre o total de custos
+  comissao: number // agente: % sobre (custo + N/ comissão), ou € por peça se comissaoTipo = 'fixa'
+  comissaoTipo?: 'percentual' | 'fixa'
   idPrefixo: string
   escala?: string // escala de tamanhos habitual
   notasFixas?: string[] // passam para as observações das fichas
@@ -122,8 +123,8 @@ export interface LinhaCusto {
   valorExpr?: string // ex.: «140.8/1000» = preço por milheiro
   empresa?: Empresa // quem assume o custo (por omissão: o que diz a descrição, ou a regra por tipo de linha)
 }
-/** PC = Pereira & Cruz (produção: corte, confeção, controlo); PP = Pereira's Project (comercial: materiais, lavandaria, acabamento, entrega). */
-export type Empresa = 'PC' | 'PP'
+/** PC = Pereira & Cruz (corte e confeção); PP = Pereira's Project (materiais, lavandaria, acabamento, entrega); FORA = confeção subcontratada; CLIENTE = corte ou material do cliente. */
+export type Empresa = 'PC' | 'PP' | 'FORA' | 'CLIENTE'
 export type EstadoPedido = 'Rascunho' | 'Por validar' | 'Validado' | 'Enviado' | 'Fechado'
 export interface Pedido {
   id: string
@@ -147,6 +148,8 @@ export interface Pedido {
   origem?: 'ia' | 'modelo' | 'importado' // como foi criada a ficha de custo
   margemFixa?: number // «N/ comissão» desta ficha (sobrepõe-se à do cliente)
   comissaoPct?: number // comissão do agente desta ficha, % sobre o custo (sobrepõe-se à do cliente)
+  comissaoFixa?: number // agente em € por peça (em vez de %)
+  comissaoSobreCusto?: boolean // fichas antigas: a % do agente era só sobre o custo
 }
 export interface PrecoHistorico {
   id: string; cliente: string; peca: string; variante: string; tipoPeca: string; tecido: string; tratamento: string
