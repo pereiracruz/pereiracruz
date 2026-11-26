@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Archive, Bell, Check, ChevronDown, Cloud, ClipboardList, Database, FileClock, History, KeyRound, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Receipt } from 'lucide-react'
+import { Archive, Bell, CalendarClock, Check, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, PanelLeftClose, PanelLeftOpen, Receipt } from 'lucide-react'
 import { useDb } from '../store/db'
 import { fichasPorAprovar } from '../lib/calc'
+import { situacaoPrazos } from '../lib/prazos'
+import { resumoCompras } from '../lib/compras'
 import { Toasts } from './ui'
 import { modoServidor } from '../lib/supabase'
 
@@ -42,6 +44,9 @@ function Sino() {
     ...encomendas.flatMap((e) => e.modelos.filter((m) => m.estado === 'rascunho').map((m) => ({
       texto: `Ficha por aprovar: ${m.nome}`, sub: `${e.cliente} · ${e.colecao}`, para: `/fichas/${e.id}/${m.id}`,
     }))),
+    ...encomendas.filter((e) => e.estado !== 'Concluída').flatMap((e) => situacaoPrazos(e).alertas.map((a) => ({
+      texto: a, sub: `${e.cliente} · ${e.colecao}`, para: `/fichas/${e.id}?aba=prazos`,
+    }))),
     ...pedidos.filter((p) => p.estado === 'Por validar').map((p) => ({ texto: `Orçamento por validar: ${p.peca}`, sub: p.cliente, para: `/orcamentos/${p.id}` })),
   ]
   return (
@@ -74,6 +79,10 @@ export default function Layout() {
   const nome = useDb((s) => s.nomeUtilizador)
   const porAprovar = useDb((s) => s.encomendas.reduce((n, e) => n + fichasPorAprovar(e), 0))
   const aGuardar = useDb((s) => s.aGuardar)
+  const encomendas = useDb((s) => s.encomendas)
+  const emCurso = encomendas.filter((e) => e.estado !== 'Concluída')
+  const atrasadas = emCurso.filter((e) => situacaoPrazos(e).nivel === 'atrasada').length
+  const porEncomendar = emCurso.reduce((n, e) => n + resumoCompras(e).porEncomendar, 0)
   const copiaEmFalta = useDb((s) => {
     const u = s.atividade.find((a) => a.acao === 'Cópia de segurança descarregada')
     return !u || Date.now() - new Date(u.data).getTime() > 7 * 864e5
@@ -101,6 +110,14 @@ export default function Layout() {
             <Item para="/fichas" icone={<ClipboardList size={17} />}>
               <span className="flex-1">Encomendas</span>
               {porAprovar > 0 && <span className="text-[11px] font-semibold bg-ouro-fraco text-ouro-texto rounded-full px-1.5">{porAprovar}</span>}
+            </Item>
+            <Item para="/compras" icone={<ShoppingCart size={17} />}>
+              <span className="flex-1">Compras</span>
+              {porEncomendar > 0 && <span className="text-[11px] font-semibold bg-ambar-fraco text-ambar rounded-full px-1.5" title="Materiais por encomendar">{porEncomendar}</span>}
+            </Item>
+            <Item para="/prazos" icone={<CalendarClock size={17} />}>
+              <span className="flex-1">Prazos</span>
+              {atrasadas > 0 && <span className="text-[11px] font-semibold bg-vermelho-fraco text-vermelho rounded-full px-1.5" title="Encomendas atrasadas">{atrasadas}</span>}
             </Item>
             <Item para="/dados" icone={<Database size={17} />}>Dados mestre</Item>
           </Grupo>

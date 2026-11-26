@@ -101,6 +101,11 @@ export interface Modelo {
 
 export interface Envio { id: string; nome: string; data: string; itens: { modeloId: string; varianteId: string }[] }
 
+export type EstadoCompraTipo = 'Por encomendar' | 'Encomendado' | 'Recebido'
+export interface EstadoCompra { chave: string; estado: EstadoCompraTipo; data?: string; nota?: string }
+export type Etapa = 'Materiais' | 'Corte' | 'Confeção' | 'Lavandaria' | 'Embalamento' | 'Expedição'
+export interface Prazo { etapa: Etapa; data?: string; feito?: string }
+
 export type EstadoEncomenda = 'Em revisão' | 'Fichas geradas' | 'Concluída'
 
 export interface Encomenda {
@@ -118,6 +123,9 @@ export interface Encomenda {
   linkSheets?: { url: string; data: string; titulo: string } // última exportação para o Google Sheets
   techPacks?: { ficheiro: string; caminho: string; dados: unknown }[] // leitura da IA (TechPackLido)
   envios?: Envio[]
+  compras?: EstadoCompra[] // estado de cada material a comprar (pela Pereira's Project)
+  margemCompras?: { tecido: number; acessorios: number } // % de quebra a acrescentar
+  prazos?: Prazo[] // datas planeadas e concluídas de cada etapa até à entrega
   criadaEm: string
   estado: EstadoEncomenda
   preEncomenda: number

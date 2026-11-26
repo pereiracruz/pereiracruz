@@ -20,6 +20,8 @@ import Historico from './pages/orcamentos/Historico'
 import Atividade from './pages/Atividade'
 import Conta from './pages/Conta'
 import Copias from './pages/Copias'
+import Compras from './pages/producao/Compras'
+import Prazos from './pages/producao/Prazos'
 
 iniciarServidor()
 void prepararGoogle()?.catch(() => {})
@@ -42,6 +44,8 @@ function App() {
         <Route path="fichas/:encId" element={<EncomendaDetalhe />} />
         <Route path="fichas/:encId/packing" element={<PackingList />} />
         <Route path="fichas/:encId/:modId" element={<FichaModelo />} />
+        <Route path="compras" element={<Compras />} />
+        <Route path="prazos" element={<Prazos />} />
         <Route path="dados" element={<DadosMestre />} />
         <Route path="orcamentos" element={<Pedidos />} />
         <Route path="orcamentos/novo" element={<NovoPedido />} />

@@ -1,8 +1,12 @@
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { AlertTriangle, Check, CheckCheck, ExternalLink, FileSpreadsheet, Info, Package, Sheet, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { useDb } from '../../store/db'
-import { Botao, Cabecalho, Cartao, Etiqueta, Kpi, Tabela, aviso } from '../../components/ui'
+import { Botao, Cabecalho, Cartao, Etiqueta, Kpi, Pilulas, Tabela, aviso } from '../../components/ui'
+import ComprasEncomenda from '../producao/ComprasEncomenda'
+import PrazosEncomenda from '../producao/PrazosEncomenda'
+import { resumoCompras } from '../../lib/compras'
+import { situacaoPrazos } from '../../lib/prazos'
 import { NOME_FOLHA, folhasDoModelo } from '../../components/Folhas'
 import { fichasGeradas, idInternoEncomenda, pecasEncomenda, pecasModelo, referenciasEncomenda, valorEncomenda, verificarEncomenda } from '../../lib/calc'
 import { exportarLivro, montarLivro, nomeLivro } from '../../lib/exportar'
@@ -21,7 +25,11 @@ export default function EncomendaDetalhe() {
   const { encomendas, destinatarios, fornecedores, tecidos, equivalencias, acessorios, clientes, atualizarEncomenda, atualizarModelo, apagarEncomenda, log } = useDb()
   const enc = encomendas.find((e) => e.id === encId)
   const [aExportar, setAExportar] = useState(false)
+  const [params, setParams] = useSearchParams()
+  const aba = (params.get('aba') ?? 'modelos') as 'modelos' | 'compras' | 'prazos'
   if (!enc) return <Navigate to="/fichas" replace />
+  const rc = resumoCompras(enc)
+  const sp = situacaoPrazos(enc)
 
   const verif = verificarEncomenda(enc)
   const valor = valorEncomenda(enc)
@@ -92,6 +100,14 @@ export default function EncomendaDetalhe() {
         ) : <div />}
       </div>
 
+      <div className="mb-4"><Pilulas valor={aba} onChange={(v) => setParams(v === 'modelos' ? {} : { aba: v }, { replace: true })} opcoes={[
+        { id: 'modelos', rotulo: 'Modelos e fichas' },
+        { id: 'compras', rotulo: <>Compras{rc.porEncomendar > 0 && <span className="ml-1.5 text-[11px] font-semibold bg-ambar-fraco text-ambar rounded-full px-1.5">{rc.porEncomendar}</span>}</> },
+        { id: 'prazos', rotulo: <>Prazos{(sp.nivel === 'atrasada' || sp.nivel === 'urgente') && <span className={`ml-1.5 inline-block size-2 rounded-full ${sp.nivel === 'atrasada' ? 'bg-vermelho' : 'bg-ambar'}`} />}</> },
+      ]} /></div>
+      {aba === 'compras' && <ComprasEncomenda enc={enc} />}
+      {aba === 'prazos' && <PrazosEncomenda enc={enc} />}
+      {aba === 'modelos' && <>
       <div className="flex gap-x-6 gap-y-1 flex-wrap text-[13px] mb-5">
         {verif.map((v) => <span key={v.texto} className={`flex items-center gap-1.5 ${v.ok ? 'text-verde' : 'text-ambar'}`}>{v.ok ? <Check size={14} /> : <AlertTriangle size={14} />}{v.texto}</span>)}
       </div>
@@ -127,6 +143,7 @@ export default function EncomendaDetalhe() {
           return <Botao pequeno variante="fantasma" icone={<Upload size={13} />} onClick={() => nav('/fichas/nova')}>Tech pack</Botao>
         }}
       />
+      </>}
     </>
   )
 }
