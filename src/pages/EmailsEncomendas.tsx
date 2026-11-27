@@ -118,8 +118,9 @@ export default function EmailsEncomendas() {
     try { await marcarEmail(e, estado) } catch (x) { aviso(`Não foi possível alterar: ${x instanceof Error ? x.message : String(x)}`) }
   }
 
-  const visiveis = emails.filter((e) => e.estado === vista)
-  const conta = (v: Vista) => emails.filter((e) => e.estado === v).length
+  const deEncomenda = emails.filter((e) => e.tipo !== 'fatura')
+  const visiveis = deEncomenda.filter((e) => e.estado === vista)
+  const conta = (v: Vista) => deEncomenda.filter((e) => e.estado === v).length
 
   if (!emailDisponivel) return (
     <>

@@ -176,6 +176,13 @@ Deno.serve(async (req) => {
       })
     }
     if (acao === 'consultar') {
+      // e-Fatura (documentos da AT por associar): recurso da API anterior (/api/…, sem v1), só leitura
+      if (caminho && /^document_associations(\/[\w-]+)?(\?.*)?$/.test(caminho)) {
+        const r = await fetch(`${baseRascunhos(empresa)}/${caminho}`, { headers: { 'Content-Type': 'application/vnd.api+json', Accept: 'application/json', Authorization: `Bearer ${await token(empresa)}` } })
+        const texto = await r.text()
+        if (!r.ok) throw new Error(`TOConline ${r.status} em ${caminho.split('?')[0]}: ${texto.slice(0, 300)}`)
+        return resposta({ ok: true, resultado: JSON.parse(texto) })
+      }
       if (!caminho || !PERMITIDOS.test(caminho)) return resposta({ erro: 'Consulta não permitida (só leitura de documentos de venda e compra, recibos, pagamentos, séries, clientes, fornecedores e artigos).' }, 400)
       return resposta({ ok: true, resultado: await get(empresa, caminho) })
     }

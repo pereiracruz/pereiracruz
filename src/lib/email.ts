@@ -7,6 +7,8 @@ export interface EmailEncomenda {
   id: string; uid: number; messageId: string | null
   /** conta de email onde chegou (há várias caixas) */
   conta?: string
+  /** «fatura» = fatura/recibo verde de fornecedor (página Faturas recebidas); sem tipo = encomenda */
+  tipo?: 'encomenda' | 'fatura'
   de: string; deNome: string; assunto: string; data: string; texto: string
   anexos: AnexoEmail[]
   estado: 'nova' | 'tratada' | 'ignorada'
@@ -151,4 +153,5 @@ export async function urlImagem(caminho: string) {
   return data?.signedUrl ?? ''
 }
 
-export const emailsNovos = (s: EstadoEmails) => s.emails.filter((e) => e.estado === 'nova').length
+export const emailsNovos = (s: EstadoEmails) => s.emails.filter((e) => e.estado === 'nova' && e.tipo !== 'fatura').length
+export const faturasNovas = (s: EstadoEmails) => s.emails.filter((e) => e.estado === 'nova' && e.tipo === 'fatura').length
