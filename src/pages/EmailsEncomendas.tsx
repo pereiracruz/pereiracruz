@@ -147,7 +147,7 @@ export default function EmailsEncomendas() {
             <Campo rotulo="Remetentes" ajuda="Parte do endereço ou do nome, separados por vírgulas (ex.: whitecotton, @cliente.pt).">
               <Entrada value={remetentes} onChange={(e) => setRemetentes(e.target.value)} placeholder="whitecotton, @cliente.pt" />
             </Campo>
-            <Campo rotulo="Palavras no assunto" ajuda="Ex.: encomenda, order, PO. Basta coincidir o remetente ou uma palavra.">
+            <Campo rotulo="Palavras no assunto ou na mensagem" ajuda="Ex.: encomenda, order, pedido. Basta coincidir o remetente ou uma palavra.">
               <Entrada value={palavras} onChange={(e) => setPalavras(e.target.value)} placeholder="encomenda, order, PO" />
             </Campo>
             <Campo rotulo="Procurar nos últimos (dias)" ajuda="Entre 1 e 90.">
