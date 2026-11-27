@@ -58,7 +58,7 @@ const contaDaFolha = (nome: string) => (/revolut/i.test(nome) ? 'revolut' : /cgd
 const mesDaFolha = (nome: string) => { const m = nome.match(/(\d{2})_(\d{4})/); return m ? Number(m[2]) * 12 + Number(m[1]) : null }
 
 /** Folha do mês desta conta (se existir) e, para criar uma nova, a folha a copiar e o nome a dar-lhe. */
-export function folhaPara(m: Modelo, c: Conciliacao) {
+export function folhaPara<F extends { nome: string }>(m: { folhas: F[] }, c: Conciliacao) {
   const conta = chaveConta(c.conta)
   const alvoMes = c.ano * 12 + c.mes
   const daConta = m.folhas.filter((f) => contaDaFolha(f.nome) === conta && mesDaFolha(f.nome) != null)

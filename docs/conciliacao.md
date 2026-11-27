@@ -35,3 +35,15 @@ restantes folhas ficam iguais; trabalha diretamente no XML do ficheiro, `src/lib
   fórmula e valor já calculado, OBS), rodapé «Data:» / «SALDO TOTAL». Se houver mais movimentos do que linhas
   preparadas, o rodapé desce.
 - Descarrega o ficheiro atualizado com o mesmo nome, para guardar no lugar do antigo.
+
+## Google Sheets (as folhas da empresa no Drive)
+**Preencher no Google Sheets**: escreve a folha do mês diretamente na folha de cálculo Google da empresa
+(`Conciliacao_Bancaria_PP2026` e `Conciliacao_Bancaria_PC2026`, pasta «Conciliações» do Drive da Pereira & Cruz),
+com a conta Google de quem usa a aplicação (âmbito `spreadsheets`). Código: `src/lib/conciliacaoSheets.ts`.
+- Folha nova = duplicado da última folha da mesma conta (o Google mantém a formatação e o logótipo).
+- Se faltarem linhas, insere-as antes do rodapé (com a formatação da linha de cima e as células combinadas).
+- Datas em número de série com formato dd/mm/aaaa; saldos com fórmulas; o histórico de versões do Google permite voltar atrás.
+- Ficheiros por empresa guardados em `documentos/configuracao/conciliacao` (`folhasGoogle`); para outro ano, colar o
+  link da folha nova em «Usar outra folha de cálculo».
+- No Google Cloud (`pereiracruz-fichas`), no ecrã de consentimento OAuth, acrescentar o âmbito
+  `.../auth/spreadsheets` (a Google Sheets API já está ativa).
