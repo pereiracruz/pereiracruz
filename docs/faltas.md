@@ -14,7 +14,7 @@ O rascunho do mês fica guardado em `documentos` (coleção `faltasMeses`, id `A
 ## Regras
 
 - Horário 8h00–12h00 e 13h00–17h10 (8h10/dia); tolerância de 5 min na entrada da manhã e no regresso do almoço (acima disso conta o atraso todo).
-- Horas extra só no período indicado na página (ex.: 16/11 a 23/12): antes das 8h, ao almoço e depois das 17h10 → banco de horas. Sábados → «Horas- Sábado».
+- Horas extra só no período indicado na página (ex.: 16/11 a 23/12): antes das 8h, ao almoço e depois das 17h10 → banco de horas. Sábados → «Horas- Sábado». Cada bocado de horas extra só conta com pelo menos 15 minutos (ajustável na página).
 - Faltam 1 ou 2 picagens: se há uma de manhã e outra à tarde, completa as do almoço e assinala para confirmar.
 - Dia útil sem picagens = falta de dia inteiro (pode passar a baixa, férias ou justificada).
 - Dias úteis = dias de semana menos feriados nacionais e 3 de maio (Barcelos).

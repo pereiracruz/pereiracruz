@@ -24,8 +24,8 @@ const FOLHA_INICIAL = '1kOcwMH_W5XxFBrI5J65rIpUC9CslbeTp7jhuYwqW6EU'
 export const ACIDENTES_TRIMESTRE = 631.02
 
 // ---------- horário ----------
-export interface Regras { manha: [number, number]; tarde: [number, number]; tolerancia: number; extraDe: string | null; extraAte: string | null; faltasDescontamBanco: boolean }
-export const REGRAS_INICIAIS: Regras = { manha: [480, 720], tarde: [780, 1030], tolerancia: 5, extraDe: '2026-11-16', extraAte: '2026-12-23', faltasDescontamBanco: true }
+export interface Regras { manha: [number, number]; tarde: [number, number]; tolerancia: number; extraMinimo?: number; extraDe: string | null; extraAte: string | null; faltasDescontamBanco: boolean }
+export const REGRAS_INICIAIS: Regras = { manha: [480, 720], tarde: [780, 1030], tolerancia: 5, extraMinimo: 15, extraDe: '2026-11-16', extraAte: '2026-12-23', faltasDescontamBanco: true }
 export const minutosDia = (r: Regras) => (r.manha[1] - r.manha[0]) + (r.tarde[1] - r.tarde[0])
 
 // ---------- feriados (nacionais + Barcelos, 3 de maio) ----------
@@ -92,6 +92,14 @@ export interface ResultadoDia {
   picagens?: number[]       // depois de completar as esquecidas
 }
 
+/** Bocados de um intervalo fora do horário (antes das 8h, ao almoço, depois das 17h10). */
+function foraDoHorario(x: [number, number], r: Regras): number[] {
+  const cortes: [number, number][] = [[-Infinity, r.manha[0]], [r.manha[1], r.tarde[0]], [r.tarde[1], Infinity]]
+  return cortes.map((c) => sobrepor(x, c)).filter((m) => m > 0)
+}
+/** Só conta para o banco cada bocado de horas extra com pelo menos X minutos (combinado: 15). */
+const contaExtra = (m: number, r: Regras) => (m >= (r.extraMinimo ?? 15) ? m : 0)
+
 const sobrepor = (a: [number, number], b: [number, number]) => Math.max(0, Math.min(a[1], b[1]) - Math.max(a[0], b[0]))
 
 /** Completa picagens esquecidas (1 ou 2 em falta): se há uma de manhã e outra à tarde, acrescenta a saída/entrada do almoço. */
@@ -121,10 +129,10 @@ export function calcularDia(d: DiaRelogio, r: Regras, fer: Set<string>): Resulta
 
   if (d.resumo) {
     // resumo do programa do relógio: falta do dia (com a tolerância aplicada ao total) e minutos fora do horário
-    if (!util) return { ...base, trabalho: d.resumo.trabalho, extra: noPeriodoExtra ? d.resumo.trabalho + d.resumo.indefinido : 0 }
+    if (!util) return { ...base, trabalho: d.resumo.trabalho, extra: noPeriodoExtra ? contaExtra(d.resumo.trabalho + d.resumo.indefinido, r) : 0 }
     if (!d.resumo.presente && d.resumo.trabalho === 0) return { ...base, falta: minutosDia(r), semPicagens: true }
     const falta = d.resumo.falta <= r.tolerancia * 2 ? 0 : d.resumo.falta
-    return { ...base, trabalho: d.resumo.trabalho, falta, extra: noPeriodoExtra ? d.resumo.indefinido : 0 }
+    return { ...base, trabalho: d.resumo.trabalho, falta, extra: noPeriodoExtra ? contaExtra(d.resumo.indefinido, r) : 0 }
   }
 
   const { p, aviso } = completar(d.picagens ?? [], r)
@@ -132,7 +140,7 @@ export function calcularDia(d: DiaRelogio, r: Regras, fer: Set<string>): Resulta
   const intervalos: [number, number][] = []
   for (let i = 0; i + 1 < p.length; i += 2) intervalos.push([p[i], p[i + 1]])
   const trabalho = intervalos.reduce((s, x) => s + (x[1] - x[0]), 0)
-  if (!util) return { ...base, trabalho, extra: noPeriodoExtra ? trabalho : 0, picagens: p, aviso }
+  if (!util) return { ...base, trabalho, extra: noPeriodoExtra ? intervalos.reduce((t, x) => t + contaExtra(x[1] - x[0], r), 0) : 0, picagens: p, aviso }
 
   let falta = 0
   for (const seg of [r.manha, r.tarde] as [number, number][]) {
@@ -141,8 +149,7 @@ export function calcularDia(d: DiaRelogio, r: Regras, fer: Set<string>): Resulta
     const coberto = ajustados.reduce((s, x) => s + sobrepor(x, seg), 0)
     falta += (seg[1] - seg[0]) - coberto
   }
-  const dentro = intervalos.reduce((s, x) => s + sobrepor(x, r.manha) + sobrepor(x, r.tarde), 0)
-  const extra = noPeriodoExtra ? Math.max(0, trabalho - dentro) : 0
+  const extra = noPeriodoExtra ? intervalos.flatMap((x) => foraDoHorario(x, r)).reduce((t, m) => t + contaExtra(m, r), 0) : 0
   return { ...base, trabalho, falta, extra, picagens: p, aviso }
 }
 

@@ -158,6 +158,9 @@ export default function Faltas() {
             <label className="flex items-center gap-1.5">Tolerância
               <input inputMode="numeric" value={m.regras.tolerancia} onChange={(e) => mudar((x) => ({ ...x, regras: { ...x.regras, tolerancia: Number(e.target.value.replace(/\D/g, '')) || 0 } }))} className="w-10 border border-linha rounded px-1.5 py-0.5 text-center" /> min
             </label>
+            <label className="flex items-center gap-1.5">Extra mínimo
+              <input inputMode="numeric" value={m.regras.extraMinimo ?? 15} onChange={(e) => mudar((x) => ({ ...x, regras: { ...x.regras, extraMinimo: Number(e.target.value.replace(/\D/g, '')) || 0 } }))} className="w-10 border border-linha rounded px-1.5 py-0.5 text-center" /> min
+            </label>
             {avisos > 0 && <span className="text-ambar flex items-center gap-1"><AlertTriangle size={14} />{avisos} picagem(ns) a confirmar (abra a pessoa)</span>}
             <span className="flex-1" />
             {alterado && <Botao pequeno icone={<Save size={14} />} onClick={() => guardar()}>Guardar</Botao>}
