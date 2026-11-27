@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './index.css'
@@ -9,26 +9,26 @@ import { prepararApp } from './lib/app'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Painel from './pages/Painel'
-import Encomendas from './pages/fichas/Encomendas'
-import NovaEncomenda from './pages/fichas/NovaEncomenda'
-import EmailsEncomendas from './pages/EmailsEncomendas'
-import ConciliacaoBancaria from './pages/Conciliacao'
-import FaturasRecebidas from './pages/FaturasRecebidas'
-import Producao from './pages/Producao'
-import Faltas from './pages/Faltas'
-import EncomendaDetalhe from './pages/fichas/EncomendaDetalhe'
-import FichaModelo from './pages/fichas/FichaModelo'
-import PackingList from './pages/fichas/PackingList'
-import DadosMestre from './pages/DadosMestre'
-import Pedidos from './pages/orcamentos/Pedidos'
-import NovoPedido from './pages/orcamentos/NovoPedido'
-import Historico from './pages/orcamentos/Historico'
-import Margens from './pages/orcamentos/Margens'
-import Atividade from './pages/Atividade'
-import Conta from './pages/Conta'
-import Copias from './pages/Copias'
-import Compras from './pages/producao/Compras'
-import Prazos from './pages/producao/Prazos'
+const Encomendas = lazy(() => import('./pages/fichas/Encomendas'))
+const NovaEncomenda = lazy(() => import('./pages/fichas/NovaEncomenda'))
+const EmailsEncomendas = lazy(() => import('./pages/EmailsEncomendas'))
+const ConciliacaoBancaria = lazy(() => import('./pages/Conciliacao'))
+const FaturasRecebidas = lazy(() => import('./pages/FaturasRecebidas'))
+const Producao = lazy(() => import('./pages/Producao'))
+const Faltas = lazy(() => import('./pages/Faltas'))
+const EncomendaDetalhe = lazy(() => import('./pages/fichas/EncomendaDetalhe'))
+const FichaModelo = lazy(() => import('./pages/fichas/FichaModelo'))
+const PackingList = lazy(() => import('./pages/fichas/PackingList'))
+const DadosMestre = lazy(() => import('./pages/DadosMestre'))
+const Pedidos = lazy(() => import('./pages/orcamentos/Pedidos'))
+const NovoPedido = lazy(() => import('./pages/orcamentos/NovoPedido'))
+const Historico = lazy(() => import('./pages/orcamentos/Historico'))
+const Margens = lazy(() => import('./pages/orcamentos/Margens'))
+const Atividade = lazy(() => import('./pages/Atividade'))
+const Conta = lazy(() => import('./pages/Conta'))
+const Copias = lazy(() => import('./pages/Copias'))
+const Compras = lazy(() => import('./pages/producao/Compras'))
+const Prazos = lazy(() => import('./pages/producao/Prazos'))
 
 iniciarServidor()
 void prepararGoogle()?.catch(() => {})
@@ -75,6 +75,16 @@ function App() {
 }
 
 prepararApp()
+
+// Depois de uma publicação nova, um separador antigo pode pedir partes da aplicação que já não existem:
+// recarrega uma vez para ficar com a versão nova (no máximo uma vez por minuto, para não entrar em ciclo sem rede).
+window.addEventListener('vite:preloadError', (e) => {
+  const ultima = Number(sessionStorage.getItem('recarregadoEm') ?? 0)
+  if (Date.now() - ultima < 60_000) return
+  e.preventDefault()
+  sessionStorage.setItem('recarregadoEm', String(Date.now()))
+  location.reload()
+})
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

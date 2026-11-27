@@ -1,5 +1,4 @@
 import type { FolhaLivro } from './exportar'
-import { paraSheets } from './exportar'
 
 /**
  * Exportação para o Google Sheets no Drive do utilizador (ex.: pereiracruz.lda@gmail.com).
@@ -85,6 +84,7 @@ async function pasta(t: string): Promise<string> {
 export async function exportarSheets(titulo: string, livro: FolhaLivro[]): Promise<string> {
   if (!sheetsDisponivel) throw new Error('Falta ligar a aplicação à conta Google (VITE_GOOGLE_CLIENT_ID).')
   const t = await obterToken() // primeiro, ainda dentro do clique
+  const { paraSheets } = await import('./exportar') // a biblioteca do Excel só carrega quando é precisa
   const folhas = paraSheets(livro)
 
   const ficheiro = await google('https://www.googleapis.com/drive/v3/files?fields=id,webViewLink', t, {

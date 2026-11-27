@@ -83,7 +83,7 @@ export default function ComprasEncomenda({ enc }: { enc: Encomenda }) {
               <input type="number" min={0} step={0.5} value={margem[k]} onChange={(ev) => atualizarEncomenda(enc.id, (x) => ({ ...x, margemCompras: { ...margem, [k]: Number(ev.target.value) || 0 } }))}
                 className="w-14 h-8 px-2 rounded-md border border-linha bg-papel text-right outline-none focus:border-tinta-2" /> %</label>
           ))}
-          <Botao pequeno icone={<FileSpreadsheet size={14} />} disabled={!linhas.length} onClick={() => aviso(`${exportarCompras(enc)} descarregado.`)}>Excel</Botao>
+          <Botao pequeno icone={<FileSpreadsheet size={14} />} disabled={!linhas.length} onClick={() => void exportarCompras(enc).then((nome) => aviso(`${nome} descarregado.`))}>Excel</Botao>
         </div>
       </div>
       {semFicha.length > 0 && <p className="mx-5 mb-3 text-[13px] text-ambar bg-ambar-fraco border border-ambar-borda rounded-controlo px-3 py-2 flex gap-2"><AlertTriangle size={15} className="mt-0.5 shrink-0" />

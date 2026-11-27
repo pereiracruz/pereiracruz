@@ -1,8 +1,9 @@
 // Service worker da app instalável (PWA).
 // - Páginas: sempre da rede (versão mais recente); sem rede, abre a última versão guardada.
-// - Ficheiros da aplicação (/assets/…, ícones): guardados para abrir mais depressa.
+// - Ficheiros da aplicação (/assets/…, ícones): guardados para abrir mais depressa
+//   (nunca uma página HTML no lugar de um ficheiro que já não existe depois de uma publicação nova).
 // - Dados (Supabase, Google): nunca passam por aqui (outros domínios), por isso nunca ficam em cache.
-const CACHE = 'pc-app-v1'
+const CACHE = 'pc-app-v2'
 
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (e) => {
@@ -18,6 +19,6 @@ self.addEventListener('fetch', (e) => {
     return
   }
   if (url.pathname.startsWith('/assets/') || /\.(png|webmanifest)$/.test(url.pathname)) {
-    e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((r) => { if (r.ok) { const c = r.clone(); caches.open(CACHE).then((k) => k.put(req, c)) } return r })))
+    e.respondWith(caches.match(req).then((hit) => hit || fetch(req).then((r) => { if (r.ok && !(r.headers.get('content-type') ?? '').includes('text/html')) { const c = r.clone(); caches.open(CACHE).then((k) => k.put(req, c)) } return r })))
   }
 })
