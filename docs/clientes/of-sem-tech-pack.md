@@ -13,4 +13,5 @@ Na encomenda (separador *Modelos e fichas*):
    Se a leitura falhar, o modelo fica **OF por ler** com o botão **Ler OF** para tentar outra vez.
 3. Depois de lida aparece **Gerar ficha**. Na ficha, os acessórios e a embalagem ficam com o fornecedor
    «Fornecido pelo cliente», por isso nas Compras aparecem como enviados pela cliente (não se compram, só se confirma a receção).
+   A **linha de costura é sempre comprada pela Pereira & Cruz**: fica na ficha como material nosso, também nestes clientes.
 4. A OF abre-se a partir do nome do ficheiro na linha do modelo e com **Ver OF** no topo da ficha; pode ser substituída.
