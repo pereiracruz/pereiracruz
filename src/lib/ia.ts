@@ -24,10 +24,15 @@ export interface TechPackLido {
     pedidos: string[]; observacoes: string[]
   }[]
 }
+export interface ExtratoLido {
+  banco: string | null; conta: string | null; titular: string | null; dataInicio: string | null; dataFim: string | null
+  saldoInicial: number | null; saldoFinal: number | null
+  movimentos: { data: string; descricao: string; valor: number; saldo: number | null; pagina: number; confianca: Confianca }[]
+}
 export interface ResultadoIA<T> { dados: T; caminho: string; uso: { entrada: number; saida: number }; modelo: string }
 
 /** Guarda o ficheiro no Supabase (bucket privado «documentos») e pede a leitura à IA (processamento na UE). */
-export async function lerComIA<T>(ficheiro: File, tipo: 'encomenda' | 'techpack', contexto?: string): Promise<ResultadoIA<T>> {
+export async function lerComIA<T>(ficheiro: File, tipo: 'encomenda' | 'techpack' | 'extrato', contexto?: string): Promise<ResultadoIA<T>> {
   if (!supabase) throw new Error('A leitura com IA precisa do servidor (Supabase).')
   const { data: sessao } = await supabase.auth.getUser()
   const ponto = ficheiro.name.lastIndexOf('.')
