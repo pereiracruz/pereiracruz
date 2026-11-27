@@ -24,3 +24,14 @@ Página **Financeiro → Conciliação bancária**. Uma conciliação por empres
 - `ler-documento` (tipo `extrato` e leitura de Word).
 - `toconline` (passa a poder ler `commercial_purchases_documents`, `commercial_purchases_payments` e
   `commercial_sales_receipts`; continua só de leitura).
+
+## Excel da conciliação (o ficheiro da empresa)
+**Preencher o meu Excel** (na conciliação do mês): escolhe-se o Excel da empresa (ex.: `Conciliacao_Bancaria_PP2026.xlsx`)
+e a aplicação preenche a folha do mês e da conta, mexendo só nas células dessa folha (formatação, logótipo e
+restantes folhas ficam iguais; trabalha diretamente no XML do ficheiro, `src/lib/excelModelo.ts`).
+- Folha: a do mês desta conta (ex.: `10_2026`, `10_2026_cgd`, `revolut_10_2026`); se não existir, cria uma nova,
+  cópia da última folha da mesma conta, com o nome no mesmo padrão.
+- Ano/Mês, «Saldo transitado …», movimentos (data, descrição com o nº da fatura entre parênteses, quantia, saldo com
+  fórmula e valor já calculado, OBS), rodapé «Data:» / «SALDO TOTAL». Se houver mais movimentos do que linhas
+  preparadas, o rodapé desce.
+- Descarrega o ficheiro atualizado com o mesmo nome, para guardar no lugar do antigo.
