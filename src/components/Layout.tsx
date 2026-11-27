@@ -1,13 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Archive, Bell, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, X, PanelLeftOpen, Receipt } from 'lucide-react'
+import { Archive, Bell, Mail, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, X, PanelLeftOpen, Receipt } from 'lucide-react'
 import { useDb } from '../store/db'
 import { fichasPorAprovar } from '../lib/calc'
 import { situacaoPrazos } from '../lib/prazos'
 import { resumoCompras } from '../lib/compras'
 import { Toasts } from './ui'
 import { modoServidor } from '../lib/supabase'
+import { carregarEmails, emailDisponivel, emailsNovos, useEmails, verificarEmails } from '../lib/email'
 
 function Item({ para, icone, children, fim }: { para: string; icone?: ReactNode; children: ReactNode; fim?: boolean }) {
   return (
@@ -44,6 +45,7 @@ function lerVistos(): string[] {
 function Sino({ direita }: { direita?: boolean }) {
   const encomendas = useDb((s) => s.encomendas)
   const pedidos = useDb((s) => s.pedidos)
+  const emails = useEmails((s) => s.emails)
   const nav = useNavigate()
   const [aberto, setAberto] = useState(false)
   const itens = [
@@ -54,6 +56,7 @@ function Sino({ direita }: { direita?: boolean }) {
       texto: a, sub: `${e.cliente} · ${e.colecao}`, para: `/fichas/${e.id}?aba=prazos`,
     }))),
     ...pedidos.filter((p) => p.estado === 'Por validar').map((p) => ({ texto: `Orçamento por validar: ${p.peca}`, sub: p.cliente, para: `/orcamentos/${p.id}` })),
+    ...emails.filter((m) => m.estado === 'nova').map((m) => ({ texto: `Email de encomenda: ${m.assunto}`, sub: m.deNome || m.de, para: `/emails#${m.id}` })),
   ]
   const [vistos, setVistos] = useState<string[]>(lerVistos)
   // os dois sinos (computador e telemóvel) ficam sincronizados
@@ -109,6 +112,16 @@ export default function Layout() {
   const nome = useDb((s) => s.nomeUtilizador)
   const porAprovar = useDb((s) => s.encomendas.reduce((n, e) => n + fichasPorAprovar(e), 0))
   const aGuardar = useDb((s) => s.aGuardar)
+  const novosEmails = useEmails(emailsNovos)
+  // emails de encomendas: carrega ao entrar e vai à caixa de correio de 10 em 10 minutos enquanto a aplicação está aberta
+  useEffect(() => {
+    if (!emailDisponivel) return
+    void carregarEmails()
+    const ir = () => { if (document.visibilityState === 'visible') verificarEmails().catch(() => { /* aparece na página dos emails */ }) }
+    const primeira = setTimeout(ir, 5_000)
+    const t = setInterval(ir, 10 * 60_000)
+    return () => { clearTimeout(primeira); clearInterval(t) }
+  }, [])
   const encomendas = useDb((s) => s.encomendas)
   const emCurso = encomendas.filter((e) => e.estado !== 'Concluída')
   const atrasadas = emCurso.filter((e) => situacaoPrazos(e).nivel === 'atrasada').length
@@ -145,6 +158,10 @@ export default function Layout() {
               <span className="flex-1">Encomendas</span>
               {porAprovar > 0 && <span className="text-[11px] font-semibold bg-ouro-fraco text-ouro-texto rounded-full px-1.5">{porAprovar}</span>}
             </Item>
+            {emailDisponivel && <Item para="/emails" icone={<Mail size={17} />}>
+              <span className="flex-1">Emails de encomendas</span>
+              {novosEmails > 0 && <span className="text-[11px] font-semibold bg-vermelho-fraco text-vermelho rounded-full px-1.5" title="Emails de encomendas por tratar">{novosEmails}</span>}
+            </Item>}
             <Item para="/compras" icone={<ShoppingCart size={17} />}>
               <span className="flex-1">Compras</span>
               {porEncomendar > 0 && <span className="text-[11px] font-semibold bg-ambar-fraco text-ambar rounded-full px-1.5" title="Materiais por encomendar">{porEncomendar}</span>}

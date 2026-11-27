@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import { AlertTriangle, Check, ChevronDown, CircleCheck, FilePlus2, FileSpreadsheet, FileText, Pencil, X } from 'lucide-react'
 import { useDb } from '../../store/db'
@@ -7,6 +7,7 @@ import { Botao, Cabecalho, Campo, Cartao, Confianca, Entrada, Etiqueta, Etiqueta
 import { colecaoDosFicheiros, encomendaDaLeitura, lerEncomendaExcel, type LeituraExcel } from '../../lib/lerEncomendaExcel'
 import { leituraDaIA, lerComIA, ligarTechPack, type EncomendaLida, type TechPackLido } from '../../lib/ia'
 import { modoServidor } from '../../lib/supabase'
+import { anexoComoFicheiro, carregarEmails, marcarEmail, useEmails, type EmailEncomenda } from '../../lib/email'
 import { TechPack } from '../../components/TechPack'
 import { encomendaImprevu, gerarFichaJanet, leituraShirtMao, type DecisaoIA } from '../../data/seed'
 import { pecasModelo, referenciasEncomenda, valorEncomenda } from '../../lib/calc'
@@ -41,6 +42,10 @@ export default function NovaEncomenda() {
   const [techPacks, setTechPacks] = useState<TechPackGuardado[]>([])
   const [guardados, setGuardados] = useState<{ nome: string; caminho: string }[]>([])
   const [progresso, setProgresso] = useState<string[]>([])
+  // vinda da página «Emails de encomendas»: os anexos do email entram como ficheiros carregados
+  const local = useLocation()
+  const emailId = (local.state as { emailId?: string } | null)?.emailId
+  const [doEmail, setDoEmail] = useState<EmailEncomenda | null>(null)
 
   const exemplo = ficheiros.some((f) => f.exemplo)
   // papel de cada PDF: com Excel, os PDFs são tech packs; sem Excel, o primeiro PDF é a encomenda
@@ -68,7 +73,7 @@ export default function NovaEncomenda() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passo, enc])
 
-  const adicionar = (fl: FileList | null) => {
+  const adicionar = (fl: FileList | File[] | null) => {
     if (!fl) return
     const novos: Ficheiro[] = Array.from(fl).map((f) => ({
       nome: f.name,
@@ -84,6 +89,23 @@ export default function NovaEncomenda() {
     })
     setLeitura(null); setErroLeitura(''); setTechPacks([])
   }
+
+  useEffect(() => {
+    if (!emailId) return
+    let cancelado = false
+    void (async () => {
+      try {
+        if (!useEmails.getState().carregado) await carregarEmails()
+        const e = useEmails.getState().emails.find((x) => x.id === emailId)
+        if (!e || cancelado) return
+        setDoEmail(e)
+        const fs = await Promise.all(e.anexos.map(anexoComoFicheiro))
+        if (!cancelado) adicionar(fs)
+      } catch (x) { if (!cancelado) setErroLeitura(x instanceof Error ? x.message : String(x)) }
+    })()
+    return () => { cancelado = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emailId])
 
   const usarExemplo = () => setFicheiros([
     { nome: 'PEREIRACRUZ_SS27.xlsx', tamanho: '21 KB', tipo: 'excel', exemplo: true },
@@ -146,10 +168,11 @@ export default function NovaEncomenda() {
       }),
     }
     adicionarEncomenda(nova)
+    if (doEmail) void marcarEmail(doEmail, 'tratada', nova.id).catch(() => { /* fica por tratar */ })
     log('Encomenda carregada', `${nova.cliente} · ${nova.colecao} · ${int(nova.preEncomenda + nova.stock)} peças (${leitura.origem === 'ia' ? 'PDF lido com IA' : 'Excel lido'}${techPacks.length ? ` · ${techPacks.length} tech pack(s) lidos` : ''})`)
     aviso('Encomenda criada.')
     nav(`/fichas/${nova.id}`)
-  }, [leitura, enc, cliente, colecao, modo, ligacoes, techPacks, guardados, adicionarEncomenda, log, nav])
+  }, [leitura, enc, cliente, colecao, modo, ligacoes, techPacks, guardados, adicionarEncomenda, log, nav, doEmail])
 
   const escolher = (id: DecisaoIA['id'], e: Escolha) => setEscolhas((s) => ({ ...s, [id]: e }))
 
@@ -183,6 +206,7 @@ export default function NovaEncomenda() {
   return (
     <>
       <Cabecalho migalhas={[{ rotulo: 'Encomendas', para: '/fichas' }, { rotulo: 'Nova encomenda' }]} sobre="Fichas de produção" titulo="Nova encomenda"
+        sub={doEmail ? `Do email «${doEmail.assunto}» de ${doEmail.deNome || doEmail.de}: os anexos já estão carregados.` : undefined}
         acoes={passo === 3 && leitura ? <>
           <Botao variante="fantasma" onClick={() => nav('/fichas')}>Descartar</Botao>
           <Botao variante="primario" icone={<CircleCheck size={16} />} onClick={criar}>Criar encomenda <kbd className="text-[11px] opacity-60 ml-1">⌘↵</kbd></Botao>
