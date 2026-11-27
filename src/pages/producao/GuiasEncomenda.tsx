@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { AlertTriangle, CheckCircle2, Copy, FileText, Receipt, RefreshCw, Trash2, Truck } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Copy, Mail, FileText, Receipt, RefreshCw, Trash2, Truck } from 'lucide-react'
 import { useDb } from '../../store/db'
 import { Botao, Campo, Cartao, Entrada, Etiqueta, Modal, aviso } from '../../components/ui'
 import { qtdParaEmbalar, soma } from '../../lib/calc'
 import { dataCurta, eur, hojeISO, int, parseNum } from '../../lib/format'
-import { NOME_EMPRESA_TOC, apagarRascunhoTOC, consultarTOC, criarGuiaTOC, finalizarGuiaTOC, listarTOC, tocDisponivel, type EmpresaTOC, type GuiaParaTOC } from '../../lib/toconline'
+import { NOME_EMPRESA_TOC, apagarRascunhoTOC, consultarTOC, criarGuiaTOC, enviarGuiaEmailTOC, finalizarGuiaTOC, listarTOC, tocDisponivel, type EmpresaTOC, type GuiaParaTOC } from '../../lib/toconline'
 import type { Encomenda, GuiaTOC } from '../../types'
 
 /** Valores habituais de cada empresa (lidos das guias reais em 26/11/2026; editáveis em cada guia). */
@@ -47,6 +47,9 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
   const [aCriar, setACriar] = useState(false)
   const [finalizarLogo, setFinalizarLogo] = useState(true)
   const [aFinalizar, setAFinalizar] = useState('')
+  const [enviarLogo, setEnviarLogo] = useState(true)
+  const [emailPara, setEmailPara] = useState('')
+  const [aEnviar, setAEnviar] = useState('')
   const [aAtualizar, setAAtualizar] = useState('')
   const [faturar, setFaturar] = useState<GuiaTOC | null>(null)
 
@@ -95,6 +98,7 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
     setClienteId(id)
     const c = dados?.clientes.find((x) => x.id === id)
     setDescarga({ morada: s(c?.address_detail), cp: s(c?.postcode), localidade: s(c?.city) })
+    setEmailPara(s(c?.email))
     if (!id) return
     try {
       const r = await consultarTOC(empresa, `customers/${id}?include=addresses`) as { included?: { type: string; attributes?: Record<string, unknown> }[] }
@@ -130,6 +134,13 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
       const r = await criarGuiaTOC(empresa, guia, finalizarLogo)
       guardarGuias((g) => [...g, { id: String(r.id), empresa, criadaEm: new Date().toISOString(), destinatario: nomeCliente, pecas, viatura: viatura.trim(), estado: (r.finalizado ? 'finalizada' : 'rascunho') as GuiaTOC['estado'], numero: r.document_no || undefined, codigoAT: r.communication_code || undefined, linhas: escolhidas.map((l) => ({ chave: l.chave, descricao: l.descricao, quantidade: l.quantidade })) }])
       log('Guia criada no TOConline', `${enc.cliente} · ${enc.colecao} · ${NOME_EMPRESA_TOC[empresa]} · ${nomeCliente} · ${pecas} peças${r.finalizado ? ` · FINALIZADA ${r.document_no ?? ''}` : ' · rascunho'}`)
+      if (r.finalizado && enviarLogo) {
+        try {
+          const em = await enviarGuiaEmailTOC(empresa, String(r.id), emailPara.trim() || undefined)
+          guardarGuias((gs) => gs.map((x) => (x.id === String(r.id) && x.empresa === empresa ? { ...x, email: em.para } : x)))
+          log('Guia enviada por email', `${r.document_no ?? ''} · ${nomeCliente} · ${em.para}`)
+        } catch (e) { setErro(`A guia ${r.document_no ?? ''} foi finalizada, mas o email não foi enviado: ${e instanceof Error ? e.message : String(e)}`) }
+      }
       if (r.erroFinalizar) setErro(`O rascunho foi criado, mas o TOConline não deixou finalizar: ${r.erroFinalizar}`)
       else aviso(r.finalizado ? `Guia ${r.document_no ?? ''} gravada e finalizada${r.communication_code ? ` (código AT ${r.communication_code})` : ': confirme no TOConline se foi comunicada à AT'}.` : 'Rascunho da guia criado no TOConline. Reveja-o e finalize-o lá.')
       setConfirmar(false)
@@ -169,6 +180,18 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
     } catch (e) { aviso(e instanceof Error ? e.message : String(e)) } finally { setAFinalizar('') }
   }
 
+  const enviar = async (g: GuiaTOC) => {
+    const para = window.prompt(`Enviar a guia ${g.numero ?? ''} por email a ${g.destinatario}.\nEmail (vazio = o email do cliente no TOConline):`, g.email ?? '')
+    if (para === null) return
+    setAEnviar(g.id)
+    try {
+      const r = await enviarGuiaEmailTOC(g.empresa, g.id, para.trim() || undefined)
+      guardarGuias((gs) => gs.map((x) => (x.id === g.id && x.empresa === g.empresa ? { ...x, email: r.para } : x)))
+      log('Guia enviada por email', `${g.numero ?? ''} · ${g.destinatario} · ${r.para}`)
+      aviso(`Guia enviada para ${r.para || 'o email do cliente'}.`)
+    } catch (e) { aviso(e instanceof Error ? e.message : String(e)) } finally { setAEnviar('') }
+  }
+
   const apagar = async (g: GuiaTOC) => {
     if (!window.confirm(`Apagar o rascunho da guia para ${g.destinatario} no TOConline? Só funciona enquanto não estiver finalizada.`)) return
     try {
@@ -196,11 +219,12 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
                 <td className="px-2">{g.destinatario}</td>
                 <td className="px-2 text-right num">{int(g.pecas)}</td>
                 <td className="px-2">{g.estado === 'rascunho' ? <Etiqueta tom="ambar">Rascunho</Etiqueta> : g.estado === 'finalizada' ? <Etiqueta tom="verde">Finalizada</Etiqueta> : <Etiqueta tom="neutro">Apagada</Etiqueta>}</td>
-                <td className="px-2">{g.numero || '—'}{g.codigoAT && <div className="text-[11.5px] text-tenue">AT {g.codigoAT}</div>}</td>
+                <td className="px-2">{g.numero || '—'}{g.codigoAT && <div className="text-[11.5px] text-tenue">AT {g.codigoAT}</div>}{g.email && <div className="text-[11.5px] text-tenue">enviada para {g.email}</div>}</td>
                 <td className="px-2">{g.fatura ? <><Etiqueta tom="verde">{g.fatura.numero}</Etiqueta>{g.fatura.total != null && <div className="text-[11.5px] text-tenue">{eur(g.fatura.total)} c/ IVA</div>}</>
                   : g.estado === 'finalizada' ? <Botao pequeno variante="secundario" icone={<Receipt size={13} />} onClick={() => setFaturar(g)}>Valores para faturar</Botao> : <span className="text-tenue">—</span>}</td>
                 <td className="px-5 text-right whitespace-nowrap">
                   {g.estado !== 'apagada' && <Botao pequeno variante="fantasma" icone={<RefreshCw size={13} className={aAtualizar === g.id ? 'animate-spin' : ''} />} onClick={() => atualizar(g)}>Atualizar</Botao>}
+                  {g.estado === 'finalizada' && <Botao pequeno variante="fantasma" icone={<Mail size={13} />} disabled={aEnviar === g.id} onClick={() => enviar(g)}>{aEnviar === g.id ? 'A enviar…' : g.email ? 'Reenviar' : 'Enviar por email'}</Botao>}
                   {g.estado === 'rascunho' && <Botao pequeno variante="secundario" icone={<CheckCircle2 size={13} />} disabled={aFinalizar === g.id} onClick={() => finalizar(g)}>{aFinalizar === g.id ? 'A finalizar…' : 'Gravar e finalizar'}</Botao>}
                   {g.estado === 'rascunho' && <Botao pequeno variante="fantasma" icone={<Trash2 size={13} />} onClick={() => apagar(g)}>Apagar</Botao>}
                 </td>
@@ -297,13 +321,17 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
       <ValoresFatura enc={enc} guia={faturar} onFechar={() => setFaturar(null)} />
 
       <Modal aberto={confirmar} onFechar={() => !aCriar && setConfirmar(false)} titulo={finalizarLogo ? 'Criar e finalizar a guia?' : 'Criar rascunho da guia?'} sub={`${NOME_EMPRESA_TOC[empresa]} → ${nomeCliente}`}
-        rodape={<><Botao onClick={() => setConfirmar(false)} disabled={aCriar}>Cancelar</Botao><Botao variante="primario" onClick={criar} disabled={aCriar}>{aCriar ? 'A criar…' : finalizarLogo ? 'Criar, gravar e finalizar' : 'Criar rascunho'}</Botao></>}>
+        rodape={<><Botao onClick={() => setConfirmar(false)} disabled={aCriar}>Cancelar</Botao><Botao variante="primario" onClick={criar} disabled={aCriar}>{aCriar ? 'A criar…' : finalizarLogo ? (enviarLogo ? 'Criar, finalizar e enviar' : 'Criar, gravar e finalizar') : 'Criar rascunho'}</Botao></>}>
         <div className="text-[13.5px] space-y-2">
           <p>Viatura <b>{viatura}</b> · carga a <b>{hora.replace('T', ' ')}</b></p>
           <p>De {carga.morada}, {carga.cp} {carga.localidade}<br />Para {descarga.morada}, {descarga.cp} {descarga.localidade}</p>
           <ul className="list-disc pl-5">{escolhidas.map((l) => <li key={l.chave}>{l.descricao.split('\n').join(' · ')}: {int(l.quantidade)} un.</li>)}</ul>
           <label className="flex items-start gap-2 pt-1"><input type="checkbox" className="mt-1" checked={finalizarLogo} onChange={(e) => setFinalizarLogo(e.target.checked)} />
             <span><b>Gravar e finalizar</b> logo (a guia ganha número). Depois de finalizada já não se altera nem apaga, só se anula no TOConline.</span></label>
+          {finalizarLogo && <div className="pl-6 space-y-1.5">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={enviarLogo} onChange={(e) => setEnviarLogo(e.target.checked)} /><span>Enviar a guia por email ao cliente</span></label>
+            {enviarLogo && <Entrada className="h-9" placeholder="Email do cliente (vazio = o que está no TOConline)" value={emailPara} onChange={(e) => setEmailPara(e.target.value)} />}
+          </div>}
           {!finalizarLogo && <p className="text-suave">Fica como <b>rascunho</b>: pode conferi-lo e finalizá-lo depois com «Gravar e finalizar».</p>}
         </div>
       </Modal>
