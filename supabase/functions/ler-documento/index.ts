@@ -157,6 +157,23 @@ const ESQUEMA_PRODUCAO = obj({
   },
 })
 
+const ESQUEMA_PICAGENS = obj({
+  pessoas: {
+    type: 'array',
+    items: obj({
+      numero: { ...s, description: 'Número do funcionário no relógio, como impresso' },
+      nome: s,
+      dias: {
+        type: 'array',
+        items: obj({
+          data: { ...s, description: 'AAAA-MM-DD' },
+          picagens: { type: 'array', items: { ...s, description: 'HH:MM' }, description: 'Todas as picagens desse dia pela ordem; vazio se não picou' },
+        }),
+      },
+    }),
+  },
+})
+
 // ---------------- Função ----------------
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -188,6 +205,11 @@ Para cada modelo/referência extrai: tecidos (com fornecedor, composição e con
 - Marca fimModelo na hora em que a folha indica que um modelo acabou.
 - Os códigos de modelo têm normalmente o formato E26-107-3: copia-os como estão escritos.
 - Não inventes dias nem valores.`,
+  picagens: `És o assistente administrativo de uma confeção têxtil portuguesa. Lê o relatório de picagens do relógio de ponto (PDF) e extrai, para cada funcionário, TODAS as picagens de cada dia, pela ordem.
+- Copia as horas exatamente como impressas (HH:MM); não arredondes nem corrijas.
+- Dia sem picagens: lista vazia. Não inventes picagens em falta (a aplicação trata disso).
+- Número e nome do funcionário como aparecem no relatório.
+- Datas em AAAA-MM-DD.`,
   fatura: `És o assistente administrativo de uma empresa portuguesa. Lê o documento de compra (fatura, fatura-recibo, nota de crédito ou recibo verde/ato isolado do Portal das Finanças) e extrai os dados fiscais.
 - Copia o número do documento exatamente como impresso.
 - NIF só com algarismos. O fornecedor é quem emite; o cliente é a nossa empresa.
@@ -254,8 +276,8 @@ Deno.serve(async (req) => {
     const { data: quem, error: eSessao } = await supabase.auth.getUser(token)
     if (eSessao || !quem.user) return resposta({ erro: 'Sessão inválida ou expirada. Volte a entrar na aplicação.' }, 401)
 
-    const { caminho, tipo, contexto } = await req.json() as { caminho: string; tipo: 'encomenda' | 'techpack' | 'extrato' | 'fatura' | 'producao'; contexto?: string }
-    if (!caminho || !['encomenda', 'techpack', 'extrato', 'fatura', 'producao'].includes(tipo)) return resposta({ erro: 'Pedido inválido' }, 400)
+    const { caminho, tipo, contexto } = await req.json() as { caminho: string; tipo: 'encomenda' | 'techpack' | 'extrato' | 'fatura' | 'producao' | 'picagens'; contexto?: string }
+    if (!caminho || !['encomenda', 'techpack', 'extrato', 'fatura', 'producao', 'picagens'].includes(tipo)) return resposta({ erro: 'Pedido inválido' }, 400)
     if (/\.doc$/i.test(caminho)) return resposta({ erro: 'Ficheiros .doc antigos não são suportados: guarde o extrato como .docx ou PDF.' }, 422)
 
     // descarregar o ficheiro com a sessão de quem pediu (respeita as regras de acesso)
@@ -283,11 +305,11 @@ Deno.serve(async (req) => {
       system: INSTRUCOES[tipo],
       output_config: {
         effort: 'high',
-        format: { type: 'json_schema', schema: tipo === 'encomenda' ? ESQUEMA_ENCOMENDA : tipo === 'extrato' ? ESQUEMA_EXTRATO : tipo === 'fatura' ? ESQUEMA_FATURA : tipo === 'producao' ? ESQUEMA_PRODUCAO : ESQUEMA_TECHPACK },
+        format: { type: 'json_schema', schema: tipo === 'encomenda' ? ESQUEMA_ENCOMENDA : tipo === 'extrato' ? ESQUEMA_EXTRATO : tipo === 'fatura' ? ESQUEMA_FATURA : tipo === 'producao' ? ESQUEMA_PRODUCAO : tipo === 'picagens' ? ESQUEMA_PICAGENS : ESQUEMA_TECHPACK },
       },
       messages: [{
         role: 'user',
-        content: [bloco, { type: 'text', text: `Extrai os dados deste ${tipo === 'encomenda' ? 'documento de encomenda' : tipo === 'extrato' ? 'extrato bancário' : tipo === 'fatura' ? 'documento de compra' : tipo === 'producao' ? 'folha de produção' : 'tech pack'}.${contexto ? `\nContexto: ${contexto}` : ''}` }],
+        content: [bloco, { type: 'text', text: `Extrai os dados deste ${tipo === 'encomenda' ? 'documento de encomenda' : tipo === 'extrato' ? 'extrato bancário' : tipo === 'fatura' ? 'documento de compra' : tipo === 'producao' ? 'folha de produção' : tipo === 'picagens' ? 'relatório de picagens' : 'tech pack'}.${contexto ? `\nContexto: ${contexto}` : ''}` }],
       }],
     })
     const msg = await stream.finalMessage()
