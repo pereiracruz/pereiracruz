@@ -47,7 +47,7 @@ A comunicação de guias à AT pela API pede o utilizador e a palavra-passe do P
 Lido com a função `toconline` (só leitura). Serve de modelo para criar guias e faturas na fase 2.
 
 ### Pereira's Project (PP): FP → GT → FT
-Exemplo: **FP 2026/48 → GT 2026/328 → FT 2026/198** (Moldisar, 20/11/2026). A guia já leva preços (vêm da pró-forma).
+Exemplo: **FP 2026/48 → GT 2026/328 → FT 2026/198** (Moldisar, 20/11/2026). Esta guia trazia preços da pró-forma, mas as guias criadas pela aplicação levam **só quantidades** (o preço é só na fatura).
 
 **Guia GT 2026/328** (id 2466)
 - `document_type` "GT", `document_area` "GR", série id 290; `parent_document_type` "FP" (`parent_documents_ids` [2366]), `child_documents_ids` [2467].
@@ -86,6 +86,6 @@ Exemplo: **GT 2026/237 → FT 2026/105** (Sergil, 25/11/2026). A guia vai a 0 �
 ### Diferenças a ter em conta
 - Texto da linha: PP "Artigos p/armazém"; PC "Artigos confecionados a feitio p/armazém".
 - Artigo: PP **CONF** (id 36) com o modelo na descrição; PC artigo por tipo de peça ("Calças", id 2) com a OF na descrição.
-- Preços na guia: PP sim (vem da FP); PC não (0 €).
+- Preços na guia: as guias criadas pela aplicação levam só quantidades (preço 0); o preço é só na fatura.
 - As linhas de artigo mostram `pending_quantity` diferente da quantidade (ex.: 115 para 105): confirmar o significado antes de criar documentos.
 - Os ids de série, cliente, artigo, imposto (NOR = id 1) e unidade (id 2) são de cada empresa: ler sempre da API da empresa certa.

@@ -3,20 +3,21 @@ import { AlertTriangle, FileText, RefreshCw, Trash2, Truck } from 'lucide-react'
 import { useDb } from '../../store/db'
 import { Botao, Campo, Cartao, Entrada, Etiqueta, Modal, aviso } from '../../components/ui'
 import { qtdParaEmbalar, soma } from '../../lib/calc'
-import { dataCurta, eur, hojeISO, int, parseNum } from '../../lib/format'
+import { dataCurta, hojeISO, int, parseNum } from '../../lib/format'
 import { NOME_EMPRESA_TOC, apagarRascunhoTOC, consultarTOC, criarGuiaTOC, listarTOC, tocDisponivel, type EmpresaTOC, type GuiaParaTOC } from '../../lib/toconline'
 import type { Encomenda, GuiaTOC } from '../../types'
 
 /** Valores habituais de cada empresa (lidos das guias reais em 26/11/2026; editáveis em cada guia). */
-const HABITUAL: Record<EmpresaTOC, { carga: { morada: string; cp: string; localidade: string }; texto: string; artigo: string; comPreco: boolean }> = {
-  PP: { carga: { morada: 'RUA DA AGRA, N.º 70', cp: '4775-205', localidade: 'NEGREIROS' }, texto: 'Artigos p/armazém', artigo: 'CONF', comPreco: true },
-  PC: { carga: { morada: 'Rua da Agra, nº40', cp: '4775-205', localidade: 'Negreiros' }, texto: 'Artigos confecionados a feitio p/armazém', artigo: '', comPreco: false },
+// As guias levam só quantidades: o preço entra apenas na fatura.
+const HABITUAL: Record<EmpresaTOC, { carga: { morada: string; cp: string; localidade: string }; texto: string; artigo: string }> = {
+  PP: { carga: { morada: 'RUA DA AGRA, N.º 70', cp: '4775-205', localidade: 'NEGREIROS' }, texto: 'Artigos p/armazém', artigo: 'CONF' },
+  PC: { carga: { morada: 'Rua da Agra, nº40', cp: '4775-205', localidade: 'Negreiros' }, texto: 'Artigos confecionados a feitio p/armazém', artigo: '' },
 }
 const VIATURAS = ['V/carro', 'BD-35-HS']
 
 type Reg = { id: string } & Record<string, unknown>
 const s = (v: unknown) => (v == null ? '' : String(v))
-interface Linha { chave: string; incluir: boolean; produto: string; descricao: string; quantidade: number; preco: number }
+interface Linha { chave: string; incluir: boolean; produto: string; descricao: string; quantidade: number }
 interface Dados { series: { id: string; rotulo: string }[]; clientes: Reg[]; produtos: Reg[]; taxId?: string; unidadeId?: string }
 
 const agoraLocal = () => {
@@ -59,7 +60,7 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
       const descricao = emp === 'PP'
         ? `${m.nome} ${v.nome}`.trim()
         : [m.tipoPeca, `${m.nome} ${v.nome}`, enc.numeroDocumento].filter(Boolean).map((x) => String(x).toUpperCase()).join('\n')
-      return { chave: `${m.id}:${v.id}`, incluir: qtd > 0, produto: prod?.id ?? '', descricao, quantidade: qtd, preco: HABITUAL[emp].comPreco ? v.preco : 0 }
+      return { chave: `${m.id}:${v.id}`, incluir: qtd > 0, produto: prod?.id ?? '', descricao, quantidade: qtd }
     }))
 
   const carregar = async (emp: EmpresaTOC) => {
@@ -103,7 +104,6 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
   const nomeCliente = s(cliente?.business_name ?? cliente?.name)
   const escolhidas = linhas.filter((l) => l.incluir && l.quantidade > 0)
   const pecas = soma(escolhidas.map((l) => l.quantidade))
-  const valor = soma(escolhidas.map((l) => l.quantidade * l.preco))
   const falta = !dados ? 'Carregue os dados do TOConline.' : !clienteId ? 'Escolha o destinatário.' : !escolhidas.length ? 'Escolha pelo menos uma linha com quantidade.'
     : escolhidas.some((l) => !l.produto) ? 'Escolha o artigo do TOConline em todas as linhas.' : !descarga.morada || !descarga.cp ? 'Falta a morada de descarga.'
       : !viatura.trim() ? 'Falta a viatura.' : !hora ? 'Falta a data e hora de carga.' : ''
@@ -120,7 +120,7 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
       notas: `Encomenda ${enc.cliente} · ${enc.colecao}`,
       linhas: [
         ...(texto.trim() ? [{ tipo: 'texto' as const, descricao: texto.trim() }] : []),
-        ...escolhidas.map((l) => ({ tipo: 'artigo' as const, descricao: l.descricao.replace(/\n/g, '\r\n'), item_id: l.produto, quantidade: l.quantidade, preco: l.preco, tax_id: dados.taxId, unidade_id: dados.unidadeId })),
+        ...escolhidas.map((l) => ({ tipo: 'artigo' as const, descricao: l.descricao.replace(/\n/g, '\r\n'), item_id: l.produto, quantidade: l.quantidade, preco: 0, tax_id: dados.taxId, unidade_id: dados.unidadeId })),
       ],
     }
     try {
@@ -240,7 +240,7 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
               <table className="w-full text-[13px]">
                 <thead><tr className="text-[11px] uppercase tracking-wider text-suave border-y border-linha bg-fundo/40">
                   <th className="px-2 py-2" /><th className="text-left px-2 font-medium">Artigo (TOConline)</th><th className="text-left px-2 font-medium">Descrição</th>
-                  <th className="text-right px-2 font-medium w-24">Quantidade</th><th className="text-right px-2 font-medium w-24">Preço</th></tr></thead>
+                  <th className="text-right px-2 font-medium w-24">Quantidade</th></tr></thead>
                 <tbody>{linhas.map((l) => (
                   <tr key={l.chave} className="border-b border-linha align-top">
                     <td className="px-2 py-2"><input type="checkbox" checked={l.incluir} onChange={(e) => mudarLinha(l.chave, { incluir: e.target.checked })} /></td>
@@ -253,14 +253,13 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
                     <td className="px-2 py-1.5"><textarea value={l.descricao} rows={Math.max(1, l.descricao.split('\n').length)} onChange={(e) => mudarLinha(l.chave, { descricao: e.target.value })}
                       className="w-full min-w-56 px-2 py-1 rounded-md border border-linha bg-papel text-[13px]" /></td>
                     <td className="px-2 py-1.5"><Entrada className="h-8 text-right" value={l.quantidade} onChange={(e) => mudarLinha(l.chave, { quantidade: Math.max(0, Math.round(parseNum(e.target.value) ?? 0)) })} /></td>
-                    <td className="px-2 py-1.5"><Entrada className="h-8 text-right" value={l.preco} onChange={(e) => mudarLinha(l.chave, { preco: Math.max(0, parseNum(e.target.value) ?? 0) })} /></td>
                   </tr>))}</tbody>
               </table>
-              <p className="text-[12px] text-tenue mt-1">Quantidades: embalado → confecionado → encomenda. {HABITUAL[empresa].comPreco ? 'Na Pereira’s Project a guia leva o preço por peça.' : 'Na Pereira & Cruz a guia vai a 0 € (o preço entra na fatura).'}</p>
+              <p className="text-[12px] text-tenue mt-1">Quantidades: embalado → confecionado → encomenda. A guia leva só quantidades; o preço entra na fatura.</p>
             </div>
 
             <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
-              <span className="text-[13px] text-suave">{escolhidas.length} linha(s) · <b>{int(pecas)}</b> peças{valor > 0 && <> · {eur(valor)} sem IVA</>}</span>
+              <span className="text-[13px] text-suave">{escolhidas.length} linha(s) · <b>{int(pecas)}</b> peças</span>
               <div className="flex items-center gap-3">
                 {falta && <span className="text-[12.5px] text-ambar">{falta}</span>}
                 <Botao variante="primario" icone={<FileText size={15} />} disabled={!!falta} onClick={() => setConfirmar(true)}>Criar rascunho no TOConline</Botao>
@@ -275,7 +274,7 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
         <div className="text-[13.5px] space-y-2">
           <p>Viatura <b>{viatura}</b> · carga a <b>{hora.replace('T', ' ')}</b></p>
           <p>De {carga.morada}, {carga.cp} {carga.localidade}<br />Para {descarga.morada}, {descarga.cp} {descarga.localidade}</p>
-          <ul className="list-disc pl-5">{escolhidas.map((l) => <li key={l.chave}>{l.descricao.split('\n').join(' · ')}: {int(l.quantidade)} un.{l.preco > 0 && <> × {eur(l.preco)}</>}</li>)}</ul>
+          <ul className="list-disc pl-5">{escolhidas.map((l) => <li key={l.chave}>{l.descricao.split('\n').join(' · ')}: {int(l.quantidade)} un.</li>)}</ul>
           <p className="text-suave">Fica como <b>rascunho</b> no TOConline: confira-o lá e finalize (é na finalização que a guia ganha número e é comunicada à AT).</p>
         </div>
       </Modal>
