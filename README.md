@@ -17,6 +17,8 @@ Abrir http://localhost:5173.
 - **Modo servidor** (Supabase): criar `.env.local` com `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (ver `docs/servidor.md`); entrar com o email e a palavra-passe criados no Supabase.
 - **Modo local** (sem `.env.local`): utilizador `admin` · palavra-passe inicial `pereira2026`.
 
+**Testes automáticos:** `npm test` (ver `docs/testes.md`). No GitHub correm sozinhos em cada pedido de alteração.
+
 ## Estado (fase 1: frontend)
 
 - Com Supabase os dados ficam na base de dados (UE); sem configuração ficam no browser.
