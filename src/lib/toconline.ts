@@ -35,8 +35,11 @@ export interface GuiaParaTOC {
   descarga: { morada: string; cp: string; localidade: string }
   viatura: string; hora_carga: string; notas?: string; linhas: LinhaGuiaTOC[]
 }
-export const criarGuiaTOC = (empresa: EmpresaTOC, guia: GuiaParaTOC) =>
-  chamar<{ id: string; status?: number; document_no?: string; finalizado: boolean }>({ empresa, acao: 'criar_guia', guia })
+export interface GuiaCriadaTOC { id: string; status?: number; document_no?: string; finalizado: boolean; communication_status?: string | null; communication_code?: string | null; communication_message?: string | null; erroFinalizar?: string }
+export const criarGuiaTOC = (empresa: EmpresaTOC, guia: GuiaParaTOC, finalizar = false) =>
+  chamar<GuiaCriadaTOC>({ empresa, acao: 'criar_guia', guia, finalizar })
+/** Grava e finaliza uma guia em rascunho (depois só se anula no TOConline). */
+export const finalizarGuiaTOC = (empresa: EmpresaTOC, id: string) => chamar<GuiaCriadaTOC>({ empresa, acao: 'finalizar_guia', id })
 export const apagarRascunhoTOC = (empresa: EmpresaTOC, id: string) => chamar<{ ok: boolean }>({ empresa, acao: 'apagar_rascunho', id })
 
 /** Lista de recursos JSON:API ({ data: [{ id, attributes }] }) → [{ id, ...attributes }]. */
