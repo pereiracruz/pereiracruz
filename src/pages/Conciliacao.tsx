@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import { AlertTriangle, ArrowLeft, Check, CircleCheck, Download, FileUp, Landmark, Link2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
 import { Botao, Cabecalho, Campo, Cartao, Entrada, Etiqueta, Modal, Seletor, Vazio, aviso } from '../components/ui'
 import { lerComIA, type ExtratoLido } from '../lib/ia'
+import { lerExtratoFicheiro } from '../lib/extratoFicheiro'
 import {
   MESES, apagarConciliacao, arred, candidatas, carregarFaturas, cruzar, descarregarExcel, guardarConciliacao, idConciliacao,
   listarConciliacoes, saldoCalculado, textoFaturas, type Conciliacao, type DocTOC, type Movimento,
@@ -90,17 +91,23 @@ function Editor({ inicial, anteriores, onSair, log }: { inicial: Conciliacao; an
   const anterior = anteriores.find((a) => a.empresa === c.empresa && a.conta === c.conta && (a.ano * 12 + a.mes) === (c.ano * 12 + c.mes - 1))
 
   const lerExtrato = async (f: File) => {
-    setALer(true); setErro(''); setEstado(`A ler ${f.name} com IA… (pode demorar 1 a 2 minutos)`)
+    setALer(true); setErro('')
     try {
-      const r = await lerComIA<ExtratoLido>(f, 'extrato', `Empresa: ${NOME_EMPRESA_TOC[c.empresa]}. Conta: ${c.conta}. Mês: ${MESES[c.mes - 1]} ${c.ano}.`)
-      const d = r.dados
+      // CSV e Excel exportados do banco leem-se diretamente (rápido, sem IA); PDF, Word e fotos com IA
+      let d: ExtratoLido | null = null, caminho = ''
+      if (/\.(csv|txt|xlsx|xls|xlsm)$/i.test(f.name)) { setEstado(`A ler ${f.name}…`); d = await lerExtratoFicheiro(f) }
+      if (!d) {
+        setEstado(`A ler ${f.name} com IA… (pode demorar 1 a 2 minutos)`)
+        const r = await lerComIA<ExtratoLido>(f, 'extrato', `Empresa: ${NOME_EMPRESA_TOC[c.empresa]}. Conta: ${c.conta}. Mês: ${MESES[c.mes - 1]} ${c.ano}.`)
+        d = r.dados; caminho = r.caminho
+      }
       // muitos bancos mostram os movimentos do mais recente para o mais antigo: a conciliação fica por ordem de data
       const lidos = d.movimentos.length > 1 && d.movimentos[0].data > d.movimentos[d.movimentos.length - 1].data ? [...d.movimentos].reverse() : d.movimentos
       const movimentos: Movimento[] = lidos.map((m, i): Movimento => ({
         id: `m${i + 1}`, data: m.data, descricao: m.descricao.trim(), valor: arred(m.valor), saldoBanco: m.saldo, faturas: [], obs: '', estado: 'por-conciliar',
       }))
       const saldoInicial = d.saldoInicial ?? (anterior ? saldoCalculado(anterior) : 0)
-      mudar((x) => ({ ...x, movimentos, saldoInicial: arred(saldoInicial), saldoFinalExtrato: d.saldoFinal, extrato: { nome: f.name, caminho: r.caminho } }))
+      mudar((x) => ({ ...x, movimentos, saldoInicial: arred(saldoInicial), saldoFinalExtrato: d.saldoFinal, extrato: { nome: f.name, caminho } }))
       setEstado(`${movimentos.length} movimentos lidos.`)
       log('Extrato bancário lido', `${NOME_EMPRESA_TOC[c.empresa]} · ${c.conta} · ${MESES[c.mes - 1]} ${c.ano} · ${movimentos.length} movimentos`)
     } catch (e) { setErro(e instanceof Error ? e.message : String(e)); setEstado('') } finally { setALer(false) }

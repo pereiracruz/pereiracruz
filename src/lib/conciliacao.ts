@@ -135,6 +135,10 @@ export function candidatas(m: Movimento, docs: DocTOC[], usados: Set<string> = n
   const alvo = Math.abs(m.valor)
   const lado = docs.filter((d) => (m.valor >= 0 ? d.tipo === 'venda' : d.tipo === 'compra') && !usados.has(d.id) && dias(d.data, m.data) <= 5)
   const propostas: Proposta[] = []
+  const valorBate = (d: DocTOC) => igual(Math.abs(d.total), alvo) || (d.pendente != null && d.pendente > 0 && igual(d.pendente, alvo))
+  // valor único: se só uma fatura do período tem exatamente este valor, é muito provável que seja ela
+  // (ex.: débitos «CCONFIRMING» da CGD, «Reembolso de faturas» do confirming, sem nome no descritivo)
+  const unico = lado.filter(valorBate).length === 1
   for (const d of lado) {
     const nome = semelhancaNome(m.descricao, d.entidade)
     const valorTotal = igual(Math.abs(d.total), alvo)
@@ -142,8 +146,8 @@ export function candidatas(m: Movimento, docs: DocTOC[], usados: Set<string> = n
     const ref = d.numero && normal(m.descricao).includes(normal(d.numero).split(' ').pop() ?? '#')
     const atraso = dias(m.data, d.data)
     let pontos = 40 * nome + (atraso <= 60 ? 10 : atraso <= 180 ? 4 : 0) + (ref ? 40 : 0)
-    if (valorTotal || valorPendente) pontos += 50
-    if (pontos >= 40) propostas.push({ docs: [d], pontos, motivo: [valorTotal ? 'valor igual' : valorPendente ? 'valor em dívida igual' : 'valor diferente', nome >= 0.5 ? 'nome coincide' : nome > 0 ? 'nome parecido' : '', ref ? 'nº no descritivo' : ''].filter(Boolean).join(' · ') })
+    if (valorTotal || valorPendente) pontos += 50 + (unico && nome < 0.5 ? 25 : 0) + (atraso >= 0 && atraso <= 10 ? 3 : 0)
+    if (pontos >= 40) propostas.push({ docs: [d], pontos, motivo: [valorTotal ? 'valor igual' : valorPendente ? 'valor em dívida igual' : 'valor diferente', (valorTotal || valorPendente) && unico ? 'única fatura com este valor' : '', nome >= 0.5 ? 'nome coincide' : nome > 0 ? 'nome parecido' : '', ref ? 'nº no descritivo' : ''].filter(Boolean).join(' · ') })
   }
   // várias faturas da mesma entidade que somam o valor (até 3)
   if (!propostas.some((p) => p.pontos >= 90)) {
