@@ -30,6 +30,7 @@ A comunicação de guias à AT pela API pede o utilizador e a palavra-passe do P
   cabeçalho JSON:API em `commercial_sales_documents` e linhas em `commercial_sales_document_lines`. Se uma linha
   falhar, apaga o rascunho. `apagar_rascunho` só apaga GT com `status` 0.
 - **Gravar e finalizar:** `finalizar_guia` (ou `criar_guia` com `finalizar: true`) faz `PATCH commercial_sales_documents/{id}` com `status: 1` (só GT em rascunho). A comunicação à AT segue a configuração do TOConline; se não houver código AT, comunica-se lá e «Atualizar» traz o código.
+- **Enviar por email:** `enviar_email` (só GT finalizada) faz `PATCH email/document/{id}` (`type` Document; `to_email` opcional, por omissão o email do cliente no TOConline). Ao criar com finalização, a opção «Enviar a guia por email ao cliente» envia logo; nas guias finalizadas há o botão «Enviar por email».
 - A API não documenta a criação de GT: os nomes dos campos de transporte foram tirados das guias reais. O primeiro
   rascunho serve de teste; se o TOConline recusar algum campo, a mensagem de erro aparece no separador.
 

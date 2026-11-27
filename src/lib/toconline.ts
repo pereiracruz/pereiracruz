@@ -40,6 +40,9 @@ export const criarGuiaTOC = (empresa: EmpresaTOC, guia: GuiaParaTOC, finalizar =
   chamar<GuiaCriadaTOC>({ empresa, acao: 'criar_guia', guia, finalizar })
 /** Grava e finaliza uma guia em rascunho (depois só se anula no TOConline). */
 export const finalizarGuiaTOC = (empresa: EmpresaTOC, id: string) => chamar<GuiaCriadaTOC>({ empresa, acao: 'finalizar_guia', id })
+/** Envia a guia finalizada por email pelo TOConline (sem «para», vai para o email do cliente no TOConline). */
+export const enviarGuiaEmailTOC = (empresa: EmpresaTOC, id: string, para?: string, assunto?: string) =>
+  chamar<{ enviado: boolean; para: string }>({ empresa, acao: 'enviar_email', id, para, assunto })
 export const apagarRascunhoTOC = (empresa: EmpresaTOC, id: string) => chamar<{ ok: boolean }>({ empresa, acao: 'apagar_rascunho', id })
 
 /** Lista de recursos JSON:API ({ data: [{ id, attributes }] }) → [{ id, ...attributes }]. */

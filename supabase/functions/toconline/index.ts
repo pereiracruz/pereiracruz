@@ -151,6 +151,30 @@ async function finalizarGuia(e: Empresa, id: string) {
   }
 }
 
+/** Envia por email, pelo TOConline, uma guia finalizada (PDF do documento). Sem «para», vai para o email do cliente. */
+async function enviarEmail(e: Empresa, id: string, para?: string, assunto?: string) {
+  if (!/^\d+$/.test(id)) throw new Error('Documento inválido.')
+  const a = ((await get(e, `commercial_sales_documents/${id}`)) as { data?: { attributes?: Record<string, unknown> } }).data?.attributes ?? {}
+  if (a.document_type !== 'GT') throw new Error('Só se enviam guias de transporte (GT) por aqui.')
+  if (Number(a.status) !== 1) throw new Error('A guia tem de estar finalizada antes de se enviar por email.')
+  const emails = String(para ?? '').split(/[,;\s]+/).filter(Boolean)
+  if (emails.some((x) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x))) throw new Error('Endereço de email inválido.')
+  const attributes: Record<string, unknown> = { type: 'Document' }
+  if (emails.length) attributes.to_email = emails.join(',')
+  if (assunto) attributes.subject = txt(assunto, 200)
+  const corpo = JSON.stringify({ data: { type: 'email/document', id: String(id), attributes } })
+  const cab = { 'Content-Type': 'application/vnd.api+json', Accept: 'application/json', Authorization: `Bearer ${await token(e)}` }
+  // documentado na API atual (v1); se não existir, tenta a anterior (/api/…)
+  let r = await fetch(`${cfg(e).api}/email/document/${id}`, { method: 'PATCH', headers: cab, body: corpo })
+  if (r.status === 404) r = await fetch(`${baseRascunhos(e)}/email/document/${id}`, { method: 'PATCH', headers: cab, body: corpo })
+  const texto = await r.text()
+  if (!r.ok) throw new Error(`TOConline ${r.status} ao enviar o email: ${texto.slice(0, 400)}`)
+  let j: { success?: boolean; to_addresses?: string } = {}
+  try { j = JSON.parse(texto) } catch { /* sem corpo */ }
+  if (j.success === false) throw new Error(`O TOConline não enviou o email: ${texto.slice(0, 300)}`)
+  return { enviado: true, para: j.to_addresses ?? emails.join(',') }
+}
+
 async function apagarRascunho(e: Empresa, id: string) {
   if (!/^\d+$/.test(id)) throw new Error('Documento inválido.')
   const doc = await get(e, `commercial_sales_documents/${id}`) as { data?: { attributes?: Record<string, unknown> } }
@@ -178,7 +202,7 @@ Deno.serve(async (req) => {
     const { data: perfil } = await supabase.from('perfis').select('ativo').eq('id', quem.user.id).maybeSingle()
     if (!perfil?.ativo) return resposta({ erro: 'Utilizador sem acesso.' }, 403)
 
-    const { empresa, acao, caminho, guia, id, finalizar } = await req.json() as { empresa: Empresa; acao: 'testar' | 'consultar' | 'criar_guia' | 'finalizar_guia' | 'apagar_rascunho'; caminho?: string; guia?: Guia; id?: string; finalizar?: boolean }
+    const { empresa, acao, caminho, guia, id, finalizar, para, assunto } = await req.json() as { empresa: Empresa; acao: 'testar' | 'consultar' | 'criar_guia' | 'finalizar_guia' | 'enviar_email' | 'apagar_rascunho'; caminho?: string; guia?: Guia; id?: string; finalizar?: boolean; para?: string; assunto?: string }
     if (empresa !== 'PP' && empresa !== 'PC') return resposta({ erro: 'Empresa inválida' }, 400)
 
     if (acao === 'testar') {
@@ -210,6 +234,7 @@ Deno.serve(async (req) => {
         return resposta({ ok: true, ...r, erroFinalizar: err instanceof Error ? err.message : String(err) })
       }
     }
+    if (acao === 'enviar_email') return resposta({ ok: true, ...(await enviarEmail(empresa, String(id ?? ''), para, assunto)) })
     if (acao === 'finalizar_guia') return resposta({ ok: true, ...(await finalizarGuia(empresa, String(id ?? ''))) })
     if (acao === 'apagar_rascunho') return resposta(await apagarRascunho(empresa, String(id ?? '')))
     return resposta({ erro: 'Ação desconhecida' }, 400)
