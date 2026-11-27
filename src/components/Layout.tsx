@@ -35,6 +35,12 @@ function Grupo({ titulo, children }: { titulo: string; children: ReactNode }) {
   )
 }
 
+// Pendentes já vistos (ao abrir o sino): o número a vermelho só conta os novos.
+const CHAVE_VISTOS = 'sino-vistos'
+function lerVistos(): string[] {
+  try { return JSON.parse(localStorage.getItem(CHAVE_VISTOS) || '[]') } catch { return [] }
+}
+
 function Sino({ direita }: { direita?: boolean }) {
   const encomendas = useDb((s) => s.encomendas)
   const pedidos = useDb((s) => s.pedidos)
@@ -49,11 +55,31 @@ function Sino({ direita }: { direita?: boolean }) {
     }))),
     ...pedidos.filter((p) => p.estado === 'Por validar').map((p) => ({ texto: `Orçamento por validar: ${p.peca}`, sub: p.cliente, para: `/orcamentos/${p.id}` })),
   ]
+  const [vistos, setVistos] = useState<string[]>(lerVistos)
+  // os dois sinos (computador e telemóvel) ficam sincronizados
+  useEffect(() => {
+    const atualizar = () => setVistos(lerVistos())
+    window.addEventListener('sino-vistos', atualizar)
+    window.addEventListener('storage', atualizar)
+    return () => { window.removeEventListener('sino-vistos', atualizar); window.removeEventListener('storage', atualizar) }
+  }, [])
+  const chave = (i: { texto: string; para: string }) => `${i.para}|${i.texto}`
+  const novos = itens.filter((i) => !vistos.includes(chave(i))).length
+  const abrir = () => {
+    if (!aberto) {
+      // guarda só os pendentes atuais, para a lista não crescer sem fim
+      const atuais = itens.map(chave)
+      try { localStorage.setItem(CHAVE_VISTOS, JSON.stringify(atuais)) } catch { /* sem armazenamento */ }
+      setVistos(atuais)
+      window.dispatchEvent(new Event('sino-vistos'))
+    }
+    setAberto(!aberto)
+  }
   return (
     <div className="relative">
-      <button onClick={() => setAberto(!aberto)} className="relative p-1.5 text-suave hover:text-tinta" aria-label="Pendentes">
+      <button onClick={abrir} className="relative p-1.5 text-suave hover:text-tinta" aria-label="Pendentes">
         <Bell size={18} />
-        {itens.length > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-vermelho text-white text-[10px] font-semibold grid place-items-center">{itens.length}</span>}
+        {novos > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-vermelho text-white text-[10px] font-semibold grid place-items-center">{novos}</span>}
       </button>
       {aberto && (
         <>
