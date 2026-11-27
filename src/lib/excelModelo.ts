@@ -68,7 +68,8 @@ export function folhaPara<F extends { nome: string }>(m: { folhas: F[] }, c: Con
   const mm = String(c.mes).padStart(2, '0')
   // o nome novo segue o padrão da folha copiada (ex.: «09_2026_cgd» → «10_2026_cgd», «revolut_09_2026» → «revolut_10_2026»)
   let novoNome = base ? base.nome.replace(/\d{2}_\d{4}/, `${mm}_${c.ano}`) : `${mm}_${c.ano}`
-  if (!/\d{2}_\d{4}/.test(base?.nome ?? '')) novoNome = `${mm}_${c.ano}${conta === 'principal' ? '' : `_${conta}`}`
+  // primeira folha desta conta (ex.: CGD da Pereira & Cruz): copia a formatação de outra, mas o nome leva a conta
+  if (!daConta.length || !/\d{2}_\d{4}/.test(base?.nome ?? '')) novoNome = `${mm}_${c.ano}${conta === 'principal' ? '' : `_${conta}`}`
   return { existente, base, novoNome }
 }
 
