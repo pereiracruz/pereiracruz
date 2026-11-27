@@ -12,6 +12,7 @@ import { AnthropicVertex } from 'npm:@anthropic-ai/vertex-sdk@1.1.3'
 import { GoogleAuth } from 'npm:google-auth-library@10.9.1'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { encodeBase64 } from 'jsr:@std/encoding@1/base64'
+import { unzipSync, strFromU8 } from 'npm:fflate@0.8'
 
 // ---------------- Esquemas da leitura ----------------
 
@@ -91,6 +92,27 @@ const ESQUEMA_TECHPACK = obj({
   },
 })
 
+const ESQUEMA_EXTRATO = obj({
+  banco: sn,
+  conta: { ...sn, description: 'Nº de conta ou IBAN, como no extrato' },
+  titular: sn,
+  dataInicio: { ...sn, description: 'AAAA-MM-DD' },
+  dataFim: { ...sn, description: 'AAAA-MM-DD' },
+  saldoInicial: { ...nn, description: 'Saldo anterior / inicial do período' },
+  saldoFinal: { ...nn, description: 'Saldo final do período' },
+  movimentos: {
+    type: 'array',
+    items: obj({
+      data: { ...s, description: 'Data do movimento (AAAA-MM-DD); se houver data-movimento e data-valor, usa a data-movimento' },
+      descricao: { ...s, description: 'Descritivo exatamente como no extrato' },
+      valor: { type: 'number', description: 'Positivo para créditos/entradas, negativo para débitos/saídas' },
+      saldo: { ...nn, description: 'Saldo após o movimento, se o extrato o mostrar' },
+      pagina: { type: 'integer' },
+      confianca,
+    }),
+  },
+})
+
 // ---------------- Função ----------------
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -116,7 +138,25 @@ Para cada modelo/referência extrai: tecidos (com fornecedor, composição e con
 - Indica a página de onde veio cada valor e a confiança (baixa quando não tiveres a certeza).
 - Pedidos à fábrica (ex.: "find fabric with EA", "possible to produce?") vão para «pedidos», não para os campos.
 - Não inventes: o que não estiver no documento fica de fora ou a null.`,
+  extrato: `És o assistente administrativo de uma empresa portuguesa. Lê o extrato bancário e extrai TODOS os movimentos, pela ordem do extrato, sem resumir nem saltar nenhum (incluindo comissões, impostos do selo e despesas bancárias).
+- Débitos/saídas ficam com valor NEGATIVO; créditos/entradas com valor POSITIVO. Confirma o sinal pelas colunas Débito/Crédito ou pela evolução do saldo.
+- Copia o descritivo exatamente como está (sem traduzir nem corrigir).
+- Datas em AAAA-MM-DD. Se o extrato só tem dia/mês, usa o ano do período do extrato.
+- Extrai o saldo inicial e o saldo final do período para a aplicação conferir a soma dos movimentos.
+- Indica a página de cada movimento e a confiança (baixa quando a leitura for duvidosa).
+- Não inventes: o que não estiver no extrato fica a null.`,
 } as const
+
+/** Texto de um documento Word (.docx): parágrafos e células de tabela separados. */
+function textoDocx(bytes: Uint8Array): string {
+  const ficheiros = unzipSync(bytes, { filter: (f) => f.name === 'word/document.xml' })
+  const xml = ficheiros['word/document.xml']
+  if (!xml) throw new Error('O ficheiro Word não tem conteúdo legível.')
+  return strFromU8(xml)
+    .replace(/<w:tab\/>/g, '\t').replace(/<\/w:tc>/g, ' | ').replace(/<\/w:tr>/g, '\n').replace(/<\/w:p>/g, '\n').replace(/<w:br[^>]*\/>/g, '\n')
+    .replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+}
 
 let cliente: AnthropicVertex | null = null
 function claude() {
@@ -148,19 +188,22 @@ Deno.serve(async (req) => {
     const { data: quem, error: eSessao } = await supabase.auth.getUser(token)
     if (eSessao || !quem.user) return resposta({ erro: 'Sessão inválida ou expirada. Volte a entrar na aplicação.' }, 401)
 
-    const { caminho, tipo, contexto } = await req.json() as { caminho: string; tipo: 'encomenda' | 'techpack'; contexto?: string }
-    if (!caminho || (tipo !== 'encomenda' && tipo !== 'techpack')) return resposta({ erro: 'Pedido inválido' }, 400)
+    const { caminho, tipo, contexto } = await req.json() as { caminho: string; tipo: 'encomenda' | 'techpack' | 'extrato'; contexto?: string }
+    if (!caminho || !['encomenda', 'techpack', 'extrato'].includes(tipo)) return resposta({ erro: 'Pedido inválido' }, 400)
+    if (/\.doc$/i.test(caminho)) return resposta({ erro: 'Ficheiros .doc antigos não são suportados: guarde o extrato como .docx ou PDF.' }, 422)
 
     // descarregar o ficheiro com a sessão de quem pediu (respeita as regras de acesso)
     const { data: ficheiro, error } = await supabase.storage.from('documentos').download(caminho)
     if (error || !ficheiro) return resposta({ erro: 'Não consegui abrir o ficheiro guardado.' }, 404)
 
     const bytes = new Uint8Array(await ficheiro.arrayBuffer())
-    const b64 = encodeBase64(bytes)
+    const ehWord = /\.docx$/i.test(caminho) || ficheiro.type.includes('wordprocessingml')
     const tipoFicheiro = ficheiro.type || (caminho.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/png')
-    const bloco = tipoFicheiro === 'application/pdf'
-      ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: b64 } }
-      : { type: 'image' as const, source: { type: 'base64' as const, media_type: tipoFicheiro as 'image/png' | 'image/jpeg' | 'image/webp', data: b64 } }
+    const bloco = ehWord
+      ? { type: 'text' as const, text: `Conteúdo do documento Word (tabelas com colunas separadas por «|»):\n\n${textoDocx(bytes)}` }
+      : tipoFicheiro === 'application/pdf'
+        ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: encodeBase64(bytes) } }
+        : { type: 'image' as const, source: { type: 'base64' as const, media_type: tipoFicheiro as 'image/png' | 'image/jpeg' | 'image/webp', data: encodeBase64(bytes) } }
 
     const stream = claude().messages.stream({
       model: Deno.env.get('CLAUDE_MODEL') ?? 'claude-opus-5-5',
@@ -168,11 +211,11 @@ Deno.serve(async (req) => {
       system: INSTRUCOES[tipo],
       output_config: {
         effort: 'high',
-        format: { type: 'json_schema', schema: tipo === 'encomenda' ? ESQUEMA_ENCOMENDA : ESQUEMA_TECHPACK },
+        format: { type: 'json_schema', schema: tipo === 'encomenda' ? ESQUEMA_ENCOMENDA : tipo === 'extrato' ? ESQUEMA_EXTRATO : ESQUEMA_TECHPACK },
       },
       messages: [{
         role: 'user',
-        content: [bloco, { type: 'text', text: `Extrai os dados deste ${tipo === 'encomenda' ? 'documento de encomenda' : 'tech pack'}.${contexto ? `\nContexto: ${contexto}` : ''}` }],
+        content: [bloco, { type: 'text', text: `Extrai os dados deste ${tipo === 'encomenda' ? 'documento de encomenda' : tipo === 'extrato' ? 'extrato bancário' : 'tech pack'}.${contexto ? `\nContexto: ${contexto}` : ''}` }],
       }],
     })
     const msg = await stream.finalMessage()

@@ -145,7 +145,7 @@ async function apagarRascunho(e: Empresa, id: string) {
 }
 
 // só leitura, e só estes recursos
-const PERMITIDOS = /^(api\/)?(v1\/)?(commercial_document_series|commercial_sales_documents|commercial_sales_document_lines|customers|suppliers|products|services|units_of_measure|taxes|countries|tax_exemption_reasons|addresses|email_addresses)(\/[\w-]+)?(\?.*)?$/
+const PERMITIDOS = /^(api\/)?(v1\/)?(commercial_document_series|commercial_sales_documents|commercial_sales_document_lines|commercial_sales_receipts|commercial_purchases_documents|commercial_purchases_payments|customers|suppliers|products|services|units_of_measure|taxes|countries|tax_exemption_reasons|addresses|email_addresses)(\/[\w-]+)?(\?.*)?$/
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
       })
     }
     if (acao === 'consultar') {
-      if (!caminho || !PERMITIDOS.test(caminho)) return resposta({ erro: 'Consulta não permitida (só leitura de documentos, séries, clientes, fornecedores e artigos).' }, 400)
+      if (!caminho || !PERMITIDOS.test(caminho)) return resposta({ erro: 'Consulta não permitida (só leitura de documentos de venda e compra, recibos, pagamentos, séries, clientes, fornecedores e artigos).' }, 400)
       return resposta({ ok: true, resultado: await get(empresa, caminho) })
     }
     if (acao === 'criar_guia') return resposta({ ok: true, ...(await criarRascunhoGuia(empresa, guia as Guia)) })

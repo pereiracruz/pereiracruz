@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Archive, Bell, Mail, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, X, PanelLeftOpen, Receipt } from 'lucide-react'
+import { Archive, Bell, Landmark, Mail, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, X, PanelLeftOpen, Receipt } from 'lucide-react'
 import { useDb } from '../store/db'
 import { fichasPorAprovar } from '../lib/calc'
 import { situacaoPrazos } from '../lib/prazos'
@@ -195,6 +195,9 @@ export default function Layout() {
             <Item para="/historico" icone={<History size={17} />}>Histórico de preços</Item>
             <Item para="/margens" icone={<Percent size={17} />}>Margens</Item>
           </Grupo>
+          {modoServidor && <Grupo titulo="Financeiro">
+            <Item para="/conciliacao" icone={<Landmark size={17} />}>Conciliação bancária</Item>
+          </Grupo>}
         </nav>
 
         <div className="border-t border-linha px-3 py-3 space-y-1">
