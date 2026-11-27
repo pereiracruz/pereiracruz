@@ -14,7 +14,7 @@
 //
 // Filtros (na aplicação, página «Emails de encomendas»; guardados em documentos/configuracao/email):
 //   remetentes: partes do endereço ou do nome (ex.: «whitecotton», «@cliente.pt»)
-//   palavras:   palavras no assunto (ex.: «encomenda», «order», «PO»)
+//   palavras:   palavras no assunto ou no texto da mensagem (ex.: «encomenda», «order», «pedido»)
 //   Um email entra se tiver anexo Excel ou PDF E (sem filtros, ou se coincidir com algum remetente ou palavra).
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { ImapFlow } from 'npm:imapflow@1'
@@ -92,6 +92,16 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
       const chave = (uid: number) => `c${c.n}-${validade}-${uid}`
       const desde = new Date(Date.now() - filtros.dias * 864e5)
       const uids = (await imap.search({ since: desde }, { uid: true })) || []
+      // palavras no assunto OU na mensagem: a pesquisa é feita pelo próprio servidor de email (não descarrega nada)
+      const comPalavra = new Set<number>()
+      if (uids.length) for (const p of filtros.palavras) {
+        for (const criterio of [{ subject: p }, { body: p }]) {
+          try {
+            const r = await imap.search({ since: desde, ...criterio }, { uid: true })
+            if (r) for (const u of r) comPalavra.add(u)
+          } catch (e) { console.error('pesquisa', p, e) }
+        }
+      }
       // 1.º passo, leve: cabeçalhos e estrutura (sem descarregar o conteúdo)
       const escolhidos: number[] = []
       if (uids.length) for await (const m of imap.fetch(uids, { uid: true, envelope: true, bodyStructure: true, size: true }, { uid: true })) {
@@ -109,7 +119,7 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
         percorrer(m.bodyStructure as Parameters<typeof percorrer>[0])
         if (!nomes.some((n) => DOCUMENTO.test(n))) continue // tem de trazer Excel ou PDF (as imagens sozinhas costumam ser assinaturas)
         const semFiltros = !filtros.remetentes.length && !filtros.palavras.length
-        if (!semFiltros && !filtros.remetentes.some((r) => de.includes(r)) && !filtros.palavras.some((p) => assunto.includes(p))) continue
+        if (!semFiltros && !filtros.remetentes.some((r) => de.includes(r)) && !comPalavra.has(m.uid) && !filtros.palavras.some((p) => assunto.includes(p))) continue
         if ((m.size ?? 0) > MAX_BYTES) continue
         escolhidos.push(m.uid)
       }
