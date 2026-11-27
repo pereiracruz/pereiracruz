@@ -30,7 +30,7 @@ const ESQUEMA_ENCOMENDA = obj({
   numeroDocumento: sn,
   dataDocumento: { ...sn, description: 'AAAA-MM-DD' },
   dataEntrega: { ...sn, description: 'AAAA-MM-DD, só se o documento a indicar' },
-  tamanhos: { type: 'array', items: s, description: 'Cabeçalho de tamanhos, pela ordem do documento' },
+  tamanhos: { type: 'array', items: s, description: 'Cabeçalho de tamanhos, pela ordem do documento; vazio se o documento não tiver colunas de tamanhos' },
   linhas: {
     type: 'array',
     items: obj({
@@ -187,6 +187,7 @@ const INSTRUCOES = {
   encomenda: `És o assistente do escritório de uma confeção têxtil portuguesa (Pereira & Cruz).
 Lê a encomenda do cliente e extrai TODAS as linhas, sem resumir nem saltar nenhuma.
 - As quantidades por tamanho têm de ficar alinhadas com o cabeçalho de tamanhos: uma célula vazia é 0. Usa a posição na coluna, não a ordem dos números.
+- Se o documento não tiver colunas de tamanhos, devolve «tamanhos» vazio, «quantidades» vazio e a quantidade total de cada modelo/cor em «total».
 - Se a mesma cor aparece em mais de uma linha da mesma referência, mantém as linhas separadas (a aplicação junta-as).
 - Copia referências, códigos e textos exatamente como estão, mesmo cortados ("...").
 - Extrai os totais do próprio documento (por tamanho, peças, valor sem IVA) para a aplicação conferir a leitura.

@@ -52,18 +52,25 @@ export function lerEncomendaExcel(buf: ArrayBuffer, nomesConhecidos: string[] = 
   const wb = XLSX.read(buf)
   const vazio = (erro: string): LeituraExcel => ({ ok: false, erro, folha: '', linhaCabecalho: 0, tamanhos: [], colunasExtra: [], modelos: [], preEncomenda: 0, stock: 0, temPrecos: false, linhasLidas: 0, linhasComDiferenca: [], perguntas: [], notasPorRef: {} })
 
-  for (const nomeFolha of wb.SheetNames) {
+  // 1.º procura uma tabela com colunas de tamanhos; se nenhuma folha a tiver, aceita uma tabela
+  // só com referência e quantidade total por modelo (fica um único "tamanho": Total)
+  for (const semTamanhos of [false, true]) for (const nomeFolha of wb.SheetNames) {
     const linhas = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[nomeFolha], { header: 1, defval: '', raw: true })
-    // cabeçalho: primeira linha com ≥3 tamanhos e uma coluna de referência
-    const iCab = linhas.findIndex((l) => l.filter((c) => RE_TAM.test(String(c).trim())).length >= 3 && l.some((c) => RE_REF.test(String(c).trim())))
+    const temRef = (l: unknown[]) => l.some((c) => RE_REF.test(String(c).trim()))
+    const iCab = semTamanhos
+      ? linhas.findIndex((l) => temRef(l) && l.some((c) => RE_QTD.test(String(c).trim())))
+      : linhas.findIndex((l) => l.filter((c) => RE_TAM.test(String(c).trim())).length >= 3 && temRef(l))
     if (iCab < 0) continue
     const cab = linhas[iCab].map((c) => String(c).trim())
     const col = (re: RegExp) => cab.findIndex((c) => re.test(c))
-    const cTam = cab.map((c, i) => (RE_TAM.test(c) ? i : -1)).filter((i) => i >= 0)
-    const cRef = col(RE_REF), cDesc = col(RE_DESC), cCor = col(RE_COR), cQtd = col(RE_QTD), cPreco = col(RE_PRECO)
-    const usadas = new Set([cRef, cDesc, cCor, cQtd, cPreco, ...cTam])
+    const cRef = col(RE_REF), cDesc = col(RE_DESC), cCor = col(RE_COR), cPreco = col(RE_PRECO)
+    const cQtdFicheiro = col(RE_QTD)
+    // sem tamanhos, a coluna de quantidade passa a ser a única coluna lida (e não há nada para conferir)
+    const cTam = semTamanhos ? [cQtdFicheiro] : cab.map((c, i) => (RE_TAM.test(c) ? i : -1)).filter((i) => i >= 0)
+    const cQtd = semTamanhos ? -1 : cQtdFicheiro
+    const usadas = new Set([cRef, cDesc, cCor, cQtdFicheiro, cPreco, ...cTam])
     const cExtra = cab.map((c, i) => (c && !usadas.has(i) ? i : -1)).filter((i) => i >= 0)
-    const tamanhos = cTam.map((i) => cab[i])
+    const tamanhos = semTamanhos ? ['Total'] : cTam.map((i) => cab[i])
 
     type L = { ref: string; desc: string; cor: string; q: number[]; preco: number; extra: string[] }
     const lidas: L[] = []
@@ -71,7 +78,7 @@ export function lerEncomendaExcel(buf: ArrayBuffer, nomesConhecidos: string[] = 
     linhas.slice(iCab + 1).forEach((l, k) => {
       const ref = String(l[cRef] ?? '').trim()
       if (!ref || /^total/i.test(ref)) return
-      const q = cTam.map((i) => Math.round(Number(l[i]) || 0))
+      const q = cTam.map((i) => Math.round(Number(String(l[i]).replace(/\s/g, '').replace(',', '.')) || 0))
       const s = q.reduce((a, b) => a + b, 0)
       if (s === 0) return
       if (cQtd >= 0 && l[cQtd] !== '' && Number(l[cQtd]) !== s) difs.push({ linha: iCab + k + 2, ref, lida: s, ficheiro: Number(l[cQtd]) })
@@ -137,7 +144,7 @@ export function lerEncomendaExcel(buf: ArrayBuffer, nomesConhecidos: string[] = 
       linhasLidas: lidas.length, linhasComDiferenca: difs, perguntas, notasPorRef,
     }
   }
-  return vazio('Não encontrei uma tabela com referência e colunas de tamanhos.')
+  return vazio('Não encontrei uma tabela com referência e colunas de tamanhos ou de quantidade.')
 }
 
 /** Coleção a partir dos nomes dos ficheiros (ex.: DENIMFW26 → FW26). */
