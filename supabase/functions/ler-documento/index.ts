@@ -13,6 +13,7 @@ import { GoogleAuth } from 'npm:google-auth-library@10.9.1'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { encodeBase64 } from 'jsr:@std/encoding@1/base64'
 import { unzipSync, strFromU8 } from 'npm:fflate@0.8'
+import * as XLSX from 'npm:xlsx@0.18.5'
 
 // ---------------- Esquemas da leitura ----------------
 
@@ -147,6 +148,16 @@ Para cada modelo/referência extrai: tecidos (com fornecedor, composição e con
 - Não inventes: o que não estiver no extrato fica a null.`,
 } as const
 
+/** Texto de um ficheiro CSV/TXT: UTF-8 ou, se não for válido, Windows-1252 (extratos da CGD, Montepio…). */
+function textoCsv(bytes: Uint8Array): string {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes) } catch { return new TextDecoder('windows-1252').decode(bytes) }
+}
+/** Texto de uma folha de cálculo (.xlsx/.xls): cada folha em CSV com «;». */
+function textoFolha(bytes: Uint8Array): string {
+  const wb = XLSX.read(bytes, { type: 'array', cellDates: true })
+  return wb.SheetNames.map((n) => `### Folha ${n}\n${XLSX.utils.sheet_to_csv(wb.Sheets[n], { FS: ';', dateNF: 'yyyy-mm-dd' })}`).join('\n\n')
+}
+
 /** Texto de um documento Word (.docx): parágrafos e células de tabela separados. */
 function textoDocx(bytes: Uint8Array): string {
   const ficheiros = unzipSync(bytes, { filter: (f) => f.name === 'word/document.xml' })
@@ -199,8 +210,14 @@ Deno.serve(async (req) => {
     const bytes = new Uint8Array(await ficheiro.arrayBuffer())
     const ehWord = /\.docx$/i.test(caminho) || ficheiro.type.includes('wordprocessingml')
     const tipoFicheiro = ficheiro.type || (caminho.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/png')
+    const ehCsv = /\.(csv|txt)$/i.test(caminho) || /text\/(csv|plain)/.test(ficheiro.type)
+    const ehFolha = /\.(xlsx|xls)$/i.test(caminho) || /spreadsheetml|ms-excel/.test(ficheiro.type)
     const bloco = ehWord
       ? { type: 'text' as const, text: `Conteúdo do documento Word (tabelas com colunas separadas por «|»):\n\n${textoDocx(bytes)}` }
+      : ehCsv
+        ? { type: 'text' as const, text: `Conteúdo do ficheiro CSV (números em formato português: 1.234,56):\n\n${textoCsv(bytes)}` }
+      : ehFolha
+        ? { type: 'text' as const, text: `Conteúdo da folha de cálculo (colunas separadas por «;»):\n\n${textoFolha(bytes)}` }
       : tipoFicheiro === 'application/pdf'
         ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: encodeBase64(bytes) } }
         : { type: 'image' as const, source: { type: 'base64' as const, media_type: tipoFicheiro as 'image/png' | 'image/jpeg' | 'image/webp', data: encodeBase64(bytes) } }

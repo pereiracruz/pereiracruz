@@ -41,7 +41,7 @@ export default function ConciliacaoBancaria() {
   return (
     <>
       <Cabecalho sobre="Financeiro" titulo="Conciliação bancária"
-        sub="Carregue o extrato do banco (PDF ou Word): a IA lê os movimentos e a aplicação procura no TOConline a fatura de cada um."
+        sub="Carregue o extrato do banco (PDF, Word, CSV ou Excel): a IA lê os movimentos e a aplicação procura no TOConline a fatura de cada um."
         acoes={<>
           {lista && lista.length > 0 && <Botao icone={<Download size={15} />} onClick={() => descarregarExcel(lista.filter((c) => c.ano === lista[0].ano).sort((a, b) => a.mes - b.mes || a.conta.localeCompare(b.conta)), `Conciliacao_Bancaria_${lista[0].ano}.xlsx`)}>Excel do ano</Botao>}
           <Botao variante="primario" icone={<Plus size={15} />} onClick={nova}>Nova conciliação</Botao>
@@ -94,7 +94,9 @@ function Editor({ inicial, anteriores, onSair, log }: { inicial: Conciliacao; an
     try {
       const r = await lerComIA<ExtratoLido>(f, 'extrato', `Empresa: ${NOME_EMPRESA_TOC[c.empresa]}. Conta: ${c.conta}. Mês: ${MESES[c.mes - 1]} ${c.ano}.`)
       const d = r.dados
-      const movimentos: Movimento[] = d.movimentos.map((m, i): Movimento => ({
+      // muitos bancos mostram os movimentos do mais recente para o mais antigo: a conciliação fica por ordem de data
+      const lidos = d.movimentos.length > 1 && d.movimentos[0].data > d.movimentos[d.movimentos.length - 1].data ? [...d.movimentos].reverse() : d.movimentos
+      const movimentos: Movimento[] = lidos.map((m, i): Movimento => ({
         id: `m${i + 1}`, data: m.data, descricao: m.descricao.trim(), valor: arred(m.valor), saldoBanco: m.saldo, faturas: [], obs: '', estado: 'por-conciliar',
       }))
       const saldoInicial = d.saldoInicial ?? (anterior ? saldoCalculado(anterior) : 0)
@@ -180,7 +182,7 @@ function Editor({ inicial, anteriores, onSair, log }: { inicial: Conciliacao; an
           </Campo>
           <div className="flex gap-2 flex-wrap">
             <Botao icone={<FileUp size={15} />} disabled={aLer} onClick={() => input.current?.click()}>{c.movimentos.length ? 'Outro extrato' : 'Carregar extrato'}</Botao>
-            <input ref={input} type="file" hidden accept=".pdf,.docx,image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) void lerExtrato(f); e.target.value = '' }} />
+            <input ref={input} type="file" hidden accept=".pdf,.docx,.csv,.txt,.xlsx,.xls,image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) void lerExtrato(f); e.target.value = '' }} />
           </div>
         </div>
         {c.extrato && <p className="text-[13px] text-suave mt-3">Extrato: {c.extrato.nome}</p>}
