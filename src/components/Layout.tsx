@@ -8,7 +8,7 @@ import { situacaoPrazos } from '../lib/prazos'
 import { resumoCompras } from '../lib/compras'
 import { Toasts } from './ui'
 import { modoServidor } from '../lib/supabase'
-import { carregarEmails, emailDisponivel, emailsNovos, useEmails, verificarEmails } from '../lib/email'
+import { carregarEmails, emailDisponivel, emailsNovos, faturasNovas, useEmails, verificarEmails } from '../lib/email'
 
 function Item({ para, icone, children, fim }: { para: string; icone?: ReactNode; children: ReactNode; fim?: boolean }) {
   return (
@@ -62,7 +62,9 @@ function Sino({ direita }: { direita?: boolean }) {
       texto: a, sub: `${e.cliente} · ${e.colecao}`, para: `/fichas/${e.id}?aba=prazos`,
     }))),
     ...pedidos.filter((p) => p.estado === 'Por validar').map((p) => ({ texto: `Orçamento por validar: ${p.peca}`, sub: p.cliente, para: `/orcamentos/${p.id}` })),
-    ...emails.filter((m) => m.estado === 'nova').map((m) => ({ texto: `Email de encomenda: ${m.assunto}`, sub: m.deNome || m.de, para: `/emails#${m.id}` })),
+    ...emails.filter((m) => m.estado === 'nova').map((m) => (m.tipo === 'fatura'
+      ? { texto: `Fatura recebida: ${m.assunto}`, sub: m.deNome || m.de, para: '/faturas' }
+      : { texto: `Email de encomenda: ${m.assunto}`, sub: m.deNome || m.de, para: `/emails#${m.id}` })),
   ]
   const [vistos, setVistos] = useState<string[]>(() => ler(CHAVE_VISTOS))
   const [limpos, setLimpos] = useState<string[]>(() => ler(CHAVE_LIMPOS))
@@ -131,6 +133,7 @@ export default function Layout() {
   const porAprovar = useDb((s) => s.encomendas.reduce((n, e) => n + fichasPorAprovar(e), 0))
   const aGuardar = useDb((s) => s.aGuardar)
   const novosEmails = useEmails(emailsNovos)
+  const novasFaturas = useEmails(faturasNovas)
   // emails de encomendas: carrega ao entrar e vai à caixa de correio de 10 em 10 minutos enquanto a aplicação está aberta
   useEffect(() => {
     if (!emailDisponivel) return
@@ -196,6 +199,10 @@ export default function Layout() {
             <Item para="/margens" icone={<Percent size={17} />}>Margens</Item>
           </Grupo>
           {modoServidor && <Grupo titulo="Financeiro">
+            <Item para="/faturas" icone={<Receipt size={17} />}>
+              <span className="flex-1">Faturas recebidas</span>
+              {novasFaturas > 0 && <span className="text-[11px] font-semibold bg-vermelho-fraco text-vermelho rounded-full px-1.5" title="Faturas recebidas por tratar">{novasFaturas}</span>}
+            </Item>
             <Item para="/conciliacao" icone={<Landmark size={17} />}>Conciliação bancária</Item>
           </Grupo>}
         </nav>

@@ -32,7 +32,7 @@ export interface ExtratoLido {
 export interface ResultadoIA<T> { dados: T; caminho: string; uso: { entrada: number; saida: number }; modelo: string }
 
 /** Guarda o ficheiro no Supabase (bucket privado «documentos») e pede a leitura à IA (processamento na UE). */
-export async function lerComIA<T>(ficheiro: File, tipo: 'encomenda' | 'techpack' | 'extrato', contexto?: string): Promise<ResultadoIA<T>> {
+export async function lerComIA<T>(ficheiro: File, tipo: 'encomenda' | 'techpack' | 'extrato' | 'fatura', contexto?: string): Promise<ResultadoIA<T>> {
   if (!supabase) throw new Error('A leitura com IA precisa do servidor (Supabase).')
   const { data: sessao } = await supabase.auth.getUser()
   const ponto = ficheiro.name.lastIndexOf('.')
@@ -113,4 +113,17 @@ export function ligarTechPack(modelos: Modelo[], tp: TechPackLido) {
     if (i >= 0) out[m.id] = i
   })
   return out
+}
+
+/** Lê com IA um ficheiro que já está guardado no servidor (ex.: anexo de um email). */
+export async function lerGuardadoComIA<T>(caminho: string, tipo: 'encomenda' | 'techpack' | 'extrato' | 'fatura', contexto?: string): Promise<{ dados: T; uso: { entrada: number; saida: number } }> {
+  if (!supabase) throw new Error('A leitura com IA precisa do servidor (Supabase).')
+  const { data, error } = await supabase.functions.invoke('ler-documento', { body: { caminho, tipo, contexto } })
+  if (error) {
+    let motivo = error.message
+    try { const corpo = await (error as { context?: Response }).context?.json(); if (corpo?.erro) motivo = corpo.erro } catch { /* sem corpo */ }
+    throw new Error(motivo)
+  }
+  if (!data?.ok) throw new Error(data?.erro ?? 'A leitura falhou.')
+  return { dados: data.dados as T, uso: data.uso }
 }

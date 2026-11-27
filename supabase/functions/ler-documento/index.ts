@@ -114,6 +114,28 @@ const ESQUEMA_EXTRATO = obj({
   },
 })
 
+const ESQUEMA_FATURA = obj({
+  tipoDocumento: { type: 'string', enum: ['fatura', 'fatura-recibo', 'fatura simplificada', 'nota de crédito', 'nota de débito', 'recibo verde', 'recibo', 'outro'] },
+  numero: { ...s, description: 'Número do documento exatamente como impresso (ex.: «FT 2026/123», «FR ATSIRE01FR/35»)' },
+  data: { ...s, description: 'Data de emissão AAAA-MM-DD' },
+  vencimento: { ...sn, description: 'Data de vencimento AAAA-MM-DD, se existir' },
+  fornecedor: obj({ nome: s, nif: { ...s, description: 'NIF do emitente, só algarismos (sem PT)' } }),
+  cliente: obj({ nome: sn, nif: { ...sn, description: 'NIF do adquirente, só algarismos' } }),
+  linhasIva: {
+    type: 'array', description: 'Uma linha por taxa de IVA (incluindo isento 0 %)',
+    items: obj({ taxa: { type: 'number' }, base: { type: 'number' }, iva: { type: 'number' }, motivoIsencao: sn }),
+  },
+  totalSemIva: { type: 'number' },
+  totalIva: { type: 'number' },
+  total: { type: 'number', description: 'Total do documento (com IVA), antes de retenções' },
+  retencao: { ...nn, description: 'Valor da retenção na fonte de IRS/IRC, se existir' },
+  taxaRetencao: { ...nn, description: 'Percentagem da retenção (ex.: 25, 23, 11.5), se indicada' },
+  aPagar: { ...nn, description: 'Valor a pagar (total menos retenção), se indicado' },
+  descricao: { ...sn, description: 'Resumo do que foi comprado/prestado (uma linha)' },
+  observacoes: { type: 'array', items: s },
+  confianca,
+})
+
 // ---------------- Função ----------------
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -139,6 +161,12 @@ Para cada modelo/referência extrai: tecidos (com fornecedor, composição e con
 - Indica a página de onde veio cada valor e a confiança (baixa quando não tiveres a certeza).
 - Pedidos à fábrica (ex.: "find fabric with EA", "possible to produce?") vão para «pedidos», não para os campos.
 - Não inventes: o que não estiver no documento fica de fora ou a null.`,
+  fatura: `És o assistente administrativo de uma empresa portuguesa. Lê o documento de compra (fatura, fatura-recibo, nota de crédito ou recibo verde/ato isolado do Portal das Finanças) e extrai os dados fiscais.
+- Copia o número do documento exatamente como impresso.
+- NIF só com algarismos. O fornecedor é quem emite; o cliente é a nossa empresa.
+- Uma linha de IVA por taxa, com base tributável e valor de IVA; isento = taxa 0 (indica o motivo de isenção se estiver escrito).
+- Nos recibos verdes: valor base, IVA (se houver), retenção na fonte de IRS (valor e taxa) e o valor a pagar; a data de vencimento é a data indicada para pagamento (se não existir, null).
+- Não inventes: se um campo não está no documento, devolve null.`,
   extrato: `És o assistente administrativo de uma empresa portuguesa. Lê o extrato bancário e extrai TODOS os movimentos, pela ordem do extrato, sem resumir nem saltar nenhum (incluindo comissões, impostos do selo e despesas bancárias).
 - Débitos/saídas ficam com valor NEGATIVO; créditos/entradas com valor POSITIVO. Confirma o sinal pelas colunas Débito/Crédito ou pela evolução do saldo.
 - Copia o descritivo exatamente como está (sem traduzir nem corrigir).
@@ -199,8 +227,8 @@ Deno.serve(async (req) => {
     const { data: quem, error: eSessao } = await supabase.auth.getUser(token)
     if (eSessao || !quem.user) return resposta({ erro: 'Sessão inválida ou expirada. Volte a entrar na aplicação.' }, 401)
 
-    const { caminho, tipo, contexto } = await req.json() as { caminho: string; tipo: 'encomenda' | 'techpack' | 'extrato'; contexto?: string }
-    if (!caminho || !['encomenda', 'techpack', 'extrato'].includes(tipo)) return resposta({ erro: 'Pedido inválido' }, 400)
+    const { caminho, tipo, contexto } = await req.json() as { caminho: string; tipo: 'encomenda' | 'techpack' | 'extrato' | 'fatura'; contexto?: string }
+    if (!caminho || !['encomenda', 'techpack', 'extrato', 'fatura'].includes(tipo)) return resposta({ erro: 'Pedido inválido' }, 400)
     if (/\.doc$/i.test(caminho)) return resposta({ erro: 'Ficheiros .doc antigos não são suportados: guarde o extrato como .docx ou PDF.' }, 422)
 
     // descarregar o ficheiro com a sessão de quem pediu (respeita as regras de acesso)
@@ -228,11 +256,11 @@ Deno.serve(async (req) => {
       system: INSTRUCOES[tipo],
       output_config: {
         effort: 'high',
-        format: { type: 'json_schema', schema: tipo === 'encomenda' ? ESQUEMA_ENCOMENDA : tipo === 'extrato' ? ESQUEMA_EXTRATO : ESQUEMA_TECHPACK },
+        format: { type: 'json_schema', schema: tipo === 'encomenda' ? ESQUEMA_ENCOMENDA : tipo === 'extrato' ? ESQUEMA_EXTRATO : tipo === 'fatura' ? ESQUEMA_FATURA : ESQUEMA_TECHPACK },
       },
       messages: [{
         role: 'user',
-        content: [bloco, { type: 'text', text: `Extrai os dados deste ${tipo === 'encomenda' ? 'documento de encomenda' : tipo === 'extrato' ? 'extrato bancário' : 'tech pack'}.${contexto ? `\nContexto: ${contexto}` : ''}` }],
+        content: [bloco, { type: 'text', text: `Extrai os dados deste ${tipo === 'encomenda' ? 'documento de encomenda' : tipo === 'extrato' ? 'extrato bancário' : tipo === 'fatura' ? 'documento de compra' : 'tech pack'}.${contexto ? `\nContexto: ${contexto}` : ''}` }],
       }],
     })
     const msg = await stream.finalMessage()
