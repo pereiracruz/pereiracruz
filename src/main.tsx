@@ -48,7 +48,7 @@ function App() {
         <Route index element={<Painel />} />
         <Route path="fichas" element={<Encomendas />} />
         <Route path="fichas/nova" element={<NovaEncomenda />} />
-        <Route path="emails" element={<EmailsEncomendas />} />
+        <Route path="emails" element={<EmailsEncomendas key="encomendas" />} />
         <Route path="conciliacao" element={<ConciliacaoBancaria />} />
         <Route path="faturas" element={<FaturasRecebidas />} />
         <Route path="producao-diaria" element={<Producao />} />
@@ -60,6 +60,7 @@ function App() {
         <Route path="prazos" element={<Prazos />} />
         <Route path="dados" element={<DadosMestre />} />
         <Route path="orcamentos" element={<Pedidos />} />
+        <Route path="emails-pedidos" element={<EmailsEncomendas key="pedidos" modo="pedido" />} />
         <Route path="orcamentos/novo" element={<NovoPedido />} />
         <Route path="orcamentos/:pedId" element={<NovoPedido />} />
         <Route path="historico" element={<Historico />} />

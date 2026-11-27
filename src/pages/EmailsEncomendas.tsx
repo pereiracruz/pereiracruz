@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { ChevronDown, CornerUpLeft, FilePlus2, FileSpreadsheet, FileText, ImagePlus, Mail, PlugZap, RefreshCw, RotateCcw, Send, Settings2, X } from 'lucide-react'
 import { Botao, Cabecalho, Campo, Cartao, Entrada, Modal, Pilulas, Vazio, aviso } from '../components/ui'
 import {
-  abrirAnexo, carregarEmails, emailDisponivel, guardarConfigEmail, guardarImagemAssinatura, marcarEmail, nomeConta, responderEmail, testarEmail, urlImagem,
+  abrirAnexo, carregarEmails, ehEncomenda, emailDisponivel, guardarConfigEmail, guardarImagemAssinatura, marcarEmail, nomeConta, responderEmail, testarEmail, urlImagem,
   useEmails, verificarEmails, type EmailEncomenda, type TesteConta,
 } from '../lib/email'
 import { dataHora } from '../lib/format'
@@ -57,7 +57,11 @@ function Assinatura({ conta }: { conta: string }) {
   )
 }
 
-export default function EmailsEncomendas() {
+/** Emails de encomendas (com Excel/PDF) ou, com modo «pedido», emails a pedir preço/cotação de produção ou amostra. */
+export default function EmailsEncomendas({ modo = 'encomenda' }: { modo?: 'encomenda' | 'pedido' }) {
+  const pedidos = modo === 'pedido'
+  const titulo = pedidos ? 'Emails de pedidos' : 'Emails de encomendas'
+  const sobre = pedidos ? 'Pré-orçamentação' : 'Fichas de produção'
   const nav = useNavigate()
   const log = useDb((s) => s.log)
   const encomendas = useDb((s) => s.encomendas)
@@ -68,6 +72,8 @@ export default function EmailsEncomendas() {
   const [remetentes, setRemetentes] = useState('')
   const [palavras, setPalavras] = useState('')
   const [palavrasTexto, setPalavrasTexto] = useState('')
+  const [palavrasPedidos, setPalavrasPedidos] = useState('')
+  const [palavrasPedidosTexto, setPalavrasPedidosTexto] = useState('')
   const [dias, setDias] = useState('14')
   const [teste, setTeste] = useState<TesteConta[] | null>(null)
   const [aTestar, setATestar] = useState(false)
@@ -91,14 +97,17 @@ export default function EmailsEncomendas() {
   useEffect(() => { if (emailDisponivel && !carregado) void carregarEmails() }, [carregado])
   useEffect(() => {
     setRemetentes(config.remetentes.join(', ')); setPalavras(config.palavras.join(', ')); setPalavrasTexto((config.palavrasTexto ?? []).join(', ')); setDias(String(config.dias))
-    if (carregado && !config.remetentes.length && !config.palavras.length) setFiltrosAbertos(true)
-  }, [config, carregado])
+    setPalavrasPedidos((config.palavrasPedidos ?? []).join(', ')); setPalavrasPedidosTexto((config.palavrasPedidosTexto ?? []).join(', '))
+    if (carregado && !pedidos && !config.remetentes.length && !config.palavras.length) setFiltrosAbertos(true)
+  }, [config, carregado, pedidos])
 
   const verificar = async () => {
     try {
-      const r = await verificarEmails()
-      aviso(r.novos.length ? `${r.novos.length} email(s) de encomenda novo(s).${r.restantes ? ` Faltam ${r.restantes}: carregue outra vez.` : ''}` : 'Sem emails de encomenda novos.')
-      if (r.novos.length) log('Emails de encomendas recolhidos', `${r.novos.length} email(s): ${r.novos.map((n) => n.assunto).join(' · ')}`.slice(0, 300))
+      const r = await verificarEmails(pedidos)
+      const meus = r.novos.filter((n) => (pedidos ? n.tipo === 'pedido' : n.tipo !== 'pedido' && n.tipo !== 'fatura'))
+      const nome = pedidos ? 'pedido' : 'encomenda'
+      aviso(meus.length ? `${meus.length} email(s) de ${nome} novo(s).${r.restantes ? ` Faltam ${r.restantes}: carregue outra vez.` : ''}` : `Sem emails de ${nome} novos.${r.restantes ? ` Faltam ${r.restantes}: carregue outra vez.` : ''}`)
+      if (meus.length) log(`${titulo} recolhidos`, `${meus.length} email(s): ${meus.map((n) => n.assunto).join(' · ')}`.slice(0, 300))
     } catch { /* o erro fica no estado */ }
   }
 
@@ -109,7 +118,7 @@ export default function EmailsEncomendas() {
 
   const guardarFiltros = async () => {
     try {
-      await guardarConfigEmail({ ...config, remetentes: lista(remetentes), palavras: lista(palavras), palavrasTexto: lista(palavrasTexto), dias: Math.min(Math.max(Number(dias) || 14, 1), 90) })
+      await guardarConfigEmail({ ...config, remetentes: lista(remetentes), palavras: lista(palavras), palavrasTexto: lista(palavrasTexto), palavrasPedidos: lista(palavrasPedidos).length ? lista(palavrasPedidos) : undefined, palavrasPedidosTexto: lista(palavrasPedidosTexto).length ? lista(palavrasPedidosTexto) : undefined, dias: Math.min(Math.max(Number(dias) || 14, 1), 90) })
       aviso('Filtros guardados.')
     } catch (e) { aviso(`Não foi possível guardar: ${e instanceof Error ? e.message : String(e)}`) }
   }
@@ -118,21 +127,21 @@ export default function EmailsEncomendas() {
     try { await marcarEmail(e, estado) } catch (x) { aviso(`Não foi possível alterar: ${x instanceof Error ? x.message : String(x)}`) }
   }
 
-  const deEncomenda = emails.filter((e) => e.tipo !== 'fatura')
+  const deEncomenda = emails.filter((e) => (pedidos ? e.tipo === 'pedido' : ehEncomenda(e)))
   const visiveis = deEncomenda.filter((e) => e.estado === vista)
   const conta = (v: Vista) => deEncomenda.filter((e) => e.estado === v).length
 
   if (!emailDisponivel) return (
     <>
-      <Cabecalho sobre="Fichas de produção" titulo="Emails de encomendas" />
+      <Cabecalho sobre={sobre} titulo={titulo} />
       <Vazio>Disponível no site publicado (com servidor).</Vazio>
     </>
   )
 
   return (
     <>
-      <Cabecalho sobre="Fichas de produção" titulo="Emails de encomendas"
-        sub="A aplicação vai à caixa de correio buscar os emails de encomendas com Excel ou PDF. Só lê: no Thunderbird fica tudo como está."
+      <Cabecalho sobre={sobre} titulo={titulo}
+        sub={pedidos ? 'Emails das 3 caixas a pedir preço ou cotação de uma produção ou amostra (com ou sem anexo). Só lê: no Thunderbird fica tudo como está.' : 'A aplicação vai à caixa de correio buscar os emails de encomendas com Excel ou PDF. Só lê: no Thunderbird fica tudo como está.'}
         acoes={<>
           <Botao variante="fantasma" icone={<Settings2 size={15} />} onClick={() => setFiltrosAbertos(!filtrosAbertos)}>Filtros e ligação</Botao>
           <Botao variante="primario" icone={<RefreshCw size={15} className={clsx(aVerificar && 'animate-spin')} />} disabled={aVerificar} onClick={verificar}>
@@ -146,6 +155,15 @@ export default function EmailsEncomendas() {
       {filtrosAbertos && (
         <Cartao className="p-5 mb-5">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
+            {pedidos ? <>
+            <Campo rotulo="Palavras no assunto" ajuda="Vazio = as da aplicação: pedido, cotação, orçamento, preço, price, quotation, quote, RFQ, costing, amostra, sample, devis, presupuesto…">
+              <Entrada value={palavrasPedidos} onChange={(e) => setPalavrasPedidos(e.target.value)} placeholder="pedido, cotação, preço, price, quotation, amostra" />
+            </Campo>
+            <Campo rotulo="Palavras no texto da mensagem" ajuda="Vazio = as da aplicação: pedido de cotação, pedido de orçamento, preço, qual o preço, quanto custa, best price, target price, please quote…">
+              <Entrada value={palavrasPedidosTexto} onChange={(e) => setPalavrasPedidosTexto(e.target.value)} placeholder="pedido de cotação, preço, best price" />
+            </Campo>
+            <div className="lg:col-span-1" />
+            </> : <>
             <Campo rotulo="Remetentes" ajuda="Parte do endereço ou do nome, separados por vírgulas (ex.: whitecotton, @cliente.pt).">
               <Entrada value={remetentes} onChange={(e) => setRemetentes(e.target.value)} placeholder="whitecotton, @cliente.pt" />
             </Campo>
@@ -155,11 +173,12 @@ export default function EmailsEncomendas() {
             <Campo rotulo="Palavras no texto da mensagem" ajuda="Só palavras que não aparecem em emails normais (evite «pedido», «project»…).">
               <Entrada value={palavrasTexto} onChange={(e) => setPalavrasTexto(e.target.value)} placeholder="encomenda, tech pack" />
             </Campo>
+            </>}
             <Campo rotulo="Procurar nos últimos (dias)" ajuda="Entre 1 e 90.">
               <Entrada value={dias} onChange={(e) => setDias(e.target.value)} inputMode="numeric" className="max-w-28" />
             </Campo>
           </div>
-          <p className="text-[13px] text-suave mb-4">Só entram emails com anexo Excel ou PDF. Sem filtros, entram todos os que tiverem esses anexos.</p>
+          <p className="text-[13px] text-suave mb-4">{pedidos ? 'Entram com ou sem anexo. Se o assunto tiver uma palavra de encomenda (ex.: «encomenda», «order») e um Excel ou PDF, vai para Emails de encomendas.' : 'Só entram emails com anexo Excel ou PDF. Sem filtros, entram todos os que tiverem esses anexos. Os pedidos de preço vão para Emails de pedidos.'}</p>
           <div className="flex items-center gap-2 flex-wrap">
             <Botao variante="primario" pequeno onClick={guardarFiltros}>Guardar filtros</Botao>
             <Botao pequeno icone={<PlugZap size={14} />} disabled={aTestar} onClick={testar}>{aTestar ? 'A testar…' : 'Testar ligação ao email'}</Botao>
@@ -225,8 +244,10 @@ export default function EmailsEncomendas() {
                     <div className="flex gap-2 flex-wrap">
                       <Botao pequeno icone={<CornerUpLeft size={14} />} onClick={() => { setAResponder(e); setResposta('') }}>Responder</Botao>
                       {e.estado === 'nova' && <>
-                        <Botao variante="primario" pequeno icone={<FilePlus2 size={14} />} disabled={!e.anexos.length}
-                          onClick={() => nav('/fichas/nova', { state: { emailId: e.id } })}>Criar encomenda</Botao>
+                        {pedidos
+                          ? <Botao variante="primario" pequeno icone={<FilePlus2 size={14} />} onClick={() => { void mudar(e, 'tratada'); nav('/orcamentos/novo') }}>Criar pedido de orçamento</Botao>
+                          : <Botao variante="primario" pequeno icone={<FilePlus2 size={14} />} disabled={!e.anexos.length}
+                          onClick={() => nav('/fichas/nova', { state: { emailId: e.id } })}>Criar encomenda</Botao>}
                         <Botao variante="fantasma" pequeno icone={<X size={14} />} onClick={() => mudar(e, 'ignorada')}>Ignorar</Botao>
                       </>}
                       {e.estado !== 'nova' && <Botao variante="fantasma" pequeno icone={<RotateCcw size={14} />} onClick={() => mudar(e, 'nova')}>Voltar a por tratar</Botao>}
