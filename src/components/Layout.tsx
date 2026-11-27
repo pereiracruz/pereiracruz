@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Archive, Bell, Landmark, Mail, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, X, PanelLeftOpen, Receipt } from 'lucide-react'
+import { Archive, Bell, Factory, Landmark, Mail, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, X, PanelLeftOpen, Receipt } from 'lucide-react'
 import { useDb } from '../store/db'
 import { fichasPorAprovar } from '../lib/calc'
 import { situacaoPrazos } from '../lib/prazos'
@@ -191,6 +191,7 @@ export default function Layout() {
               <span className="flex-1">Prazos</span>
               {atrasadas > 0 && <span className="text-[11px] font-semibold bg-vermelho-fraco text-vermelho rounded-full px-1.5" title="Encomendas atrasadas">{atrasadas}</span>}
             </Item>
+            {modoServidor && <Item para="/producao-diaria" icone={<Factory size={17} />}>Produção diária</Item>}
             <Item para="/dados" icone={<Database size={17} />}>Dados mestre</Item>
           </Grupo>
           <Grupo titulo="Pré-orçamentação">
