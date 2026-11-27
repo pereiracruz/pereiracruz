@@ -4,8 +4,9 @@ import { AlertTriangle, ArrowLeft, Check, CircleCheck, Download, FileUp, Landmar
 import { Botao, Cabecalho, Campo, Cartao, Entrada, Etiqueta, Modal, Seletor, Vazio, aviso } from '../components/ui'
 import { lerComIA, type ExtratoLido } from '../lib/ia'
 import { lerExtratoFicheiro } from '../lib/extratoFicheiro'
+import { abrirModelo, descarregarModelo, folhaPara, preencher, type Modelo } from '../lib/excelModelo'
 import {
-  MESES, apagarConciliacao, arred, candidatas, carregarFaturas, cruzar, descarregarExcel, guardarConciliacao, idConciliacao,
+  MESES, apagarConciliacao, arred, candidatas, carregarFaturas, cruzar, guardarConciliacao, idConciliacao,
   listarConciliacoes, saldoCalculado, textoFaturas, type Conciliacao, type DocTOC, type Movimento,
 } from '../lib/conciliacao'
 import { NOME_EMPRESA_TOC, tocDisponivel, type EmpresaTOC } from '../lib/toconline'
@@ -44,7 +45,6 @@ export default function ConciliacaoBancaria() {
       <Cabecalho sobre="Financeiro" titulo="Conciliação bancária"
         sub="Carregue o extrato do banco (PDF, Word, CSV ou Excel): a IA lê os movimentos e a aplicação procura no TOConline a fatura de cada um."
         acoes={<>
-          {lista && lista.length > 0 && <Botao icone={<Download size={15} />} onClick={() => descarregarExcel(lista.filter((c) => c.ano === lista[0].ano).sort((a, b) => a.mes - b.mes || a.conta.localeCompare(b.conta)), `Conciliacao_Bancaria_${lista[0].ano}.xlsx`)}>Excel do ano</Botao>}
           <Botao variante="primario" icone={<Plus size={15} />} onClick={nova}>Nova conciliação</Botao>
         </>} />
       {erro && <p className="mb-4 text-[13px] text-vermelho bg-vermelho-fraco border border-vermelho-borda rounded-controlo px-3 py-2">{erro}</p>}
@@ -82,7 +82,13 @@ function Editor({ inicial, anteriores, onSair, log }: { inicial: Conciliacao; an
   const [escolher, setEscolher] = useState<Movimento | null>(null)
   const [filtro, setFiltro] = useState<'todos' | 'pendentes'>('todos')
   const input = useRef<HTMLInputElement>(null)
+  const inputExcel = useRef<HTMLInputElement>(null)
+  const [modelo, setModelo] = useState<Modelo | null>(null)
   const nova = !inicial.id
+
+  const abrirExcel = async (f: File) => {
+    try { setModelo(await abrirModelo(f)) } catch (e) { aviso(e instanceof Error ? e.message : String(e)) }
+  }
 
   const mudar = (f: (c: Conciliacao) => Conciliacao) => { setC(f); setAlterado(true) }
   const mudarMov = (id: string, f: (m: Movimento) => Movimento) => mudar((x) => ({ ...x, movimentos: x.movimentos.map((m) => (m.id === id ? f(m) : m)) }))
@@ -164,7 +170,8 @@ function Editor({ inicial, anteriores, onSair, log }: { inicial: Conciliacao; an
         acoes={<>
           <Botao variante="fantasma" icone={<ArrowLeft size={15} />} onClick={() => { if (!alterado || confirm('Sair sem guardar as alterações?')) onSair() }}>Voltar</Botao>
           {!nova && <Botao variante="perigo" icone={<Trash2 size={15} />} onClick={apagar}>Apagar</Botao>}
-          <Botao icone={<Download size={15} />} disabled={!c.movimentos.length} onClick={() => descarregarExcel([c], `Conciliacao_${c.empresa}_${c.ano}_${String(c.mes).padStart(2, '0')}_${c.conta.replace(/\s+/g, '')}.xlsx`)}>Excel</Botao>
+          <Botao icone={<Download size={15} />} disabled={!c.movimentos.length} onClick={() => inputExcel.current?.click()}>Preencher o meu Excel</Botao>
+          <input ref={inputExcel} type="file" hidden accept=".xlsx" onChange={(e) => { const f = e.target.files?.[0]; if (f) void abrirExcel(f); e.target.value = '' }} />
           <Botao variante="primario" icone={<Save size={15} />} disabled={!alterado} onClick={guardar}>Guardar</Botao>
         </>} />
 
@@ -262,6 +269,7 @@ function Editor({ inicial, anteriores, onSair, log }: { inicial: Conciliacao; an
         </>
       )}
 
+      {modelo && <PreencherExcel modelo={modelo} c={c} onFechar={() => setModelo(null)} log={log} />}
       <Escolher mov={escolher} docs={docs} onFechar={() => setEscolher(null)}
         onEscolher={(m) => { mudarMov(m.id, () => m); setEscolher(null) }} />
     </>
@@ -318,6 +326,51 @@ function Escolher({ mov, docs, onFechar, onEscolher }: { mov: Movimento | null; 
         <Botao disabled={!manual.trim()} onClick={() => onEscolher({ ...mov, estado: 'confirmado', confianca: undefined, faturas: [{ numero: manual.trim() }] })}>Usar</Botao>
       </div>
       <p className="text-[12px] text-tenue mt-3 flex items-center gap-1.5"><Landmark size={12} />O nº escolhido vai entre parênteses na descrição do Excel, como na sua conciliação.</p>
+    </Modal>
+  )
+}
+
+/** Escolher a folha do Excel da utilizadora onde vai a conciliação (a do mês, ou uma nova copiada da última da conta). */
+function PreencherExcel({ modelo, c, onFechar, log }: { modelo: Modelo; c: Conciliacao; onFechar: () => void; log: (a: string, d: string) => void }) {
+  const sugestao = useMemo(() => folhaPara(modelo, c), [modelo, c])
+  const NOVA = '__nova__'
+  const [folha, setFolha] = useState(sugestao.existente?.nome ?? NOVA)
+  const [base, setBase] = useState(sugestao.base?.nome ?? modelo.folhas[0]?.nome ?? '')
+  const [nome, setNome] = useState(sugestao.novoNome)
+  const repetido = folha === NOVA && modelo.folhas.some((f) => f.nome === nome)
+  const fazer = () => {
+    try {
+      const alvo = folha === NOVA ? { copiarDe: modelo.folhas.find((f) => f.nome === base)!, nome: nome.trim() } : modelo.folhas.find((f) => f.nome === folha)!
+      const usada = preencher(modelo, c, alvo)
+      descarregarModelo(modelo)
+      log('Conciliação passada para o Excel', `${modelo.nomeFicheiro} · folha ${usada}`)
+      aviso(`Folha «${usada}» preenchida. O Excel foi descarregado.`)
+      onFechar()
+    } catch (e) { aviso(`Não foi possível preencher: ${e instanceof Error ? e.message : String(e)}`) }
+  }
+  return (
+    <Modal aberto onFechar={onFechar} titulo="Preencher o meu Excel" sub={modelo.nomeFicheiro}
+      rodape={<>
+        <Botao variante="fantasma" onClick={onFechar}>Cancelar</Botao>
+        <Botao variante="primario" icone={<Download size={15} />} disabled={(folha === NOVA && (!nome.trim() || repetido))} onClick={fazer}>Preencher e descarregar</Botao>
+      </>}>
+      <div className="space-y-4">
+        <Campo rotulo="Folha" ajuda={sugestao.existente ? 'É a folha deste mês e desta conta: os movimentos que lá estão são substituídos.' : 'Ainda não há folha deste mês para esta conta: é criada uma nova, igual à última.'}>
+          <select value={folha} onChange={(e) => setFolha(e.target.value)} className="w-full h-10 px-3 rounded-controlo border border-linha bg-papel text-[14px]">
+            <option value={NOVA}>Criar folha nova…</option>
+            {modelo.folhas.map((f) => <option key={f.nome} value={f.nome}>{f.nome}</option>)}
+          </select>
+        </Campo>
+        {folha === NOVA && <div className="grid grid-cols-2 gap-3">
+          <Campo rotulo="Nome da folha nova" ajuda={repetido ? 'Já existe uma folha com este nome.' : undefined}><Entrada value={nome} onChange={(e) => setNome(e.target.value)} /></Campo>
+          <Campo rotulo="Copiar formatação de">
+            <select value={base} onChange={(e) => setBase(e.target.value)} className="w-full h-10 px-3 rounded-controlo border border-linha bg-papel text-[14px]">
+              {modelo.folhas.map((f) => <option key={f.nome} value={f.nome}>{f.nome}</option>)}
+            </select>
+          </Campo>
+        </div>}
+        <p className="text-[13px] text-suave">Só a folha escolhida é alterada: as outras folhas, o logótipo e a formatação ficam como estão. O nº da fatura vai entre parênteses na descrição e o saldo fica com as fórmulas. Guarde o ficheiro descarregado no lugar do antigo.</p>
+      </div>
     </Modal>
   )
 }
