@@ -13,8 +13,13 @@ export interface EmailEncomenda {
   encomendaId?: string
   recebidoEm: string
 }
-export interface ConfigEmail { remetentes: string[]; palavras: string[]; dias: number }
-export const CONFIG_EMAIL_INICIAL: ConfigEmail = { remetentes: [], palavras: [], dias: 14 }
+export interface ConfigEmail {
+  remetentes: string[]; palavras: string[]; dias: number
+  /** nome a mostrar por conta (endereço → nome), ex.: geral@… → «Geral» */
+  nomesContas: Record<string, string>
+}
+export const CONFIG_EMAIL_INICIAL: ConfigEmail = { remetentes: [], palavras: [], dias: 14, nomesContas: {} }
+export const nomeConta = (cfg: ConfigEmail, conta?: string) => (conta ? cfg.nomesContas?.[conta.toLowerCase()] || conta : '')
 
 export const emailDisponivel = !!supabase
 

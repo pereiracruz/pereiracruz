@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import { ChevronDown, FilePlus2, FileSpreadsheet, FileText, Mail, PlugZap, RefreshCw, RotateCcw, Settings2, X } from 'lucide-react'
 import { Botao, Cabecalho, Campo, Cartao, Entrada, Pilulas, Vazio, aviso } from '../components/ui'
 import {
-  abrirAnexo, carregarEmails, emailDisponivel, guardarConfigEmail, marcarEmail, testarEmail, useEmails, verificarEmails,
+  abrirAnexo, carregarEmails, emailDisponivel, guardarConfigEmail, marcarEmail, nomeConta, testarEmail, useEmails, verificarEmails,
   type EmailEncomenda, type TesteConta,
 } from '../lib/email'
 import { dataHora } from '../lib/format'
@@ -50,7 +50,7 @@ export default function EmailsEncomendas() {
 
   const guardarFiltros = async () => {
     try {
-      await guardarConfigEmail({ remetentes: lista(remetentes), palavras: lista(palavras), dias: Math.min(Math.max(Number(dias) || 14, 1), 90) })
+      await guardarConfigEmail({ ...config, remetentes: lista(remetentes), palavras: lista(palavras), dias: Math.min(Math.max(Number(dias) || 14, 1), 90) })
       aviso('Filtros guardados.')
     } catch (e) { aviso(`Não foi possível guardar: ${e instanceof Error ? e.message : String(e)}`) }
   }
@@ -104,7 +104,7 @@ export default function EmailsEncomendas() {
           {teste && <ul className="mt-3 space-y-1.5">
             {teste.map((c) => (
               <li key={c.conta} className={clsx('text-[13px] border rounded-controlo px-3 py-2', c.ok ? 'text-verde bg-verde-fraco/60 border-verde-borda' : 'text-vermelho bg-vermelho-fraco border-vermelho-borda')}>
-                <b>{c.conta}</b> · {c.ok ? `ligação feita, pasta ${c.pasta}: ${c.mensagens} emails (${c.porLer} por ler)` : c.erro}
+                <b>{nomeConta(config, c.conta)}</b>{nomeConta(config, c.conta) !== c.conta && <span className="opacity-70"> ({c.conta})</span>} · {c.ok ? `ligação feita, pasta ${c.pasta}: ${c.mensagens} emails (${c.porLer} por ler)` : c.erro}
               </li>
             ))}
           </ul>}
@@ -130,7 +130,7 @@ export default function EmailsEncomendas() {
                     <Mail size={17} className="text-suave mt-0.5 shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-[15px] break-words">{e.assunto}</p>
-                      <p className="text-[13px] text-suave">{e.deNome ? `${e.deNome} · ` : ''}{e.de} · {dataHora(e.data)}{e.conta ? <span className="text-tenue"> · para {e.conta}</span> : null}</p>
+                      <p className="text-[13px] text-suave">{e.deNome ? `${e.deNome} · ` : ''}{e.de} · {dataHora(e.data)}{e.conta ? <span className="text-tenue"> · conta {nomeConta(config, e.conta)}</span> : null}</p>
                       <div className="flex gap-2 flex-wrap mt-2">
                         {e.anexos.map((a) => (
                           <button key={a.caminho} onClick={() => abrirAnexo(a).catch((x) => aviso(x.message))}
