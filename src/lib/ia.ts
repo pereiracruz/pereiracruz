@@ -32,7 +32,7 @@ export interface ExtratoLido {
 export interface ResultadoIA<T> { dados: T; caminho: string; uso: { entrada: number; saida: number }; modelo: string }
 
 /** Guarda o ficheiro no Supabase (bucket privado «documentos») e pede a leitura à IA (processamento na UE). */
-export async function lerComIA<T>(ficheiro: File, tipo: 'encomenda' | 'techpack' | 'extrato' | 'fatura', contexto?: string): Promise<ResultadoIA<T>> {
+export async function lerComIA<T>(ficheiro: File, tipo: 'encomenda' | 'techpack' | 'extrato' | 'fatura' | 'producao', contexto?: string): Promise<ResultadoIA<T>> {
   if (!supabase) throw new Error('A leitura com IA precisa do servidor (Supabase).')
   const { data: sessao } = await supabase.auth.getUser()
   const ponto = ficheiro.name.lastIndexOf('.')
