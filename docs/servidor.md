@@ -23,6 +23,7 @@
    (os projetos novos não dão permissões automáticas às tabelas).
    Depois, `supabase/migrations/20261126000000_colecoes.sql` (aceita as coleções novas, ex.: tabelas da Clothius).
    Depois, `supabase/migrations/20261127000000_tempo_real.sql` (alterações ao mesmo tempo no telemóvel e no computador).
+   Depois, `supabase/migrations/20261128000000_copias_automaticas.sql` (cópia de segurança automática semanal).
 3. **Authentication → Sign In / Providers → Email**: desligar **«Allow new users to sign up»** (só a Pereira & Cruz cria contas).
 4. **Authentication → Users → Add user → Create new user**: email e palavra-passe do Admin, com «Auto Confirm User».
 5. **Project Settings → API** (ou «Data API» / «API Keys»): copiar
@@ -62,11 +63,21 @@ Projeto: `https://gupydoryatnbfakegbzo.supabase.co` · região Central EU (Frank
 
 ## Cópias de segurança
 
-O plano gratuito do Supabase **não faz cópias automáticas**. Na aplicação: **Cópias de segurança**
-(barra lateral, com um ponto âmbar quando passou mais de uma semana desde a última).
+O plano gratuito do Supabase não faz cópias da base de dados, por isso a própria base de dados faz uma por semana
+(`supabase/migrations/20261128000000_copias_automaticas.sql`, com o **pg_cron**, incluído no plano gratuito):
 
-- **Descarregar cópia de segurança:** ficheiro JSON com encomendas e fichas, pedidos, histórico, dados mestre e
-  registo de atividade. Guardar fora do computador (ex.: Google Drive). Os PDFs/Excel originais do bucket não entram.
+- **Cópia automática semanal:** domingo às 03:00 UTC, a função `fazer_copia_automatica()` guarda todos os documentos
+  (todas as coleções, incluindo emails e configuração) e as últimas 1000 linhas do registo de atividade na tabela
+  `copias_automaticas`, no mesmo formato do ficheiro descarregado. Ficam as **8 mais recentes**; as outras apagam-se.
+  Cada cópia fica registada na atividade («Cópia de segurança automática»).
+  Ver o agendamento: **Integrations → Cron** (tarefa `copia-semanal`). Fazer uma à mão: `select public.fazer_copia_automatica();`
+- Na aplicação, **Cópias de segurança** lista as cópias automáticas: **Descarregar** (para guardar no Drive) ou **Repor…**.
+  O ponto âmbar na barra lateral só aparece se passarem mais de 8 dias sem cópia automática nem descarregada.
+- **Limite:** as cópias automáticas ficam no mesmo projeto. Protegem contra enganos (dados apagados ou estragados),
+  não contra perder o projeto. Por isso continua o botão **Descarregar cópia de segurança** para guardar no Google Drive
+  (de vez em quando, ex.: uma vez por mês).
 - **Repor a partir de uma cópia:** valida o ficheiro, mostra por tipo de dados o que é novo, alterado ou retirado,
   e só repõe depois de escrever «REPOR». O registo de atividade não é apagado; a reposição fica registada.
-- Alternativa: plano Pro do Supabase (cópias diárias automáticas).
+  Repõe as coleções da aplicação (encomendas, fichas, dados mestre…); emails e configuração ficam como estão.
+- Os PDFs/Excel originais do bucket não entram nas cópias.
+- Alternativa: plano Pro do Supabase (cópias diárias automáticas de tudo).
