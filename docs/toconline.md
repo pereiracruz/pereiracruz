@@ -22,6 +22,17 @@ Documentos criados pela API ficam **finalizados** (não se apagam, só se anulam
 A comunicação de guias à AT pela API pede o utilizador e a palavra-passe do Portal das Finanças
 (aconselhado: subutilizador só com permissão para documentos de transporte), guardados nos segredos.
 
+## Fase 2 (em curso): rascunhos de guias
+- Separador **Guias** em cada encomenda: escolhe-se a empresa (PP/PC), o destinatário (clientes do TOConline), a viatura,
+  a hora de carga, as moradas e as linhas (artigo do TOConline, descrição, quantidade, preço). Valores habituais de cada
+  empresa vêm das guias reais (secção abaixo).
+- A função `toconline` (`acao: 'criar_guia'`) cria a guia como **rascunho** pela API anterior (`/api/…`, sem `v1`),
+  cabeçalho JSON:API em `commercial_sales_documents` e linhas em `commercial_sales_document_lines`. Se uma linha
+  falhar, apaga o rascunho. `apagar_rascunho` só apaga GT com `status` 0.
+- A finalização e a comunicação à AT fazem-se **no TOConline**. Depois, «Atualizar» traz o número e o código AT.
+- A API não documenta a criação de GT: os nomes dos campos de transporte foram tirados das guias reais. O primeiro
+  rascunho serve de teste; se o TOConline recusar algum campo, a mensagem de erro aparece no separador.
+
 ## Instalar a função (uma vez)
 1. TOConline, em cada empresa: **Empresa → Configurações → Dados API** → integrador com o email da empresa →
    abrir o link do email (72 h): client_id, secret, endereço OAuth, endereço da API (e endereço de retorno, se houver).

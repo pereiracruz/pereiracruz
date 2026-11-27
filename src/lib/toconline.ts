@@ -25,3 +25,22 @@ export interface TesteTOC {
 }
 export const testarTOC = (empresa: EmpresaTOC) => chamar<TesteTOC>({ empresa, acao: 'testar' })
 export const consultarTOC = (empresa: EmpresaTOC, caminho: string) => chamar<{ resultado: unknown }>({ empresa, acao: 'consultar', caminho }).then((r) => r.resultado)
+
+// ---------- Fase 2: rascunhos de guias de transporte (GT) ----------
+export interface LinhaGuiaTOC { tipo: 'texto' | 'artigo'; descricao: string; item_id?: string; quantidade?: number; preco?: number; tax_id?: string; unidade_id?: string }
+export interface GuiaParaTOC {
+  serie_id?: string; serie_prefixo?: string; data: string
+  cliente: { id?: string; nome: string; nif?: string; morada?: string; cp?: string; localidade?: string; pais?: string }
+  carga: { morada: string; cp: string; localidade: string }
+  descarga: { morada: string; cp: string; localidade: string }
+  viatura: string; hora_carga: string; notas?: string; linhas: LinhaGuiaTOC[]
+}
+export const criarGuiaTOC = (empresa: EmpresaTOC, guia: GuiaParaTOC) =>
+  chamar<{ id: string; status?: number; document_no?: string; finalizado: boolean }>({ empresa, acao: 'criar_guia', guia })
+export const apagarRascunhoTOC = (empresa: EmpresaTOC, id: string) => chamar<{ ok: boolean }>({ empresa, acao: 'apagar_rascunho', id })
+
+/** Lista de recursos JSON:API ({ data: [{ id, attributes }] }) → [{ id, ...attributes }]. */
+export async function listarTOC(empresa: EmpresaTOC, caminho: string): Promise<({ id: string } & Record<string, unknown>)[]> {
+  const r = await consultarTOC(empresa, caminho) as { data?: { id: string; attributes?: Record<string, unknown> }[] }
+  return (r?.data ?? []).map((d) => ({ ...(d.attributes ?? {}), id: String(d.id) }))
+}
