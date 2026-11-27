@@ -241,6 +241,9 @@ export const clientes: ClienteCfg[] = [
       'Artigos para bebé com menos de 3 anos: isentos de formaldeídos (OEKO-TEX®).',
     ],
   },
+  // sem tech pack: entregam os acessórios e uma ordem de fabrico (OF) por modelo; tecido, lavandaria, corte e confeção são da Pereira & Cruz
+  { id: 'c4', nome: 'Simão e Olgando', margemTipo: 'fixa', margem: 0, comissao: 0, idPrefixo: 'SEO', documentoModelo: 'OF', acessorios: 'Do cliente' },
+  { id: 'c5', nome: 'GBTX', margemTipo: 'fixa', margem: 2.25, comissao: 0, idPrefixo: 'GBTX', documentoModelo: 'OF', acessorios: 'Do cliente' },
 ]
 
 // ======================= Helpers =======================

@@ -2,8 +2,8 @@ import type { RealtimeChannel, RealtimePostgresChangesPayload, User } from '@sup
 import { supabase } from '../lib/supabase'
 import { aviso } from '../components/ui'
 import { iguais, juntar } from '../lib/juntar'
-import { COLECOES, dadosIniciais, useDb, type Colecao } from './db'
-import type { Atividade } from '../types'
+import { COLECOES, dadosIniciais, juntarClientes, useDb, type Colecao } from './db'
+import type { Atividade, ClienteCfg } from '../types'
 
 /**
  * Sincronização com o Supabase:
@@ -66,7 +66,7 @@ async function semear(): Promise<Linha[]> {
 }
 
 /** Versão dos dados mestre de origem: ao subir, junta-se ao servidor o que for novo (sem alterar nem repor o que existe). */
-const VERSAO_DADOS = 12
+const VERSAO_DADOS = 13
 const MESTRE: Colecao[] = ['fornecedores', 'tecidos', 'equivalencias', 'lavagens', 'acessorios', 'escalas', 'destinatarios', 'precosRef', 'precosTingimento', 'precosLavagem', 'clientes']
 
 const CORRECOES: { colecao: Colecao; id: string; antes: Record<string, unknown>; depois: Record<string, unknown> }[] = [
@@ -79,7 +79,13 @@ async function atualizarMestre(linhas: Linha[]): Promise<Linha[]> {
   if (feito?.length) return []
   const ini = dadosIniciais() as unknown as Record<Colecao, Doc[]>
   const existe = new Set(linhas.map((l) => `${l.colecao}/${l.id}`))
-  const novas: Linha[] = MESTRE.flatMap((c) => ini[c].filter((d) => !existe.has(`${c}/${d.id}`)).map((d) => ({ colecao: c, id: d.id, dados: d })))
+  const novas: Linha[] = MESTRE.filter((c) => c !== 'clientes').flatMap((c) => ini[c].filter((d) => !existe.has(`${c}/${d.id}`)).map((d) => ({ colecao: c, id: d.id, dados: d })))
+  // clientes: juntam-se pelo nome (podem ter sido criados à mão); nos existentes só se preenchem campos novos (v13: OF e acessórios do cliente)
+  const clientesAtuais = linhas.filter((l) => l.colecao === 'clientes').map((l) => l.dados as ClienteCfg)
+  for (const c of juntarClientes(clientesAtuais, ini.clientes as unknown as ClienteCfg[])) {
+    const antes = clientesAtuais.find((x) => x.id === c.id)
+    if (!antes || !iguais(antes, c)) novas.push({ colecao: 'clientes', id: c.id, dados: c })
+  }
   // correções a registos existentes, só se ainda tiverem o valor antigo
   for (const k of CORRECOES) {
     const l = linhas.find((x) => x.colecao === k.colecao && x.id === k.id)

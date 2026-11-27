@@ -29,6 +29,10 @@ export interface ClienteCfg {
   idPrefixo: string
   escala?: string // escala de tamanhos habitual
   notasFixas?: string[] // passam para as observações das fichas
+  /** Documento de cada modelo: tech pack (por omissão) ou ordem de fabrico (OF) que o cliente entrega com os acessórios. */
+  documentoModelo?: 'Tech pack' | 'OF'
+  /** «Do cliente»: o cliente fornece os acessórios e a embalagem (a Pereira & Cruz só trata do tecido, lavandaria, corte e confeção). */
+  acessorios?: 'Do cliente' | 'Comprados por nós'
 }
 
 // ---------- Fichas de produção ----------
@@ -76,7 +80,8 @@ export interface Modelo {
   nome: string
   alias?: string
   refCliente?: string // referência no documento do cliente
-  techPackLido?: { ficheiro: string; indice: number } // modelo do tech pack lido pela IA
+  techPackLido?: { ficheiro: string; indice: number } // modelo do tech pack (ou da OF) lido pela IA
+  of?: { ficheiro: string; caminho: string; data: string; erroLeitura?: string } // ordem de fabrico (PDF) do cliente, no bucket «documentos»
   linhaEncomenda?: string // nº da linha de encomenda do cliente
   tipoPeca: string
   descricao: string

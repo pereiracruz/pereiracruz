@@ -7,6 +7,7 @@ import type {
 } from '../types'
 import * as seed from '../data/seed'
 import { agoraISO, uid } from '../lib/format'
+import { mesmoCliente } from '../lib/of'
 
 export interface Tabelas {
   fornecedores: Fornecedor[]
@@ -57,6 +58,21 @@ interface Estado extends Tabelas {
   sair: () => void
   mudarPass: (atual: string, nova: string) => Promise<boolean>
   repor: () => void
+}
+
+/**
+ * Junta os clientes de origem aos existentes, pelo nome (o mesmo cliente pode ter sido criado à mão com outro id):
+ * os que faltam entram; nos que já existem só se preenchem os campos de origem que ainda não estão definidos.
+ */
+export function juntarClientes(atuais: ClienteCfg[], origem: ClienteCfg[]): ClienteCfg[] {
+  const out = atuais.map((c) => {
+    const o = origem.find((x) => x.id === c.id || mesmoCliente(x.nome, c.nome))
+    if (!o) return c
+    const novos = Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'id' && k !== 'nome' && (c as unknown as Record<string, unknown>)[k] === undefined))
+    return Object.keys(novos).length ? { ...c, ...novos } : c
+  })
+  for (const o of origem) if (!out.some((c) => c.id === o.id || mesmoCliente(c.nome, o.nome))) out.push(o)
+  return out
 }
 
 export async function sha256(s: string) {
@@ -165,7 +181,7 @@ export const useDb = create<Estado>()(
       repor: () => { if (modoServidor) return; set(dadosIniciais()); get().log('Dados repostos', 'Dados de exemplo repostos') },
     }),
     {
-      name: 'pc-fichas-v1', version: 12,
+      name: 'pc-fichas-v1', version: 13,
       // com servidor, os dados vêm da base de dados: nada fica guardado no browser
       storage: createJSONStorage(() => (modoServidor ? { getItem: () => null, setItem: () => {}, removeItem: () => {} } : localStorage)),
       migrate: (antigo, versao) => {
@@ -208,6 +224,8 @@ export const useDb = create<Estado>()(
         if (versao < 11) b = { ...b, precosRef: juntar(b.precosRef, seed.precosRef) }
         // v11 → v12: o embalamento é tratado pelo Paulo e pela Marta
         if (versao < 12) b = { ...b, destinatarios: b.destinatarios.map((d) => (d.id === 'd6' && d.nome === 'Embalamento' ? { ...d, nome: 'Paulo e Marta', contacto: 'Embalamento' } : d)) }
+        // v12 → v13: Simão e Olgando e GBTX trabalham com OF (sem tech pack) e dão os acessórios
+        if (versao < 13) b = { ...b, clientes: juntarClientes(b.clientes, seed.clientes) }
         if (versao < 9) b = { ...b, clientes: b.clientes.map((c) => (c.id === 'c1' && c.comissao === 7 ? { ...c, comissao: 0 } : c)) }
         return b
       },
