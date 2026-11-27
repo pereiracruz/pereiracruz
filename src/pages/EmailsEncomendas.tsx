@@ -67,6 +67,7 @@ export default function EmailsEncomendas() {
   const [filtrosAbertos, setFiltrosAbertos] = useState(false)
   const [remetentes, setRemetentes] = useState('')
   const [palavras, setPalavras] = useState('')
+  const [palavrasTexto, setPalavrasTexto] = useState('')
   const [dias, setDias] = useState('14')
   const [teste, setTeste] = useState<TesteConta[] | null>(null)
   const [aTestar, setATestar] = useState(false)
@@ -89,7 +90,7 @@ export default function EmailsEncomendas() {
 
   useEffect(() => { if (emailDisponivel && !carregado) void carregarEmails() }, [carregado])
   useEffect(() => {
-    setRemetentes(config.remetentes.join(', ')); setPalavras(config.palavras.join(', ')); setDias(String(config.dias))
+    setRemetentes(config.remetentes.join(', ')); setPalavras(config.palavras.join(', ')); setPalavrasTexto((config.palavrasTexto ?? []).join(', ')); setDias(String(config.dias))
     if (carregado && !config.remetentes.length && !config.palavras.length) setFiltrosAbertos(true)
   }, [config, carregado])
 
@@ -108,7 +109,7 @@ export default function EmailsEncomendas() {
 
   const guardarFiltros = async () => {
     try {
-      await guardarConfigEmail({ ...config, remetentes: lista(remetentes), palavras: lista(palavras), dias: Math.min(Math.max(Number(dias) || 14, 1), 90) })
+      await guardarConfigEmail({ ...config, remetentes: lista(remetentes), palavras: lista(palavras), palavrasTexto: lista(palavrasTexto), dias: Math.min(Math.max(Number(dias) || 14, 1), 90) })
       aviso('Filtros guardados.')
     } catch (e) { aviso(`Não foi possível guardar: ${e instanceof Error ? e.message : String(e)}`) }
   }
@@ -143,12 +144,15 @@ export default function EmailsEncomendas() {
 
       {filtrosAbertos && (
         <Cartao className="p-5 mb-5">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
             <Campo rotulo="Remetentes" ajuda="Parte do endereço ou do nome, separados por vírgulas (ex.: whitecotton, @cliente.pt).">
               <Entrada value={remetentes} onChange={(e) => setRemetentes(e.target.value)} placeholder="whitecotton, @cliente.pt" />
             </Campo>
-            <Campo rotulo="Palavras no assunto ou na mensagem" ajuda="Ex.: encomenda, order, pedido. Basta coincidir o remetente ou uma palavra.">
-              <Entrada value={palavras} onChange={(e) => setPalavras(e.target.value)} placeholder="encomenda, order, PO" />
+            <Campo rotulo="Palavras no assunto" ajuda="Ex.: encomenda, order, pedido. Basta coincidir o remetente ou uma palavra.">
+              <Entrada value={palavras} onChange={(e) => setPalavras(e.target.value)} placeholder="encomenda, order, pedido" />
+            </Campo>
+            <Campo rotulo="Palavras no texto da mensagem" ajuda="Só palavras que não aparecem em emails normais (evite «pedido», «project»…).">
+              <Entrada value={palavrasTexto} onChange={(e) => setPalavrasTexto(e.target.value)} placeholder="encomenda, tech pack" />
             </Campo>
             <Campo rotulo="Procurar nos últimos (dias)" ajuda="Entre 1 e 90.">
               <Entrada value={dias} onChange={(e) => setDias(e.target.value)} inputMode="numeric" className="max-w-28" />

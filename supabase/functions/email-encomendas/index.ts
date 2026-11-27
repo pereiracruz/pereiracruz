@@ -14,11 +14,11 @@
 //
 // Filtros (na aplicação, página «Emails de encomendas»; guardados em documentos/configuracao/email):
 //   remetentes: partes do endereço ou do nome (ex.: «whitecotton», «@cliente.pt»)
-//   palavras:   palavras no assunto ou no texto da mensagem (ex.: «encomenda», «order», «pedido»)
+//   palavras:      palavras no assunto (ex.: «encomenda», «order», «pedido»)
+//   palavrasTexto: palavras no texto da mensagem — só as inequívocas (ex.: «encomenda», «tech pack»)
 //   Um email entra se tiver anexo Excel ou PDF E (sem filtros, ou se coincidir com algum remetente ou palavra).
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { ImapFlow } from 'npm:imapflow@1'
-import { simpleParser } from 'npm:mailparser@3'
 import nodemailer from 'npm:nodemailer@6'
 import MailComposer from 'npm:nodemailer@6/lib/mail-composer/index.js'
 
@@ -37,8 +37,8 @@ const IMAGEM = /\.(png|jpe?g|webp|gif)$/i
 // imagens da assinatura / do corpo do email (image001.png, logótipos…) não são anexos da encomenda
 const imagemDoCorpo = (a: { filename?: string; contentDisposition?: string; related?: boolean; cid?: string }) =>
   IMAGEM.test(a.filename ?? '') && (a.related || a.contentDisposition !== 'attachment' || /^image\d{3}\.|assinatura|signature|logo/i.test(a.filename ?? ''))
-const MAX_POR_VEZ = 15 // emails novos tratados por chamada (o resto fica para a seguinte)
-const MAX_BYTES = 25 * 1024 * 1024
+const MAX_POR_VEZ = 4 // emails novos tratados por chamada (o resto fica para a seguinte; a aplicação volta a chamar)
+const MAX_BYTES = 15 * 1024 * 1024
 
 type Conta = { n: number; host: string; port: number; user: string; pass: string; pasta: string; smtpHost: string; smtpPort: number }
 function contas(): Conta[] {
@@ -75,13 +75,24 @@ const nomeFicheiro = (s: string) =>
   s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.\-]+/g, '_').replace(/_+/g, '_').slice(-120) || 'anexo'
 
 type Assinatura = { nome?: string; texto?: string; imagem?: string }
-type Config = { remetentes?: string[]; palavras?: string[]; dias?: number; assinaturas?: Record<string, Assinatura> }
+type No = { part?: string; type?: string; size?: number; disposition?: string; dispositionParameters?: Record<string, string>; parameters?: Record<string, string>; childNodes?: No[] }
+const folhas = (n?: No, r: No[] = []): No[] => { if (!n) return r; if (n.childNodes?.length) for (const f of n.childNodes) folhas(f, r); else r.push(n); return r }
+const nomeDe = (n: No) => n.dispositionParameters?.filename ?? n.parameters?.name ?? ''
+async function lerTudo(stream: AsyncIterable<Uint8Array>, max: number): Promise<Uint8Array> {
+  const partes: Uint8Array[] = []; let total = 0
+  for await (const p of stream) { partes.push(p); total += p.length; if (total > max) break }
+  const r = new Uint8Array(Math.min(total, max)); let o = 0
+  for (const p of partes) { const q = p.subarray(0, Math.max(0, r.length - o)); r.set(q, o); o += q.length; if (o >= r.length) break }
+  return r
+}
+
+type Config = { remetentes?: string[]; palavras?: string[]; palavrasTexto?: string[]; dias?: number; assinaturas?: Record<string, Assinatura> }
 
 type Novo = { id: string; conta: string; assunto: string; de: string; anexos: number }
 type SupabaseCliente = ReturnType<typeof createClient>
 
 /** Recolhe os emails de encomendas novos de uma conta. Devolve quantos ficaram por tratar (limite por chamada). */
-async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { remetentes: string[]; palavras: string[]; dias: number },
+async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { remetentes: string[]; palavras: string[]; palavrasTexto: string[]; dias: number },
   jaVistos: Set<string>, limite: number, novos: Novo[]): Promise<number> {
   const imap = cliente(c)
   await imap.connect()
@@ -94,16 +105,18 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
       const uids = (await imap.search({ since: desde }, { uid: true })) || []
       // palavras no assunto OU na mensagem: a pesquisa é feita pelo próprio servidor de email (não descarrega nada)
       const comPalavra = new Set<number>()
-      if (uids.length) for (const p of filtros.palavras) {
-        for (const criterio of [{ subject: p }, { body: p }]) {
+      const pesquisas = [...filtros.palavras.map((p) => ({ subject: p })), ...filtros.palavrasTexto.map((p) => ({ body: p }))]
+      if (uids.length) for (const criterio of pesquisas) {
+        {
           try {
             const r = await imap.search({ since: desde, ...criterio }, { uid: true })
             if (r) for (const u of r) comPalavra.add(u)
-          } catch (e) { console.error('pesquisa', p, e) }
+          } catch (e) { console.error('pesquisa', criterio, e) }
         }
       }
       // 1.º passo, leve: cabeçalhos e estrutura (sem descarregar o conteúdo)
       const escolhidos: number[] = []
+      const estrutura = new Map<number, { bs: No; env: { messageId?: string; subject?: string; date?: Date | string; from?: { name?: string; address?: string }[]; replyTo?: { address?: string }[] } }>()
       if (uids.length) for await (const m of imap.fetch(uids, { uid: true, envelope: true, bodyStructure: true, size: true }, { uid: true })) {
         if (jaVistos.has(chave(m.uid))) continue
         if (m.envelope?.messageId && jaVistos.has(`mid:${m.envelope.messageId}`)) continue // já veio por outra conta
@@ -118,41 +131,68 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
         }
         percorrer(m.bodyStructure as Parameters<typeof percorrer>[0])
         if (!nomes.some((n) => DOCUMENTO.test(n))) continue // tem de trazer Excel ou PDF (as imagens sozinhas costumam ser assinaturas)
-        const semFiltros = !filtros.remetentes.length && !filtros.palavras.length
+        const semFiltros = !filtros.remetentes.length && !filtros.palavras.length && !filtros.palavrasTexto.length
         if (!semFiltros && !filtros.remetentes.some((r) => de.includes(r)) && !comPalavra.has(m.uid) && !filtros.palavras.some((p) => assunto.includes(p))) continue
         if ((m.size ?? 0) > MAX_BYTES) continue
         escolhidos.push(m.uid)
+        estrutura.set(m.uid, { bs: m.bodyStructure as No, env: (m.envelope ?? {}) as never })
       }
       escolhidos.sort((a, b) => a - b)
       const agora = escolhidos.slice(0, Math.max(0, limite))
 
-      // 2.º passo: descarregar e guardar os escolhidos (BODY.PEEK: não marca como lido)
+      // 2.º passo: descarregar SÓ o texto e os anexos úteis de cada escolhido (BODY.PEEK: não marca como lido).
+      // Não se descarrega o email inteiro: poupa memória e tempo no servidor.
       for (const uid of agora) {
-        const msg = await imap.fetchOne(String(uid), { source: true, envelope: true }, { uid: true })
-        if (!msg || !msg.source) continue
         const id = chave(uid)
-        const mail = await simpleParser(msg.source)
-        if (mail.messageId && jaVistos.has(`mid:${mail.messageId}`)) { jaVistos.add(id); continue }
-        const anexos: { nome: string; caminho: string; tipo: string; tamanho: number }[] = []
-        for (const [i, a] of (mail.attachments ?? []).entries()) {
-          const nome = a.filename ?? `anexo-${i + 1}`
-          if (!ANEXO_UTIL.test(nome) || imagemDoCorpo(a)) continue
-          const caminho = `email/${id}/${i}-${nomeFicheiro(nome)}`
-          const { error } = await supabase.storage.from('documentos').upload(caminho, a.content, { contentType: a.contentType || undefined, upsert: true })
-          if (error) throw new Error(`não consegui guardar o anexo ${nome}: ${error.message}`)
-          anexos.push({ nome, caminho, tipo: a.contentType ?? '', tamanho: a.size ?? a.content.length })
+        const { bs, env } = estrutura.get(uid)!
+        if (env.messageId && jaVistos.has(`mid:${env.messageId}`)) { jaVistos.add(id); continue }
+        const nos = folhas(bs)
+        // texto: text/plain (ou text/html sem etiquetas)
+        const corpo = nos.find((n) => n.type === 'text/plain' && !nomeDe(n) && (n.disposition ?? '').toLowerCase() !== 'attachment')
+          ?? nos.find((n) => n.type === 'text/html' && !nomeDe(n) && (n.disposition ?? '').toLowerCase() !== 'attachment')
+        let texto = ''
+        if (corpo?.part) {
+          try {
+            const d = await imap.download(String(uid), corpo.part, { uid: true, maxBytes: 200_000 })
+            texto = new TextDecoder('utf-8').decode(await lerTudo(d.content, 200_000))
+            if (corpo.type === 'text/html') texto = texto.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|tr)>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+          } catch (e) { console.error('texto', uid, e) }
+        } else if (bs?.part === undefined && bs?.type?.startsWith('text/')) {
+          try { const d = await imap.download(String(uid), '1', { uid: true, maxBytes: 200_000 }); texto = new TextDecoder('utf-8').decode(await lerTudo(d.content, 200_000)) } catch { /* sem texto */ }
         }
-        const de = mail.from?.value?.[0]
+        // anexos úteis (Excel, PDF; imagens só se forem anexo a sério)
+        const anexos: { nome: string; caminho: string; tipo: string; tamanho: number }[] = []
+        let i = 0
+        for (const n of nos) {
+          const nome = nomeDe(n)
+          if (!nome || !n.part || !ANEXO_UTIL.test(nome)) continue
+          if (IMAGEM.test(nome) && ((n.disposition ?? '').toLowerCase() !== 'attachment' || /^image\d{3}\.|assinatura|signature|logo/i.test(nome))) continue
+          if ((n.size ?? 0) > MAX_BYTES * 1.4) continue // tamanho em base64
+          const d = await imap.download(String(uid), n.part, { uid: true })
+          const conteudo = await lerTudo(d.content, MAX_BYTES)
+          const caminho = `email/${id}/${i++}-${nomeFicheiro(nome)}`
+          const { error } = await supabase.storage.from('documentos').upload(caminho, conteudo, { contentType: n.type || undefined, upsert: true })
+          if (error) throw new Error(`não consegui guardar o anexo ${nome}: ${error.message}`)
+          anexos.push({ nome, caminho, tipo: n.type ?? '', tamanho: conteudo.length })
+        }
+        // cabeçalhos para responder na mesma conversa
+        let references: string[] = [], responderPara: string | null = env.replyTo?.[0]?.address ?? null
+        try {
+          const h = await imap.fetchOne(String(uid), { headers: ['references'] }, { uid: true })
+          const cab = h && h.headers ? new TextDecoder().decode(h.headers).replace(/\r?\n[ \t]+/g, ' ') : ''
+          references = cab.match(/<[^<>\s]+>/g) ?? []
+        } catch { /* sem cabeçalhos */ }
+        const de = env.from?.[0]
+        if (responderPara && de?.address && responderPara.toLowerCase() === de.address.toLowerCase()) responderPara = null
         const dados = {
           id, uid, conta: c.user,
-          messageId: mail.messageId ?? null,
-          references: Array.isArray(mail.references) ? mail.references : mail.references ? [mail.references] : [],
-          responderPara: mail.replyTo?.value?.[0]?.address ?? null,
+          messageId: env.messageId ?? null,
+          references, responderPara,
           de: de?.address ?? '',
           deNome: de?.name ?? '',
-          assunto: mail.subject ?? '(sem assunto)',
-          data: (mail.date ?? msg.envelope?.date ?? new Date()).toISOString(),
-          texto: (mail.text ?? '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 4000),
+          assunto: env.subject || '(sem assunto)',
+          data: new Date(env.date ?? Date.now()).toISOString(),
+          texto: texto.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 4000),
           anexos,
           estado: 'nova',
           recebidoEm: new Date().toISOString(),
@@ -279,6 +319,7 @@ Deno.serve(async (req) => {
     const filtros = {
       remetentes: (cfg.remetentes ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean),
       palavras: (cfg.palavras ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean),
+      palavrasTexto: (cfg.palavrasTexto ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean),
       dias: Math.min(Math.max(Number(cfg.dias) || 14, 1), 90),
     }
     const { data: existentes, error: eEx } = await supabase.from('documentos').select('id,mid:dados->>messageId').eq('colecao', 'emails')

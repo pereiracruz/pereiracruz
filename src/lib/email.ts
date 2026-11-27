@@ -18,12 +18,14 @@ export interface RespostaEmail { data: string; para: string; assunto: string; te
 export interface AssinaturaConta { nome?: string; texto?: string; imagem?: string }
 export interface ConfigEmail {
   remetentes: string[]; palavras: string[]; dias: number
+  /** palavras procuradas no texto da mensagem (só as inequívocas; as do assunto vão em «palavras») */
+  palavrasTexto: string[]
   /** nome a mostrar por conta (endereço → nome), ex.: geral@… → «Geral» */
   nomesContas: Record<string, string>
   /** assinatura das respostas por conta (endereço em minúsculas) */
   assinaturas: Record<string, AssinaturaConta>
 }
-export const CONFIG_EMAIL_INICIAL: ConfigEmail = { remetentes: [], palavras: [], dias: 14, nomesContas: {}, assinaturas: {} }
+export const CONFIG_EMAIL_INICIAL: ConfigEmail = { remetentes: [], palavras: [], palavrasTexto: [], dias: 14, nomesContas: {}, assinaturas: {} }
 export const nomeConta = (cfg: ConfigEmail, conta?: string) => (conta ? cfg.nomesContas?.[conta.toLowerCase()] || conta : '')
 
 export const emailDisponivel = !!supabase
@@ -80,7 +82,12 @@ export async function verificarEmails(): Promise<ResultadoVerificar> {
   if (useEmails.getState().aVerificar) throw new Error('Já está a verificar.')
   useEmails.setState({ aVerificar: true, erro: '' })
   try {
+    // a função trata poucos emails de cada vez (limites do servidor): repete enquanto houver mais
     const r = await chamar<ResultadoVerificar>({ acao: 'verificar' })
+    for (let i = 0; i < 10 && r.restantes > 0; i++) {
+      const mais = await chamar<ResultadoVerificar>({ acao: 'verificar' })
+      r.novos.push(...mais.novos); r.restantes = mais.restantes; r.erros = mais.erros
+    }
     await carregarEmails()
     useEmails.setState({ ultimaVerificacao: new Date().toISOString(), erro: (r.erros ?? []).map((e) => `${e.conta}: ${e.erro}`).join(' · ') })
     return r

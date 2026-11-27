@@ -11,11 +11,12 @@ não apaga. No Thunderbird fica tudo como estava.
   `documentos`, pasta `email/`). Aparece também no sino e no menu.
 - **Criar encomenda** abre a Nova encomenda com os anexos já carregados (Excel lido diretamente; PDF lido com IA).
   Ao criar, o email passa a **Tratado** e fica ligado à encomenda. **Ignorar** tira-o da lista.
-- Cada chamada trata no máximo 15 emails novos; os restantes entram na seguinte.
+- Cada chamada trata no máximo 4 emails novos (limites do Supabase); a aplicação repete sozinha até não haver mais.
 
 ## Filtros (na própria página, «Filtros e ligação»)
 - **Remetentes**: partes do endereço ou do nome (ex.: `whitecotton`, `@cliente.pt`).
-- **Palavras no assunto ou na mensagem** (pesquisa feita pelo servidor de email): ex.: `encomenda`, `order`, `pedido`.
+- **Palavras no assunto**: ex.: `encomenda`, `order`, `pedido`.
+- **Palavras no texto da mensagem** (pesquisa feita pelo servidor de email): só as inequívocas, ex.: `encomenda`, `tech pack`. Palavras comuns («pedido», «project» — está no nome Pereira's Project) trazem emails a mais.
 - **Dias**: só procura nos últimos N dias (1 a 90; por omissão 14).
 - Um email entra se tiver anexo útil **e** coincidir com um remetente **ou** uma palavra. Sem filtros, entram todos
   os emails com anexo útil.
