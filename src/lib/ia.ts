@@ -59,13 +59,17 @@ const titulo = (s: string) => s.toLowerCase().replace(/(^|\s|-)\S/g, (c) => c.to
  * uma referência = um modelo; cada cor = uma variante; a mesma cor em várias linhas junta-se.
  */
 export function leituraDaIA(d: EncomendaLida, nomeFicheiro: string): LeituraExcel {
-  const tam = d.tamanhos
+  // sem colunas de tamanhos: guia-se pela quantidade total de cada linha
+  const semTamanhos = !d.tamanhos?.length
+  const tam = semTamanhos ? ['Total'] : d.tamanhos
   const porRef = new Map<string, { linha: string | null; descricao: string; cores: Map<string, { q: number[]; preco: number; linhas: number }> }>()
   const difs: LeituraExcel['linhasComDiferenca'] = []
   d.linhas.forEach((l, i) => {
-    const q = tam.map((_, k) => Math.max(0, Math.round(l.quantidades[k] ?? 0)))
+    const q = semTamanhos
+      ? [Math.max(0, Math.round(l.total ?? (l.quantidades ?? []).reduce((a, b) => a + b, 0)))]
+      : tam.map((_, k) => Math.max(0, Math.round(l.quantidades?.[k] ?? 0)))
     const s = q.reduce((a, b) => a + b, 0)
-    if (l.total != null && l.total !== s) difs.push({ linha: i + 1, ref: `${l.referencia} · ${l.cor}`, lida: s, ficheiro: l.total })
+    if (!semTamanhos && l.total != null && l.total !== s) difs.push({ linha: i + 1, ref: `${l.referencia} · ${l.cor}`, lida: s, ficheiro: l.total })
     const r = porRef.get(l.referencia) ?? { linha: l.linhaEncomenda, descricao: l.descricao, cores: new Map<string, { q: number[]; preco: number; linhas: number }>() }
     const c = r.cores.get(l.cor) ?? { q: tam.map(() => 0), preco: 0, linhas: 0 }
     c.q = c.q.map((x, k) => x + q[k]); c.linhas++; if (l.preco) c.preco = l.preco
