@@ -81,3 +81,10 @@ O plano gratuito do Supabase não faz cópias da base de dados, por isso a próp
   Repõe as coleções da aplicação (encomendas, fichas, dados mestre…); emails e configuração ficam como estão.
 - Os PDFs/Excel originais do bucket não entram nas cópias.
 - Alternativa: plano Pro do Supabase (cópias diárias automáticas de tudo).
+
+## Dados de exemplo
+
+No primeiro arranque entram encomendas (Longratex, Dr. Collectors), um pedido (Shirt Mao) e 25 preços no histórico, para
+experimentar. Em **Cópias de segurança → Dados de exemplo → Limpar dados de exemplo…** escolhe-se o que apagar (o histórico
+não vem escolhido, porque pode servir de referência). Antes de apagar é descarregada uma cópia de segurança; os dados
+mestre não são apagados; fica no registo de atividade.

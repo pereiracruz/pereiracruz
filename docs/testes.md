@@ -1,7 +1,7 @@
 # Testes automáticos
 
 ```bash
-npm test              # todos (cerca de 30 testes, ~30 s)
+npm test              # todos (54 testes, ~30 s)
 npm run test:unidade  # só cálculos e leitores de ficheiros (sem browser)
 npm run test:app      # só a aplicação no browser
 ```
@@ -27,6 +27,15 @@ npm run test:app      # só a aplicação no browser
 | `tests/app/peso.spec.ts` | Peso da peça vindo da ficha de produção e de outros orçamentos do mesmo modelo |
 | `tests/app/compras-prazos.spec.ts` | Compras (marcar encomendado, copiar pedido, Excel) e prazos (planear, etapa feita, página Prazos) |
 | `tests/app/telemovel.spec.ts` | Ecrã de telemóvel: nenhuma página mais larga do que o ecrã; menu ☰; marcar recebido e etapa feita |
+| `tests/unidade/conciliacao.spec.ts` | Conciliação bancária: nome no descritivo, candidatas (valor, valor único, várias faturas), cruzar sem repetir faturas, saldo |
+| `tests/unidade/extratos.spec.ts` | Extratos em CSV e Excel lidos sem IA (débito/crédito, montante, números portugueses, ordem, saldos); formato desconhecido |
+| `tests/unidade/faltas.spec.ts` | Feriados e dias úteis, tolerância, picagens esquecidas, horas extra (período e blocos de 15 min), banco de horas, baixa, subsídio |
+| `tests/unidade/faturas-juntar-producao.spec.ts` | Conferência de faturas com o e-Fatura e recibos verdes; junção de alterações de dois aparelhos; grelha da produção diária |
+| `tests/app/modulos-novos.spec.ts` | Conciliação, faturas, produção diária, faltas e emails abrem sem erros; pesquisa geral (Ctrl+K, «/», Enter, Escape) |
+| `tests/app/dados-exemplo.spec.ts` | Limpar dados de exemplo: cópia antes, confirmação com LIMPAR, só o que foi escolhido |
+
+Em modo local, as partes que dependem do servidor (Gmail, TOConline, leitura com IA, Google Sheets) só se testam pelas funções
+de cálculo e por abrirem sem erros: as ligações externas não são chamadas nos testes.
 
 As fichas de custo dos testes são **fictícias** (`tests/apoio/fichasCusto.ts`), com a estrutura das reais: os ficheiros
 dos clientes não vão para o repositório.
