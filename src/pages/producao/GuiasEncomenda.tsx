@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { AlertTriangle, FileText, RefreshCw, Trash2, Truck } from 'lucide-react'
+import { AlertTriangle, Copy, FileText, Receipt, RefreshCw, Trash2, Truck } from 'lucide-react'
 import { useDb } from '../../store/db'
 import { Botao, Campo, Cartao, Entrada, Etiqueta, Modal, aviso } from '../../components/ui'
 import { qtdParaEmbalar, soma } from '../../lib/calc'
-import { dataCurta, hojeISO, int, parseNum } from '../../lib/format'
+import { dataCurta, eur, hojeISO, int, parseNum } from '../../lib/format'
 import { NOME_EMPRESA_TOC, apagarRascunhoTOC, consultarTOC, criarGuiaTOC, listarTOC, tocDisponivel, type EmpresaTOC, type GuiaParaTOC } from '../../lib/toconline'
 import type { Encomenda, GuiaTOC } from '../../types'
 
@@ -46,6 +46,7 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
   const [confirmar, setConfirmar] = useState(false)
   const [aCriar, setACriar] = useState(false)
   const [aAtualizar, setAAtualizar] = useState('')
+  const [faturar, setFaturar] = useState<GuiaTOC | null>(null)
 
   const guias = enc.guias ?? []
   const guardarGuias = (fn: (g: GuiaTOC[]) => GuiaTOC[]) => atualizarEncomenda(enc.id, (e) => ({ ...e, guias: fn(e.guias ?? []) }))
@@ -125,7 +126,7 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
     }
     try {
       const r = await criarGuiaTOC(empresa, guia)
-      guardarGuias((g) => [...g, { id: String(r.id), empresa, criadaEm: new Date().toISOString(), destinatario: nomeCliente, pecas, viatura: viatura.trim(), estado: (r.finalizado ? 'finalizada' : 'rascunho') as GuiaTOC['estado'], numero: r.document_no || undefined }])
+      guardarGuias((g) => [...g, { id: String(r.id), empresa, criadaEm: new Date().toISOString(), destinatario: nomeCliente, pecas, viatura: viatura.trim(), estado: (r.finalizado ? 'finalizada' : 'rascunho') as GuiaTOC['estado'], numero: r.document_no || undefined, linhas: escolhidas.map((l) => ({ chave: l.chave, descricao: l.descricao, quantidade: l.quantidade })) }])
       log('Guia criada no TOConline', `${enc.cliente} · ${enc.colecao} · ${NOME_EMPRESA_TOC[empresa]} · ${nomeCliente} · ${pecas} peças${r.finalizado ? ' · FINALIZADA' : ' · rascunho'}`)
       aviso(r.finalizado ? 'Atenção: o TOConline finalizou a guia logo ao criar.' : 'Rascunho da guia criado no TOConline. Reveja-o e finalize-o lá.')
       setConfirmar(false)
@@ -139,7 +140,14 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
     try {
       const r = await consultarTOC(g.empresa, `commercial_sales_documents/${g.id}`) as { data?: { attributes?: Record<string, unknown> } }
       const a = r?.data?.attributes ?? {}
-      guardarGuias((gs) => gs.map((x) => (x.id === g.id && x.empresa === g.empresa ? { ...x, estado: (Number(a.status) === 0 ? 'rascunho' : 'finalizada') as GuiaTOC['estado'], numero: s(a.document_no) || x.numero, codigoAT: s(a.communication_code) || x.codigoAT } : x)))
+      let fatura = g.fatura
+      const filhos = Array.isArray(a.child_documents_ids) ? (a.child_documents_ids as unknown[]).map(String) : []
+      for (const fid of filhos) {
+        const f = await consultarTOC(g.empresa, `commercial_sales_documents/${fid}`) as { data?: { attributes?: Record<string, unknown> } }
+        const fa = f?.data?.attributes ?? {}
+        if (/^F[TRS]$/.test(s(fa.document_type)) && Number(fa.status) !== 4) { fatura = { numero: s(fa.document_no), total: Number(fa.gross_total) || undefined }; break }
+      }
+      guardarGuias((gs) => gs.map((x) => (x.id === g.id && x.empresa === g.empresa ? { ...x, estado: (Number(a.status) === 0 ? 'rascunho' : 'finalizada') as GuiaTOC['estado'], numero: s(a.document_no) || x.numero, codigoAT: s(a.communication_code) || x.codigoAT, fatura } : x)))
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e)
       if (/404/.test(m)) guardarGuias((gs) => gs.map((x) => (x.id === g.id && x.empresa === g.empresa ? { ...x, estado: 'apagada' as const } : x)))
@@ -167,7 +175,7 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
           <table className="w-full text-[13.5px]">
             <thead><tr className="text-[11px] uppercase tracking-wider text-suave border-y border-linha bg-fundo/40">
               <th className="text-left px-5 py-2 font-medium">Empresa</th><th className="text-left px-2 font-medium">Destinatário</th><th className="text-right px-2 font-medium">Peças</th>
-              <th className="text-left px-2 font-medium">Estado</th><th className="text-left px-2 font-medium">Nº / código AT</th><th className="px-5" /></tr></thead>
+              <th className="text-left px-2 font-medium">Estado</th><th className="text-left px-2 font-medium">Nº / código AT</th><th className="text-left px-2 font-medium">Fatura</th><th className="px-5" /></tr></thead>
             <tbody>{guias.map((g) => (
               <tr key={`${g.empresa}${g.id}`} className="border-b border-linha">
                 <td className="px-5 py-2.5">{NOME_EMPRESA_TOC[g.empresa]}<div className="text-[11.5px] text-tenue">{dataCurta(g.criadaEm.slice(0, 10))} · {g.viatura}</div></td>
@@ -175,13 +183,15 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
                 <td className="px-2 text-right num">{int(g.pecas)}</td>
                 <td className="px-2">{g.estado === 'rascunho' ? <Etiqueta tom="ambar">Rascunho: finalizar no TOConline</Etiqueta> : g.estado === 'finalizada' ? <Etiqueta tom="verde">Finalizada</Etiqueta> : <Etiqueta tom="neutro">Apagada</Etiqueta>}</td>
                 <td className="px-2">{g.numero || '—'}{g.codigoAT && <div className="text-[11.5px] text-tenue">AT {g.codigoAT}</div>}</td>
+                <td className="px-2">{g.fatura ? <><Etiqueta tom="verde">{g.fatura.numero}</Etiqueta>{g.fatura.total != null && <div className="text-[11.5px] text-tenue">{eur(g.fatura.total)} c/ IVA</div>}</>
+                  : g.estado === 'finalizada' ? <Botao pequeno variante="secundario" icone={<Receipt size={13} />} onClick={() => setFaturar(g)}>Valores para faturar</Botao> : <span className="text-tenue">—</span>}</td>
                 <td className="px-5 text-right whitespace-nowrap">
                   {g.estado !== 'apagada' && <Botao pequeno variante="fantasma" icone={<RefreshCw size={13} className={aAtualizar === g.id ? 'animate-spin' : ''} />} onClick={() => atualizar(g)}>Atualizar</Botao>}
                   {g.estado === 'rascunho' && <Botao pequeno variante="fantasma" icone={<Trash2 size={13} />} onClick={() => apagar(g)}>Apagar</Botao>}
                 </td>
               </tr>))}</tbody>
           </table>
-          <p className="px-5 py-3 text-[12px] text-tenue">Depois de finalizar a guia no TOConline (e comunicar à AT), carregue em Atualizar para trazer o número e o código AT.</p>
+          <p className="px-5 py-3 text-[12px] text-tenue">Depois de finalizar a guia no TOConline (e comunicar à AT), carregue em Atualizar para trazer o número e o código AT. A fatura faz-se no TOConline, convertendo a guia; «Valores para faturar» mostra os preços da encomenda e, depois de converter, Atualizar traz o número da fatura.</p>
         </Cartao>
       )}
 
@@ -269,6 +279,8 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
         )}
       </Cartao>
 
+      <ValoresFatura enc={enc} guia={faturar} onFechar={() => setFaturar(null)} />
+
       <Modal aberto={confirmar} onFechar={() => !aCriar && setConfirmar(false)} titulo="Criar rascunho da guia?" sub={`${NOME_EMPRESA_TOC[empresa]} → ${nomeCliente}`}
         rodape={<><Botao onClick={() => setConfirmar(false)} disabled={aCriar}>Cancelar</Botao><Botao variante="primario" onClick={criar} disabled={aCriar}>{aCriar ? 'A criar…' : 'Criar rascunho'}</Botao></>}>
         <div className="text-[13.5px] space-y-2">
@@ -279,5 +291,40 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
         </div>
       </Modal>
     </div>
+  )
+}
+
+/** Preços da encomenda para as linhas de uma guia, para usar ao converter a guia em fatura no TOConline. */
+function ValoresFatura({ enc, guia, onFechar }: { enc: Encomenda; guia: GuiaTOC | null; onFechar: () => void }) {
+  if (!guia) return null
+  const preco = (chave: string) => {
+    const [mId, vId] = chave.split(':')
+    return enc.modelos.find((m) => m.id === mId)?.variantes.find((v) => v.id === vId)?.preco ?? 0
+  }
+  const linhas = (guia.linhas ?? []).map((l) => ({ ...l, preco: preco(l.chave) }))
+  const liquido = Math.round(soma(linhas.map((l) => l.quantidade * l.preco)) * 100) / 100
+  const iva = Math.round(liquido * 0.23 * 100) / 100
+  const texto = [...linhas.map((l) => `${l.descricao.split('\n').join(' · ')}: ${l.quantidade} × ${eur(l.preco)} = ${eur(l.quantidade * l.preco)}`),
+    `Total sem IVA: ${eur(liquido)} · IVA 23%: ${eur(iva)} · Total: ${eur(liquido + iva)}`].join('\n')
+  return (
+    <Modal aberto onFechar={onFechar} largura="max-w-2xl" titulo={`Valores para faturar · ${guia.numero ?? 'guia'}`} sub={`${guia.destinatario} · preços por peça da encomenda`}
+      rodape={<><Botao icone={<Copy size={14} />} onClick={() => { void navigator.clipboard?.writeText(texto); aviso('Valores copiados.') }}>Copiar</Botao><Botao variante="primario" onClick={onFechar}>Fechar</Botao></>}>
+      {!linhas.length ? <p className="text-[13.5px] text-suave">Esta guia foi criada antes de a aplicação guardar as linhas. Use os preços da encomenda no separador «Modelos e fichas».</p> : (
+        <div className="text-[13.5px]">
+          <table className="w-full mb-3">
+            <thead><tr className="text-[11px] uppercase tracking-wider text-suave border-b border-linha"><th className="text-left py-1.5 font-medium">Linha</th><th className="text-right font-medium">Qtd.</th><th className="text-right font-medium">Preço</th><th className="text-right font-medium">Valor</th></tr></thead>
+            <tbody>{linhas.map((l) => (
+              <tr key={l.chave} className="border-b border-linha"><td className="py-1.5">{l.descricao.split('\n').join(' · ')}</td><td className="text-right num">{int(l.quantidade)}</td>
+                <td className="text-right num">{l.preco ? eur(l.preco) : <span className="text-ambar">sem preço</span>}</td><td className="text-right num">{eur(l.quantidade * l.preco)}</td></tr>))}</tbody>
+          </table>
+          <div className="text-right space-y-0.5"><div>Total sem IVA <b className="num">{eur(liquido)}</b></div><div className="text-suave">IVA 23% {eur(iva)}</div><div>Total <b className="num">{eur(liquido + iva)}</b></div></div>
+          <ol className="list-decimal pl-5 mt-4 text-[13px] text-suave space-y-0.5">
+            <li>No TOConline, abra a guia {guia.numero ?? ''} e escolha converter em fatura.</li>
+            <li>Ponha os preços por peça desta tabela nas linhas e confira o total.</li>
+            <li>Finalize a fatura e, aqui, carregue em Atualizar na guia: o número da fatura aparece na coluna Fatura.</li>
+          </ol>
+        </div>
+      )}
+    </Modal>
   )
 }

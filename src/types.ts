@@ -117,6 +117,8 @@ export interface GuiaTOC {
   estado: 'rascunho' | 'finalizada' | 'apagada'
   numero?: string // ex.: GT 2026/345 (só depois de finalizada)
   codigoAT?: string
+  linhas?: { chave: string; descricao: string; quantidade: number }[] // chave = modeloId:varianteId (para o preço da fatura)
+  fatura?: { numero: string; total?: number } // fatura convertida desta guia no TOConline
 }
 
 export type EstadoEncomenda = 'Em revisão' | 'Fichas geradas' | 'Concluída'
