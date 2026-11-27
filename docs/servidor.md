@@ -22,6 +22,7 @@
    Depois, numa nova query, `supabase/migrations/20261125000100_permissoes.sql` → **Run**
    (os projetos novos não dão permissões automáticas às tabelas).
    Depois, `supabase/migrations/20261126000000_colecoes.sql` (aceita as coleções novas, ex.: tabelas da Clothius).
+   Depois, `supabase/migrations/20261127000000_tempo_real.sql` (alterações ao mesmo tempo no telemóvel e no computador).
 3. **Authentication → Sign In / Providers → Email**: desligar **«Allow new users to sign up»** (só a Pereira & Cruz cria contas).
 4. **Authentication → Users → Add user → Create new user**: email e palavra-passe do Admin, com «Auto Confirm User».
 5. **Project Settings → API** (ou «Data API» / «API Keys»): copiar
@@ -47,6 +48,14 @@ VITE_SUPABASE_ANON_KEY=chave-publica
     (clientes, dados mestre, encomendas de exemplo);
   - cada alteração é guardada automaticamente (indicador «A guardar… / Guardado» na barra lateral);
   - o registo de atividade fica na tabela `atividade` (não se altera nem apaga);
+  - **vários aparelhos ao mesmo tempo** (telemóvel e computador):
+    - o que se grava num aparelho aparece logo nos outros, sem recarregar (Supabase Realtime); ao voltar à aplicação
+      (telemóvel acordado, rede de volta) a aplicação confere o que mudou entretanto;
+    - cada documento tem uma **versão** que sobe a cada gravação; só se grava sobre a versão que o aparelho leu.
+      Se a encomenda mudou entretanto noutro aparelho, as duas alterações **juntam-se** (ex.: «Recebido» marcado no
+      telemóvel + prazo mudado no computador ficam os dois). Se o mesmo campo foi mudado nos dois, fica o do último
+      aparelho e aparece um aviso;
+    - sem o script `20261127000000_tempo_real.sql` a aplicação funciona como antes (a última gravação ganha) e avisa ao entrar;
   - «Repor exemplo» não existe no modo servidor.
 
 Projeto: `https://gupydoryatnbfakegbzo.supabase.co` · região Central EU (Frankfurt), confirmada.
