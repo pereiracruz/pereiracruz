@@ -13,7 +13,7 @@
 // Filtros (na aplicação, página «Emails de encomendas»; guardados em documentos/configuracao/email):
 //   remetentes: partes do endereço ou do nome (ex.: «whitecotton», «@cliente.pt»)
 //   palavras:   palavras no assunto (ex.: «encomenda», «order», «PO»)
-//   Um email entra se tiver anexo Excel/PDF/imagem E (sem filtros, ou se coincidir com algum remetente ou palavra).
+//   Um email entra se tiver anexo Excel ou PDF E (sem filtros, ou se coincidir com algum remetente ou palavra).
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { ImapFlow } from 'npm:imapflow@1'
 import { simpleParser } from 'npm:mailparser@3'
@@ -28,10 +28,11 @@ const resposta = (corpo: unknown, status = 200) =>
 
 const env = (k: string) => (Deno.env.get(k) ?? '').trim()
 const ANEXO_UTIL = /\.(xlsx|xlsm|xls|csv|pdf|png|jpe?g|webp)$/i
+const DOCUMENTO = /\.(xlsx|xlsm|xls|csv|pdf)$/i
 const IMAGEM = /\.(png|jpe?g|webp|gif)$/i
 // imagens da assinatura / do corpo do email (image001.png, logótipos…) não são anexos da encomenda
 const imagemDoCorpo = (a: { filename?: string; contentDisposition?: string; related?: boolean; cid?: string }) =>
-  IMAGEM.test(a.filename ?? '') && (a.related || a.contentDisposition !== 'attachment' || /^image\d{3}\./i.test(a.filename ?? ''))
+  IMAGEM.test(a.filename ?? '') && (a.related || a.contentDisposition !== 'attachment' || /^image\d{3}\.|assinatura|signature|logo/i.test(a.filename ?? ''))
 const MAX_POR_VEZ = 15 // emails novos tratados por chamada (o resto fica para a seguinte)
 const MAX_BYTES = 25 * 1024 * 1024
 
@@ -101,7 +102,7 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
           for (const f of (n.childNodes ?? []) as typeof n[]) percorrer(f)
         }
         percorrer(m.bodyStructure as Parameters<typeof percorrer>[0])
-        if (!nomes.some((n) => ANEXO_UTIL.test(n))) continue
+        if (!nomes.some((n) => DOCUMENTO.test(n))) continue // tem de trazer Excel ou PDF (as imagens sozinhas costumam ser assinaturas)
         const semFiltros = !filtros.remetentes.length && !filtros.palavras.length
         if (!semFiltros && !filtros.remetentes.some((r) => de.includes(r)) && !filtros.palavras.some((p) => assunto.includes(p))) continue
         if ((m.size ?? 0) > MAX_BYTES) continue

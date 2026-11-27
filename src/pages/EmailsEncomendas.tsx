@@ -96,7 +96,7 @@ export default function EmailsEncomendas() {
               <Entrada value={dias} onChange={(e) => setDias(e.target.value)} inputMode="numeric" className="max-w-28" />
             </Campo>
           </div>
-          <p className="text-[13px] text-suave mb-4">Só entram emails com anexo Excel, PDF ou imagem. Sem filtros, entram todos os que tiverem esses anexos.</p>
+          <p className="text-[13px] text-suave mb-4">Só entram emails com anexo Excel ou PDF. Sem filtros, entram todos os que tiverem esses anexos.</p>
           <div className="flex items-center gap-2 flex-wrap">
             <Botao variante="primario" pequeno onClick={guardarFiltros}>Guardar filtros</Botao>
             <Botao pequeno icone={<PlugZap size={14} />} disabled={aTestar} onClick={testar}>{aTestar ? 'A testar…' : 'Testar ligação ao email'}</Botao>
