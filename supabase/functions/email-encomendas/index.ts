@@ -89,11 +89,11 @@ async function lerTudo(stream: AsyncIterable<Uint8Array>, max: number): Promise<
   return r
 }
 
-type Config = { remetentes?: string[]; palavras?: string[]; palavrasTexto?: string[]; palavrasFaturas?: string[]; palavrasFaturasTexto?: string[]; palavrasPedidos?: string[]; palavrasPedidosTexto?: string[]; dias?: number; assinaturas?: Record<string, Assinatura> }
+type Config = { remetentes?: string[]; palavras?: string[]; palavrasTexto?: string[]; palavrasFaturas?: string[]; palavrasFaturasTexto?: string[]; palavrasPedidos?: string[]; palavrasPedidosTexto?: string[]; palavrasPedidosExcluir?: string[]; dias?: number; assinaturas?: Record<string, Assinatura> }
 
 type Novo = { id: string; conta: string; assunto: string; de: string; anexos: number; tipo?: string }
 type Tipo = 'fatura' | 'encomenda' | 'pedido'
-type Filtros = { remetentes: string[]; palavras: string[]; palavrasTexto: string[]; palavrasFaturas: string[]; palavrasFaturasTexto: string[]; palavrasPedidos: string[]; palavrasPedidosTexto: string[]; dias: number }
+type Filtros = { remetentes: string[]; palavras: string[]; palavrasTexto: string[]; palavrasFaturas: string[]; palavrasFaturasTexto: string[]; palavrasPedidos: string[]; palavrasPedidosTexto: string[]; palavrasPedidosExcluir: string[]; dias: number }
 // pedidos de preço / cotação de produção ou amostra (PT, EN, FR, ES); editáveis em «Emails de pedidos»
 const PEDIDOS_ASSUNTO = ['pedido', 'cotação', 'cotacao', 'cotações', 'cotacoes', 'orçamento', 'orcamento', 'preço', 'preco', 'preços', 'precos',
   'price', 'prices', 'pricing', 'quotation', 'quote', 'rfq', 'costing', 'amostra', 'amostras', 'sample', 'samples', 'proto', 'devis', 'prix', 'presupuesto', 'cotización', 'precio']
@@ -101,6 +101,9 @@ const PEDIDOS_TEXTO = ['pedido de cotação', 'pedido de cotacao', 'pedido de or
   'preço', 'qual o preço', 'qual o valor', 'quanto custa', 'preço por peça', 'preço unitário', 'cotação', 'orçamento para',
   'price request', 'request for quotation', 'please quote', 'best price', 'target price', 'price per piece', 'unit price', 'your price', 'quotation', 'costing',
   'demande de prix', 'devis', 'presupuesto', 'cotización']
+// assuntos que nunca são pedidos de preço (faturas, pagamentos, documentação, publicidade)
+const PEDIDOS_EXCLUIR = ['fatura', 'factura', 'faturas', 'invoice', 'liquidação', 'liquidacao', 'pagamento', 'payment', 'recibo', 'nota de crédito',
+  'documentação', 'documentacao', 'apoio', 'apoios', 'newsletter', 'webinar', 'promoção', 'promocao', 'desconto', 'status update']
 type SupabaseCliente = ReturnType<typeof createClient>
 
 /** Recolhe os emails de encomendas novos de uma conta. Devolve quantos ficaram por tratar (limite por chamada). */
@@ -148,7 +151,7 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: Filt
         }
         percorrer(m.bodyStructure as Parameters<typeof percorrer>[0])
         const temDocumento = nomes.some((n) => DOCUMENTO.test(n))
-        const ehPedido = comPedido.has(m.uid) || filtros.palavrasPedidos.some((p) => assunto.includes(p))
+        const ehPedido = (comPedido.has(m.uid) || filtros.palavrasPedidos.some((p) => assunto.includes(p))) && !filtros.palavrasPedidosExcluir.some((p) => assunto.includes(p))
         // encomendas e faturas têm de trazer Excel ou PDF (as imagens sozinhas costumam ser assinaturas); pedidos de preço não
         if (!temDocumento && !ehPedido) continue
         const semFiltros = !filtros.remetentes.length && !filtros.palavras.length && !filtros.palavrasTexto.length
@@ -354,6 +357,7 @@ Deno.serve(async (req) => {
       palavrasFaturasTexto: (cfg.palavrasFaturasTexto ?? ['recibo verde', 'fatura-recibo', 'fatura em anexo', 'segue a fatura', 'segue em anexo a fatura']).map((s) => s.trim().toLowerCase()).filter(Boolean),
       palavrasPedidos: (cfg.palavrasPedidos ?? PEDIDOS_ASSUNTO).map((s) => s.trim().toLowerCase()).filter(Boolean),
       palavrasPedidosTexto: (cfg.palavrasPedidosTexto ?? PEDIDOS_TEXTO).map((s) => s.trim().toLowerCase()).filter(Boolean),
+      palavrasPedidosExcluir: (cfg.palavrasPedidosExcluir ?? PEDIDOS_EXCLUIR).map((s) => s.trim().toLowerCase()).filter(Boolean),
       dias: Math.min(Math.max(Number(cfg.dias) || 14, 1), 90),
     }
     // emails já guardados como encomenda (por tratar ou ignorados, sem encomenda criada) que afinal são pedidos de preço
@@ -362,8 +366,14 @@ Deno.serve(async (req) => {
       const fortes = filtros.palavras.filter((p) => !filtros.palavrasPedidos.includes(p))
       for (const l of antigos ?? []) {
         const e = l.dados as { tipo?: string; estado?: string; encomendaId?: string; assunto?: string; texto?: string }
-        if ((e.tipo ?? 'encomenda') !== 'encomenda' || e.encomendaId || e.estado === 'tratada') continue
         const assunto = (e.assunto ?? '').toLowerCase(), texto = (e.texto ?? '').toLowerCase()
+        const excluido = filtros.palavrasPedidosExcluir.some((p) => assunto.includes(p))
+        // pedidos por tratar que afinal são faturas, pagamentos, publicidade…: passam a ignorados
+        if (e.tipo === 'pedido' && e.estado === 'nova' && excluido) {
+          await supabase.from('documentos').upsert({ colecao: 'emails', id: l.id, dados: { ...e, estado: 'ignorada' } })
+          continue
+        }
+        if ((e.tipo ?? 'encomenda') !== 'encomenda' || e.encomendaId || e.estado === 'tratada' || excluido) continue
         if (fortes.some((p) => assunto.includes(p))) continue
         if (filtros.palavrasPedidos.some((p) => assunto.includes(p)) || filtros.palavrasPedidosTexto.some((p) => texto.includes(p))) {
           await supabase.from('documentos').upsert({ colecao: 'emails', id: l.id, dados: { ...e, tipo: 'pedido', estado: 'nova' } })

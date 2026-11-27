@@ -61,5 +61,6 @@ não apaga. No Thunderbird fica tudo como estava.
 - Palavras no assunto (por omissão): pedido, cotação, orçamento, preço, price, quotation, quote, RFQ, costing, amostra, sample, devis, presupuesto…;
   no texto: pedido de cotação/orçamento/preço/amostra, preço, qual o preço, quanto custa, best price, target price, please quote, request for quotation…
   Editáveis em «Filtros e ligação» da página (guardadas em `palavrasPedidos` / `palavrasPedidosTexto`).
+- **Excluir:** assuntos com fatura, invoice, liquidação, pagamento, recibo, documentação, apoios, newsletter, promoção, status update… nunca são pedidos (`palavrasPedidosExcluir`); os que já estavam por tratar passam a ignorados na verificação seguinte desta página.
 - Se o assunto tiver uma palavra de encomenda «forte» (as de encomenda que não são de pedido, ex.: encomenda, order) e um Excel/PDF, fica como encomenda.
 - Ao verificar a partir desta página, os emails antigos guardados como encomenda (sem encomenda criada e não tratados) que tenham estas palavras passam para pedidos (por tratar).
