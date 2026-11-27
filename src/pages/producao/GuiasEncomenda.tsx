@@ -4,7 +4,7 @@ import { useDb } from '../../store/db'
 import { Botao, Campo, Cartao, Entrada, Etiqueta, Modal, aviso } from '../../components/ui'
 import { qtdParaEmbalar, soma } from '../../lib/calc'
 import { dataCurta, eur, hojeISO, int, parseNum } from '../../lib/format'
-import { NOME_EMPRESA_TOC, apagarRascunhoTOC, consultarTOC, criarGuiaTOC, listarTOC, testarTOC, tocDisponivel, type EmpresaTOC, type GuiaParaTOC } from '../../lib/toconline'
+import { NOME_EMPRESA_TOC, apagarRascunhoTOC, consultarTOC, criarGuiaTOC, listarTOC, tocDisponivel, type EmpresaTOC, type GuiaParaTOC } from '../../lib/toconline'
 import type { Encomenda, GuiaTOC } from '../../types'
 
 /** Valores habituais de cada empresa (lidos das guias reais em 26/11/2026; editáveis em cada guia). */
@@ -66,15 +66,17 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
     setEmpresa(emp); setErro(''); setACarregar(true); setDados(null); setClienteId('')
     setCarga(HABITUAL[emp].carga); setTexto(HABITUAL[emp].texto)
     try {
-      const [teste, clientes, produtos, taxas, unidades] = await Promise.all([
-        testarTOC(emp),
+      const [seriesGT, clientes, produtos, taxas, unidades] = await Promise.all([
+        listarTOC(emp, 'commercial_document_series?filter[document_type]=GT&page[size]=200'),
         listarTOC(emp, 'customers?page[size]=500'),
         listarTOC(emp, 'products?page[size]=500'),
         listarTOC(emp, 'taxes?page[size]=100').catch(() => [] as Reg[]),
         listarTOC(emp, 'units_of_measure?page[size]=100').catch(() => [] as Reg[]),
       ])
       const ano = hojeISO().slice(0, 4)
-      const series = teste.series.filter((x) => x.document_type === 'GT').map((x) => ({ id: x.id, rotulo: `GT ${x.prefix ?? x.name ?? x.id}` }))
+      const series = seriesGT.filter((x) => !x.document_type || s(x.document_type) === 'GT')
+        .map((x) => ({ id: x.id, rotulo: `GT ${s(x.prefix) || s(x.name) || x.id}` }))
+        .sort((a, b) => b.rotulo.localeCompare(a.rotulo))
       const taxa = taxas.find((t) => s(t.tax_code) === 'NOR' && (!t.tax_country_region || s(t.tax_country_region) === 'PT'))
       const un = unidades.find((u) => /^un/i.test(s(u.unit_of_measure ?? u.abbreviation ?? u.name)))
       setDados({ series, clientes, produtos, taxId: taxa?.id, unidadeId: un?.id })
