@@ -14,7 +14,11 @@ import { NOME_EMPRESA_TOC, tocDisponivel, type EmpresaTOC } from '../lib/toconli
 import { dataCurta, eur } from '../lib/format'
 import { useDb } from '../store/db'
 
-const CONTAS_HABITUAIS = ['Crédito Agrícola', 'Caixa Geral de Depósitos', 'Montepio', 'Revolut']
+// contas bancárias de cada empresa (a CGD da Pereira's Project tem a linha de confirming, plafond de 45 000 €)
+const CONTAS: Record<EmpresaTOC, string[]> = {
+  PP: ['Crédito Agrícola', 'Caixa Geral de Depósitos', 'Revolut'],
+  PC: ['Montepio', 'Caixa Geral de Depósitos', 'Revolut'],
+}
 const ESTADOS: Record<Movimento['estado'], { rotulo: string; tom: 'verde' | 'ambar' | 'vermelho' | 'azul' | 'neutro' }> = {
   confirmado: { rotulo: 'Confirmado', tom: 'verde' },
   proposto: { rotulo: 'Proposta', tom: 'azul' },
@@ -37,7 +41,7 @@ export default function ConciliacaoBancaria() {
     const hoje = new Date()
     const mes = hoje.getMonth() === 0 ? 12 : hoje.getMonth()
     const ano = hoje.getMonth() === 0 ? hoje.getFullYear() - 1 : hoje.getFullYear()
-    setAtual({ id: '', empresa: 'PP', conta: CONTAS_HABITUAIS[0], ano, mes, saldoInicial: 0, saldoFinalExtrato: null, movimentos: [], atualizadoEm: '' })
+    setAtual({ id: '', empresa: 'PP', conta: CONTAS.PP[0], ano, mes, saldoInicial: 0, saldoFinalExtrato: null, movimentos: [], atualizadoEm: '' })
   }
   const porConciliar = (c: Conciliacao) => c.movimentos.filter((m) => m.estado === 'por-conciliar' || m.estado === 'proposto').length
 
@@ -171,7 +175,7 @@ function Editor({ inicial, anteriores, onSair, log }: { inicial: Conciliacao; an
   const diferenca = c.saldoFinalExtrato != null ? arred(saldo - c.saldoFinalExtrato) : null
   const contagem = (e: Movimento['estado']) => c.movimentos.filter((m) => m.estado === e).length
   const visiveis = filtro === 'todos' ? c.movimentos : c.movimentos.filter((m) => m.estado === 'por-conciliar' || m.estado === 'proposto')
-  const contas = useMemo(() => [...new Set([...CONTAS_HABITUAIS, ...anteriores.map((a) => a.conta)])], [anteriores])
+  const contas = useMemo(() => [...new Set([...CONTAS[c.empresa], ...anteriores.filter((a) => a.empresa === c.empresa).map((a) => a.conta)])], [anteriores, c.empresa])
 
   return (
     <>
@@ -190,11 +194,13 @@ function Editor({ inicial, anteriores, onSair, log }: { inicial: Conciliacao; an
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 items-end">
           <Campo rotulo="Empresa">
             <Seletor valor={NOME_EMPRESA_TOC[c.empresa]} opcoes={Object.values(NOME_EMPRESA_TOC)}
-              onChange={(v) => { mudar((x) => ({ ...x, empresa: (Object.entries(NOME_EMPRESA_TOC).find(([, n]) => n === v)?.[0] ?? 'PP') as EmpresaTOC })); setDocs(null) }} />
+              onChange={(v) => {
+                const empresa = (Object.entries(NOME_EMPRESA_TOC).find(([, n]) => n === v)?.[0] ?? 'PP') as EmpresaTOC
+                mudar((x) => ({ ...x, empresa, conta: CONTAS[empresa].includes(x.conta) ? x.conta : CONTAS[empresa][0] })); setDocs(null)
+              }} />
           </Campo>
           <Campo rotulo="Conta">
-            <Entrada list="contas-banco" value={c.conta} onChange={(e) => mudar((x) => ({ ...x, conta: e.target.value }))} />
-            <datalist id="contas-banco">{contas.map((n) => <option key={n} value={n} />)}</datalist>
+            <Seletor valor={c.conta} opcoes={contas} onChange={(v) => mudar((x) => ({ ...x, conta: v }))} />
           </Campo>
           <Campo rotulo="Mês">
             <Seletor valor={MESES[c.mes - 1]} opcoes={MESES} onChange={(v) => { mudar((x) => ({ ...x, mes: MESES.indexOf(v) + 1 })); setDocs(null) }} />

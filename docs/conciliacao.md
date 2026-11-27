@@ -3,6 +3,10 @@
 Página **Financeiro → Conciliação bancária**. Uma conciliação por empresa, conta e mês (guardada na tabela
 `documentos`, coleção `conciliacoes`).
 
+## Contas
+- **Pereira's Project:** Crédito Agrícola, Caixa Geral de Depósitos (com linha de confirming, plafond 45 000 €) e Revolut.
+- **Pereira & Cruz:** Montepio, Caixa Geral de Depósitos e Revolut.
+
 ## Como funciona
 1. **Nova conciliação**: empresa (Pereira's Project / Pereira & Cruz), conta (Crédito Agrícola, CGD, Montepio,
    Revolut…), mês e ano.
