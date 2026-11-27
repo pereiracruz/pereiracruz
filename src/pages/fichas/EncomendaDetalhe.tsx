@@ -8,6 +8,7 @@ import PrazosEncomenda from '../producao/PrazosEncomenda'
 import GuiasEncomenda from '../producao/GuiasEncomenda'
 import { resumoCompras } from '../../lib/compras'
 import { situacaoPrazos } from '../../lib/prazos'
+import { entregaDe, ordensDaEncomenda } from '../../lib/producao-ordens'
 import { NOME_FOLHA, folhasDoModelo } from '../../components/Folhas'
 import { fichasGeradas, idInternoEncomenda, pecasEncomenda, pecasModelo, referenciasEncomenda, valorEncomenda, verificarEncomenda } from '../../lib/calc'
 import { exportarLivro, montarLivro, nomeLivro } from '../../lib/exportar'
@@ -25,7 +26,7 @@ import type { Modelo } from '../../types'
 export default function EncomendaDetalhe() {
   const { encId } = useParams()
   const nav = useNavigate()
-  const { encomendas, destinatarios, fornecedores, tecidos, equivalencias, acessorios, clientes, atualizarEncomenda, atualizarModelo, apagarEncomenda, log } = useDb()
+  const { encomendas, destinatarios, fornecedores, tecidos, equivalencias, acessorios, clientes, ordensFabrico, atualizarEncomenda, atualizarModelo, apagarEncomenda, log } = useDb()
   const enc = encomendas.find((e) => e.id === encId)
   const [aExportar, setAExportar] = useState(false)
   const [aTratarOF, setATratarOF] = useState<string | null>(null) // modelo cuja OF está a ser guardada/lida
@@ -160,6 +161,29 @@ export default function EncomendaDetalhe() {
           </Cartao>
         ) : <div />}
       </div>
+
+      {(() => { // ordens de fabrico do planeamento com o mesmo nº interno (só consulta)
+        const ordens = ordensDaEncomenda(enc, ordensFabrico)
+        return ordens.length > 0 && (
+          <Cartao className="p-4 mb-5">
+            <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+              <p className="text-[13px] text-suave">Produção · planeamento da linha ({ordens.length} {ordens.length === 1 ? 'ordem' : 'ordens'} de fabrico)</p>
+              <button onClick={() => nav('/producao')} className="text-azul text-[13px] hover:underline">Abrir Produção</button>
+            </div>
+            <div className="divide-y divide-linha text-[13px]">
+              {ordens.map((o) => (
+                <div key={o.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-1.5">
+                  <span className="font-medium w-24">{o.numero}</span>
+                  <span className="flex-1 min-w-[10rem]">{o.ref || '—'}{o.of && <span className="text-suave"> · OF {o.of}</span>}</span>
+                  <span className="num text-suave">{o.qtd != null ? `${int(o.qtd)} peças` : ''}</span>
+                  <span className="text-suave">{entregaDe(o) ? `entrega ${dataCurta(entregaDe(o))}` : ''}</span>
+                  <Etiqueta ponto={false}>{o.estado || 'sem estado'}</Etiqueta>
+                </div>
+              ))}
+            </div>
+          </Cartao>
+        )
+      })()}
 
       <div className="mb-4"><Pilulas valor={aba} onChange={(v) => setParams(v === 'modelos' ? {} : { aba: v }, { replace: true })} opcoes={[
         { id: 'modelos', rotulo: 'Modelos e fichas' },

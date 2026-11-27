@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { modoServidor, supabase } from '../lib/supabase'
 import type {
   AcessorioCliente, Atividade, ClienteCfg, Destinatario, Encomenda, Equivalencia, Escala, Fornecedor, Lavagem,
-  Modelo, Pedido, PrecoHistorico, PrecoLavagem, PrecoRef, PrecoTingimento, Tecido,
+  Modelo, Pedido, PrecoHistorico, PrecoLavagem, PrecoRef, PrecoTingimento, Tecido, OrdemFabrico, EstadoProducao, CategoriaPeca,
 } from '../types'
 import * as seed from '../data/seed'
 import { agoraISO, uid } from '../lib/format'
@@ -21,17 +21,20 @@ export interface Tabelas {
   precosTingimento: PrecoTingimento[]
   precosLavagem: PrecoLavagem[]
   clientes: ClienteCfg[]
+  estadosProducao: EstadoProducao[]
+  categoriasPeca: CategoriaPeca[]
 }
 export type NomeTabela = keyof Tabelas
 
 /** Coleções guardadas na tabela «documentos» do servidor. */
-export const COLECOES = ['encomendas', 'pedidos', 'historico', 'fornecedores', 'tecidos', 'equivalencias', 'lavagens', 'acessorios', 'escalas', 'destinatarios', 'precosRef', 'precosTingimento', 'precosLavagem', 'clientes'] as const
+export const COLECOES = ['encomendas', 'pedidos', 'historico', 'fornecedores', 'tecidos', 'equivalencias', 'lavagens', 'acessorios', 'escalas', 'destinatarios', 'precosRef', 'precosTingimento', 'precosLavagem', 'clientes', 'ordensFabrico', 'estadosProducao', 'categoriasPeca'] as const
 export type Colecao = (typeof COLECOES)[number]
 
 interface Estado extends Tabelas {
   encomendas: Encomenda[]
   pedidos: Pedido[]
   historico: PrecoHistorico[]
+  ordensFabrico: OrdemFabrico[]
   atividade: Atividade[]
   // auth (local até haver servidor)
   sessao: string | null
@@ -53,6 +56,12 @@ interface Estado extends Tabelas {
 
   guardarPedido: (p: Pedido) => void
   adicionarHistorico: (h: PrecoHistorico) => void
+
+  /** Produção: importa (acrescenta ou substitui pelo id) as ordens de fabrico de uma importação do planeamento. */
+  importarOrdens: (ordens: OrdemFabrico[]) => void
+  atualizarOrdem: (id: string, x: Partial<OrdemFabrico>) => void
+  /** Desfaz uma importação: apaga as ordens que vieram dela. */
+  apagarImportacao: (importacao: string) => void
 
   entrar: (utilizador: string, pass: string) => Promise<boolean>
   sair: () => void
@@ -95,6 +104,9 @@ export const dadosIniciais = () => ({
   precosTingimento: seed.precosTingimento,
   precosLavagem: seed.precosLavagem,
   clientes: seed.clientes,
+  estadosProducao: seed.estadosProducao,
+  categoriasPeca: seed.categoriasPeca,
+  ordensFabrico: [] as OrdemFabrico[],
   encomendas: seed.encomendasIniciais(),
   pedidos: seed.pedidosIniciais(),
   historico: seed.historicoInicial(),
@@ -146,6 +158,13 @@ export const useDb = create<Estado>()(
       guardarPedido: (p) => set((s) => ({ pedidos: s.pedidos.some((x) => x.id === p.id) ? s.pedidos.map((x) => (x.id === p.id ? p : x)) : [p, ...s.pedidos] })),
       adicionarHistorico: (h) => set((s) => ({ historico: [h, ...s.historico.filter((x) => x.id !== h.id)] })),
 
+      importarOrdens: (ordens) => set((s) => {
+        const ids = new Set(ordens.map((o) => o.id))
+        return { ordensFabrico: [...s.ordensFabrico.filter((o) => !ids.has(o.id)), ...ordens] }
+      }),
+      atualizarOrdem: (id, x) => set((s) => ({ ordensFabrico: s.ordensFabrico.map((o) => (o.id === id ? { ...o, ...x } : o)) })),
+      apagarImportacao: (importacao) => set((s) => ({ ordensFabrico: s.ordensFabrico.filter((o) => o.importacao !== importacao) })),
+
       entrar: async (utilizador, pass) => {
         if (supabase) {
           const { data, error } = await supabase.auth.signInWithPassword({ email: utilizador.trim(), password: pass })
@@ -181,7 +200,7 @@ export const useDb = create<Estado>()(
       repor: () => { if (modoServidor) return; set(dadosIniciais()); get().log('Dados repostos', 'Dados de exemplo repostos') },
     }),
     {
-      name: 'pc-fichas-v1', version: 13,
+      name: 'pc-fichas-v1', version: 14,
       // com servidor, os dados vêm da base de dados: nada fica guardado no browser
       storage: createJSONStorage(() => (modoServidor ? { getItem: () => null, setItem: () => {}, removeItem: () => {} } : localStorage)),
       migrate: (antigo, versao) => {
@@ -226,6 +245,8 @@ export const useDb = create<Estado>()(
         if (versao < 12) b = { ...b, destinatarios: b.destinatarios.map((d) => (d.id === 'd6' && d.nome === 'Embalamento' ? { ...d, nome: 'Paulo e Marta', contacto: 'Embalamento' } : d)) }
         // v12 → v13: Simão e Olgando e GBTX trabalham com OF (sem tech pack) e dão os acessórios
         if (versao < 13) b = { ...b, clientes: juntarClientes(b.clientes, seed.clientes) }
+        // v13 → v14: produção (ordens de fabrico, estados e categorias)
+        if (versao < 14) b = { ...b, ordensFabrico: b.ordensFabrico ?? [], estadosProducao: juntar(b.estadosProducao ?? [], seed.estadosProducao), categoriasPeca: juntar(b.categoriasPeca ?? [], seed.categoriasPeca) }
         if (versao < 9) b = { ...b, clientes: b.clientes.map((c) => (c.id === 'c1' && c.comissao === 7 ? { ...c, comissao: 0 } : c)) }
         return b
       },

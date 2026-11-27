@@ -87,6 +87,13 @@ const SEPARADORES: Separador[] = [
     preco('crianca', 'Criança', ''), preco('grupoA', 'Grupo A', ''), preco('grupoB', 'Grupo B', ''), preco('grupoC', 'Grupo C', ''),
     { campo: 'nota', rotulo: 'Nota' },
   ] },
+  { id: 'estadosProducao', rotulo: 'Estados de produção', desc: 'Estados das ordens de fabrico na página Produção (pela ordem do número).', titulo: (l) => String(l.nome), defs: [
+    { campo: 'ordem', rotulo: 'Ordem', tipo: 'numero' },
+    { campo: 'nome', rotulo: 'Estado', filtro: 'texto', mostrar: (l) => <span className="font-medium">{String(l.nome)}</span> },
+  ] },
+  { id: 'categoriasPeca', rotulo: 'Categorias de peça', desc: 'Categorias das ordens de fabrico (planeamento da produção).', titulo: (l) => String(l.nome), defs: [
+    { campo: 'nome', rotulo: 'Categoria', filtro: 'texto', mostrar: (l) => <span className="font-medium">{String(l.nome)}</span> },
+  ] },
 ]
 
 export default function DadosMestre() {

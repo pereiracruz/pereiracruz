@@ -200,3 +200,38 @@ export interface PrecoHistorico {
 
 // ---------- Sistema ----------
 export interface Atividade { id: string; data: string; acao: string; detalhe: string }
+
+// ---------- Produção: ordens de fabrico (importadas do planeamento da Pereira & Cruz) ----------
+/** Estado de produção (ex.: «01. Espera tecido» … «18. Faturado»), editável nos dados mestre. */
+export interface EstadoProducao { id: string; ordem: number; nome: string }
+export interface CategoriaPeca { id: string; nome: string }
+/**
+ * Uma linha do planeamento (folha PLAN_RENT): uma referência de uma encomenda na linha de confeção.
+ * O mesmo nº (ex.: E26-019-A) pode ter várias linhas; o id junta o nº e a ordem da linha (E26-019-A·2).
+ * Fica marcada com a importação de onde veio, para se poder desfazer.
+ */
+export interface OrdemFabrico {
+  id: string
+  numero: string // ID no planeamento (E26-001, E26-019-A…): liga à encomenda com o mesmo nº interno
+  dtEncomenda: string
+  cliente: string
+  categoria: string
+  of: string // ordem de fabrico do cliente
+  ref: string
+  qtd: number | null
+  precoUnit: number | null
+  valor: number | null
+  dtEntregaSolic: string
+  embal: string // quem embala (Marta / Cliente)
+  estado: string
+  prioridade: number | null
+  darFora: string // «Não», «CONF», «CONF + ACAB+ Revista»…
+  amostra: string
+  dtEntregaPrev: string
+  dtEntregaComunicada: string
+  dtEntregaReal: string
+  importacao: string // id da importação (para desfazer)
+  ficheiro: string
+  importadoEm: string
+  estadoAlteradoEm?: string // última mudança de estado feita na aplicação
+}
