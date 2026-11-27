@@ -1,4 +1,3 @@
-import * as XLSX from 'xlsx'
 import type { Encomenda, EstadoCompra, EstadoCompraTipo } from '../types'
 import { soma } from './calc'
 import { dataCurta, slug } from './format'
@@ -76,7 +75,8 @@ export function textoFornecedor(e: Encomenda, fornecedor: string, linhas: LinhaC
     ...ls.map((l) => `- ${l.ref}${l.cor && l.cor !== '—' && l.cor !== 'N/A' ? ` · cor ${l.cor}` : ''}: ${qtdTexto(l)}`), '', 'Obrigado,', "Pereira's Project"].join('\n')
 }
 
-export function exportarCompras(e: Encomenda) {
+export async function exportarCompras(e: Encomenda) {
+  const XLSX = await import('xlsx') // a biblioteca do Excel só carrega quando é precisa
   const linhas = necessidadesCompra(e)
   const cab = ['Fornecedor', 'Tipo', 'Material', 'Cor', 'Peças', 'Necessário', 'A comprar', 'Unidade', 'Modelos', 'Estado', 'Data', 'Nota']
   const dados = linhas.map((l) => {

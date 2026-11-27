@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { Suspense, useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import { Archive, Bell, Factory, UserCheck, Landmark, Mail, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, X, PanelLeftOpen, Receipt } from 'lucide-react'
@@ -251,7 +251,7 @@ export default function Layout() {
           <button onClick={() => setRecolhida(false)} className="no-print hidden lg:block absolute left-3 top-4 p-2 text-suave hover:text-tinta" aria-label="Abrir a barra lateral"><PanelLeftOpen size={18} /></button>
         )}
         <div className="max-w-[1180px] mx-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-8 min-h-full flex flex-col pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
-          <div className="flex-1"><Outlet /></div>
+          <div className="flex-1"><Suspense fallback={<p className="py-10 text-center text-[13px] text-suave">A abrir…</p>}><Outlet /></Suspense></div>
           <footer className="no-print mt-12 pt-5 border-t border-linha text-[11px] tracking-[0.12em] uppercase text-tenue text-right">© {new Date().getFullYear()} Pereira & Cruz</footer>
         </div>
       </main>
