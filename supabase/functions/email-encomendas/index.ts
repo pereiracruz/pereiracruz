@@ -13,7 +13,7 @@
 // Filtros (na aplicação, página «Emails de encomendas»; guardados em documentos/configuracao/email):
 //   remetentes: partes do endereço ou do nome (ex.: «whitecotton», «@cliente.pt»)
 //   palavras:   palavras no assunto (ex.: «encomenda», «order», «PO»)
-//   Um email entra se tiver anexo Excel/PDF/imagem E (sem filtros, ou se coincidir com algum remetente ou palavra).
+//   Um email entra se tiver anexo Excel ou PDF E (sem filtros, ou se coincidir com algum remetente ou palavra).
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { ImapFlow } from 'npm:imapflow@1'
 import { simpleParser } from 'npm:mailparser@3'
@@ -28,6 +28,11 @@ const resposta = (corpo: unknown, status = 200) =>
 
 const env = (k: string) => (Deno.env.get(k) ?? '').trim()
 const ANEXO_UTIL = /\.(xlsx|xlsm|xls|csv|pdf|png|jpe?g|webp)$/i
+const DOCUMENTO = /\.(xlsx|xlsm|xls|csv|pdf)$/i
+const IMAGEM = /\.(png|jpe?g|webp|gif)$/i
+// imagens da assinatura / do corpo do email (image001.png, logótipos…) não são anexos da encomenda
+const imagemDoCorpo = (a: { filename?: string; contentDisposition?: string; related?: boolean; cid?: string }) =>
+  IMAGEM.test(a.filename ?? '') && (a.related || a.contentDisposition !== 'attachment' || /^image\d{3}\.|assinatura|signature|logo/i.test(a.filename ?? ''))
 const MAX_POR_VEZ = 15 // emails novos tratados por chamada (o resto fica para a seguinte)
 const MAX_BYTES = 25 * 1024 * 1024
 
@@ -86,17 +91,18 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
       const escolhidos: number[] = []
       if (uids.length) for await (const m of imap.fetch(uids, { uid: true, envelope: true, bodyStructure: true, size: true }, { uid: true })) {
         if (jaVistos.has(chave(m.uid))) continue
+        if (m.envelope?.messageId && jaVistos.has(`mid:${m.envelope.messageId}`)) continue // já veio por outra conta
         const de = (m.envelope?.from ?? []).map((a) => `${a.name ?? ''} <${a.address ?? ''}>`).join(', ').toLowerCase()
         const assunto = (m.envelope?.subject ?? '').toLowerCase()
         const nomes: string[] = []
-        const percorrer = (n: { dispositionParameters?: Record<string, string>; parameters?: Record<string, string>; childNodes?: unknown[] } | undefined) => {
+        const percorrer = (n: { disposition?: string; dispositionParameters?: Record<string, string>; parameters?: Record<string, string>; childNodes?: unknown[] } | undefined) => {
           if (!n) return
           const nome = n.dispositionParameters?.filename ?? n.parameters?.name
-          if (nome) nomes.push(nome)
+          if (nome && !(IMAGEM.test(nome) && (n.disposition ?? '').toLowerCase() !== 'attachment')) nomes.push(nome)
           for (const f of (n.childNodes ?? []) as typeof n[]) percorrer(f)
         }
         percorrer(m.bodyStructure as Parameters<typeof percorrer>[0])
-        if (!nomes.some((n) => ANEXO_UTIL.test(n))) continue
+        if (!nomes.some((n) => DOCUMENTO.test(n))) continue // tem de trazer Excel ou PDF (as imagens sozinhas costumam ser assinaturas)
         const semFiltros = !filtros.remetentes.length && !filtros.palavras.length
         if (!semFiltros && !filtros.remetentes.some((r) => de.includes(r)) && !filtros.palavras.some((p) => assunto.includes(p))) continue
         if ((m.size ?? 0) > MAX_BYTES) continue
@@ -111,10 +117,11 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
         if (!msg || !msg.source) continue
         const id = chave(uid)
         const mail = await simpleParser(msg.source)
+        if (mail.messageId && jaVistos.has(`mid:${mail.messageId}`)) { jaVistos.add(id); continue }
         const anexos: { nome: string; caminho: string; tipo: string; tamanho: number }[] = []
         for (const [i, a] of (mail.attachments ?? []).entries()) {
           const nome = a.filename ?? `anexo-${i + 1}`
-          if (!ANEXO_UTIL.test(nome)) continue
+          if (!ANEXO_UTIL.test(nome) || imagemDoCorpo(a)) continue
           const caminho = `email/${id}/${i}-${nomeFicheiro(nome)}`
           const { error } = await supabase.storage.from('documentos').upload(caminho, a.content, { contentType: a.contentType || undefined, upsert: true })
           if (error) throw new Error(`não consegui guardar o anexo ${nome}: ${error.message}`)
@@ -136,6 +143,7 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
         const { error } = await supabase.from('documentos').upsert({ colecao: 'emails', id, dados })
         if (error) throw new Error(`base de dados: ${error.message}`)
         jaVistos.add(id)
+        if (dados.messageId) jaVistos.add(`mid:${dados.messageId}`)
         novos.push({ id, conta: c.user, assunto: dados.assunto, de: dados.de, anexos: anexos.length })
       }
       return escolhidos.length - agora.length
@@ -191,9 +199,9 @@ Deno.serve(async (req) => {
       palavras: (cfg.palavras ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean),
       dias: Math.min(Math.max(Number(cfg.dias) || 14, 1), 90),
     }
-    const { data: existentes, error: eEx } = await supabase.from('documentos').select('id').eq('colecao', 'emails')
+    const { data: existentes, error: eEx } = await supabase.from('documentos').select('id,mid:dados->>messageId').eq('colecao', 'emails')
     if (eEx) throw new Error(`Base de dados: ${eEx.message}`)
-    const jaVistos = new Set((existentes ?? []).map((l) => l.id as string))
+    const jaVistos = new Set((existentes ?? []).flatMap((l) => [l.id as string, ...(l.mid ? [`mid:${l.mid}`] : [])]))
 
     const novos: Novo[] = []
     const erros: { conta: string; erro: string }[] = []
