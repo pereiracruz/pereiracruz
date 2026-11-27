@@ -5,7 +5,7 @@ import { ChevronDown, FilePlus2, FileSpreadsheet, FileText, Mail, PlugZap, Refre
 import { Botao, Cabecalho, Campo, Cartao, Entrada, Pilulas, Vazio, aviso } from '../components/ui'
 import {
   abrirAnexo, carregarEmails, emailDisponivel, guardarConfigEmail, marcarEmail, testarEmail, useEmails, verificarEmails,
-  type EmailEncomenda, type TesteEmail,
+  type EmailEncomenda, type TesteConta,
 } from '../lib/email'
 import { dataHora } from '../lib/format'
 import { useDb } from '../store/db'
@@ -25,7 +25,7 @@ export default function EmailsEncomendas() {
   const [remetentes, setRemetentes] = useState('')
   const [palavras, setPalavras] = useState('')
   const [dias, setDias] = useState('14')
-  const [teste, setTeste] = useState<TesteEmail | null>(null)
+  const [teste, setTeste] = useState<TesteConta[] | null>(null)
   const [aTestar, setATestar] = useState(false)
   const [erroTeste, setErroTeste] = useState('')
 
@@ -101,9 +101,13 @@ export default function EmailsEncomendas() {
             <Botao variante="primario" pequeno onClick={guardarFiltros}>Guardar filtros</Botao>
             <Botao pequeno icone={<PlugZap size={14} />} disabled={aTestar} onClick={testar}>{aTestar ? 'A testar…' : 'Testar ligação ao email'}</Botao>
           </div>
-          {teste && <p className="mt-3 text-[13px] text-verde bg-verde-fraco/60 border border-verde-borda rounded-controlo px-3 py-2">
-            Ligação feita a {teste.utilizador} · pasta {teste.pasta}: {teste.mensagens} emails ({teste.porLer} por ler).
-          </p>}
+          {teste && <ul className="mt-3 space-y-1.5">
+            {teste.map((c) => (
+              <li key={c.conta} className={clsx('text-[13px] border rounded-controlo px-3 py-2', c.ok ? 'text-verde bg-verde-fraco/60 border-verde-borda' : 'text-vermelho bg-vermelho-fraco border-vermelho-borda')}>
+                <b>{c.conta}</b> · {c.ok ? `ligação feita, pasta ${c.pasta}: ${c.mensagens} emails (${c.porLer} por ler)` : c.erro}
+              </li>
+            ))}
+          </ul>}
           {erroTeste && <p className="mt-3 text-[13px] text-vermelho bg-vermelho-fraco border border-vermelho-borda rounded-controlo px-3 py-2">{erroTeste}</p>}
         </Cartao>
       )}
@@ -126,7 +130,7 @@ export default function EmailsEncomendas() {
                     <Mail size={17} className="text-suave mt-0.5 shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-[15px] break-words">{e.assunto}</p>
-                      <p className="text-[13px] text-suave">{e.deNome ? `${e.deNome} · ` : ''}{e.de} · {dataHora(e.data)}</p>
+                      <p className="text-[13px] text-suave">{e.deNome ? `${e.deNome} · ` : ''}{e.de} · {dataHora(e.data)}{e.conta ? <span className="text-tenue"> · para {e.conta}</span> : null}</p>
                       <div className="flex gap-2 flex-wrap mt-2">
                         {e.anexos.map((a) => (
                           <button key={a.caminho} onClick={() => abrirAnexo(a).catch((x) => aviso(x.message))}

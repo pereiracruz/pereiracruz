@@ -25,12 +25,17 @@ não apaga. No Thunderbird fica tudo como estava.
    porta (normalmente 993, SSL/TLS) e nome de utilizador.
 2. **Palavra-passe**: se o fornecedor permitir, criar uma **palavra-passe de aplicação** só para isto
    (Gmail e Microsoft 365 exigem-na quando há verificação em dois passos).
-3. Supabase → **Edge Functions → Secrets**:
-   - `EMAIL_IMAP_HOST` (ex.: `mail.exemplo.pt`)
-   - `EMAIL_IMAP_PORT` (opcional, 993)
-   - `EMAIL_USER` (endereço / utilizador)
-   - `EMAIL_PASSWORD`
-   - `EMAIL_PASTA` (opcional, por omissão `INBOX`)
+3. Supabase → **Edge Functions → Secrets**, uma série por conta (até 9 contas):
+
+   | | 1.ª conta | 2.ª conta | 3.ª conta |
+   |---|---|---|---|
+   | Servidor | `EMAIL_IMAP_HOST` | `EMAIL_2_IMAP_HOST` | `EMAIL_3_IMAP_HOST` |
+   | Utilizador | `EMAIL_USER` | `EMAIL_2_USER` | `EMAIL_3_USER` |
+   | Palavra-passe | `EMAIL_PASSWORD` | `EMAIL_2_PASSWORD` | `EMAIL_3_PASSWORD` |
+   | Porta (só se não for 993) | `EMAIL_IMAP_PORT` | `EMAIL_2_IMAP_PORT` | `EMAIL_3_IMAP_PORT` |
+   | Pasta (só se não for INBOX) | `EMAIL_PASTA` | `EMAIL_2_PASTA` | `EMAIL_3_PASTA` |
+
+   Se uma conta falhar, as outras são lidas na mesma e o erro aparece na página.
 4. Supabase → **Edge Functions → Deploy a new function → Via Editor**, nome **email-encomendas**, colar
    `supabase/functions/email-encomendas/index.ts` → **Deploy**.
 5. No site: **Emails de encomendas → Filtros e ligação → Testar ligação ao email**, preencher os filtros e

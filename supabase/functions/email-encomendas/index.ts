@@ -3,12 +3,12 @@
 // Para cada email de encomenda novo: guarda os anexos (Excel, PDF, imagens) no bucket «documentos»
 // (pasta email/…) e regista o email na tabela «documentos», coleção «emails», para rever na aplicação.
 //
-// Segredos (Supabase → Edge Functions → Secrets):
-//   EMAIL_IMAP_HOST   servidor IMAP (o que aparece no Thunderbird: Definições da conta → Definições do servidor)
-//   EMAIL_IMAP_PORT   opcional, por omissão 993 (SSL/TLS)
-//   EMAIL_USER        endereço / utilizador da caixa
-//   EMAIL_PASSWORD    palavra-passe (de preferência uma palavra-passe de aplicação só para isto)
-//   EMAIL_PASTA       opcional, por omissão INBOX
+// Segredos (Supabase → Edge Functions → Secrets), uma série por conta de email:
+//   1.ª conta: EMAIL_IMAP_HOST, EMAIL_USER, EMAIL_PASSWORD  (opcionais: EMAIL_IMAP_PORT, por omissão 993; EMAIL_PASTA, por omissão INBOX)
+//   2.ª conta: EMAIL_2_IMAP_HOST, EMAIL_2_USER, EMAIL_2_PASSWORD  (EMAIL_2_IMAP_PORT, EMAIL_2_PASTA)
+//   3.ª conta: EMAIL_3_…  e assim por diante, até EMAIL_9_…
+//   IMAP_HOST = servidor que aparece no Thunderbird (Definições da conta → Definições do servidor → Nome do servidor).
+//   PASSWORD  = de preferência uma palavra-passe de aplicação só para isto.
 //
 // Filtros (na aplicação, página «Emails de encomendas»; guardados em documentos/configuracao/email):
 //   remetentes: partes do endereço ou do nome (ex.: «whitecotton», «@cliente.pt»)
@@ -31,14 +31,32 @@ const ANEXO_UTIL = /\.(xlsx|xlsm|xls|csv|pdf|png|jpe?g|webp)$/i
 const MAX_POR_VEZ = 15 // emails novos tratados por chamada (o resto fica para a seguinte)
 const MAX_BYTES = 25 * 1024 * 1024
 
-function cliente() {
-  const host = env('EMAIL_IMAP_HOST'), user = env('EMAIL_USER'), pass = Deno.env.get('EMAIL_PASSWORD') ?? ''
-  if (!host || !user || !pass) throw new Error('Faltam os segredos do email no Supabase (EMAIL_IMAP_HOST, EMAIL_USER, EMAIL_PASSWORD).')
-  const port = Number(env('EMAIL_IMAP_PORT') || 993)
-  return new ImapFlow({
-    host, port, secure: port === 993, auth: { user, pass }, logger: false,
-    socketTimeout: 60_000, greetingTimeout: 20_000,
-  })
+type Conta = { n: number; host: string; port: number; user: string; pass: string; pasta: string }
+function contas(): Conta[] {
+  const r: Conta[] = []
+  for (let n = 1; n <= 9; n++) {
+    const pre = n === 1 ? ['EMAIL_', 'EMAIL_1_'] : [`EMAIL_${n}_`]
+    const v = (k: string) => pre.map((p) => env(p + k)).find(Boolean) ?? ''
+    const pass = pre.map((p) => Deno.env.get(p + 'PASSWORD') ?? '').find(Boolean) ?? ''
+    const host = v('IMAP_HOST'), user = v('USER')
+    if (!host && !user && !pass) continue
+    if (!host || !user || !pass) throw new Error(`Conta ${n}: falta ${!host ? 'IMAP_HOST' : !user ? 'USER' : 'PASSWORD'} nos segredos do Supabase (${pre[pre.length - 1]}…).`)
+    r.push({ n, host, user, pass, port: Number(v('IMAP_PORT') || 993), pasta: v('PASTA') || 'INBOX' })
+  }
+  if (!r.length) throw new Error('Faltam os segredos do email no Supabase (EMAIL_IMAP_HOST, EMAIL_USER, EMAIL_PASSWORD).')
+  return r
+}
+const cliente = (c: Conta) => new ImapFlow({
+  host: c.host, port: c.port, secure: c.port === 993, auth: { user: c.user, pass: c.pass }, logger: false,
+  socketTimeout: 60_000, greetingTimeout: 20_000,
+})
+const amigavel = (c: Conta, e: unknown) => {
+  const m = e instanceof Error ? e.message : String(e)
+  return /AUTHENTICATIONFAILED|Invalid credentials|authentication failed|LOGIN failed|Command failed/i.test(m)
+    ? 'o servidor recusou o utilizador ou a palavra-passe.'
+    : /ENOTFOUND|getaddrinfo|ECONNREFUSED|timed? ?out/i.test(m)
+      ? `não consegui chegar ao servidor ${c.host}:${c.port}. Confirme o IMAP_HOST e a porta.`
+      : m
 }
 
 const nomeFicheiro = (s: string) =>
@@ -46,11 +64,90 @@ const nomeFicheiro = (s: string) =>
 
 type Config = { remetentes?: string[]; palavras?: string[]; dias?: number }
 
+type Novo = { id: string; conta: string; assunto: string; de: string; anexos: number }
+type SupabaseCliente = ReturnType<typeof createClient>
+
+/** Recolhe os emails de encomendas novos de uma conta. Devolve quantos ficaram por tratar (limite por chamada). */
+async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { remetentes: string[]; palavras: string[]; dias: number },
+  jaVistos: Set<string>, limite: number, novos: Novo[]): Promise<number> {
+  const imap = cliente(c)
+  await imap.connect()
+  try {
+    const lock = await imap.getMailboxLock(c.pasta, { readOnly: true })
+    try {
+      const validade = String((imap.mailbox && typeof imap.mailbox === 'object' ? imap.mailbox.uidValidity : '') ?? '')
+      const chave = (uid: number) => `c${c.n}-${validade}-${uid}`
+      const desde = new Date(Date.now() - filtros.dias * 864e5)
+      const uids = (await imap.search({ since: desde }, { uid: true })) || []
+      // 1.º passo, leve: cabeçalhos e estrutura (sem descarregar o conteúdo)
+      const escolhidos: number[] = []
+      if (uids.length) for await (const m of imap.fetch(uids, { uid: true, envelope: true, bodyStructure: true, size: true }, { uid: true })) {
+        if (jaVistos.has(chave(m.uid))) continue
+        const de = (m.envelope?.from ?? []).map((a) => `${a.name ?? ''} <${a.address ?? ''}>`).join(', ').toLowerCase()
+        const assunto = (m.envelope?.subject ?? '').toLowerCase()
+        const nomes: string[] = []
+        const percorrer = (n: { dispositionParameters?: Record<string, string>; parameters?: Record<string, string>; childNodes?: unknown[] } | undefined) => {
+          if (!n) return
+          const nome = n.dispositionParameters?.filename ?? n.parameters?.name
+          if (nome) nomes.push(nome)
+          for (const f of (n.childNodes ?? []) as typeof n[]) percorrer(f)
+        }
+        percorrer(m.bodyStructure as Parameters<typeof percorrer>[0])
+        if (!nomes.some((n) => ANEXO_UTIL.test(n))) continue
+        const semFiltros = !filtros.remetentes.length && !filtros.palavras.length
+        if (!semFiltros && !filtros.remetentes.some((r) => de.includes(r)) && !filtros.palavras.some((p) => assunto.includes(p))) continue
+        if ((m.size ?? 0) > MAX_BYTES) continue
+        escolhidos.push(m.uid)
+      }
+      escolhidos.sort((a, b) => a - b)
+      const agora = escolhidos.slice(0, Math.max(0, limite))
+
+      // 2.º passo: descarregar e guardar os escolhidos (BODY.PEEK: não marca como lido)
+      for (const uid of agora) {
+        const msg = await imap.fetchOne(String(uid), { source: true, envelope: true }, { uid: true })
+        if (!msg || !msg.source) continue
+        const id = chave(uid)
+        const mail = await simpleParser(msg.source)
+        const anexos: { nome: string; caminho: string; tipo: string; tamanho: number }[] = []
+        for (const [i, a] of (mail.attachments ?? []).entries()) {
+          const nome = a.filename ?? `anexo-${i + 1}`
+          if (!ANEXO_UTIL.test(nome)) continue
+          const caminho = `email/${id}/${i}-${nomeFicheiro(nome)}`
+          const { error } = await supabase.storage.from('documentos').upload(caminho, a.content, { contentType: a.contentType || undefined, upsert: true })
+          if (error) throw new Error(`não consegui guardar o anexo ${nome}: ${error.message}`)
+          anexos.push({ nome, caminho, tipo: a.contentType ?? '', tamanho: a.size ?? a.content.length })
+        }
+        const de = mail.from?.value?.[0]
+        const dados = {
+          id, uid, conta: c.user,
+          messageId: mail.messageId ?? null,
+          de: de?.address ?? '',
+          deNome: de?.name ?? '',
+          assunto: mail.subject ?? '(sem assunto)',
+          data: (mail.date ?? msg.envelope?.date ?? new Date()).toISOString(),
+          texto: (mail.text ?? '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 4000),
+          anexos,
+          estado: 'nova',
+          recebidoEm: new Date().toISOString(),
+        }
+        const { error } = await supabase.from('documentos').upsert({ colecao: 'emails', id, dados })
+        if (error) throw new Error(`base de dados: ${error.message}`)
+        jaVistos.add(id)
+        novos.push({ id, conta: c.user, assunto: dados.assunto, de: dados.de, anexos: anexos.length })
+      }
+      return escolhidos.length - agora.length
+    } finally {
+      lock.release()
+    }
+  } finally {
+    try { await imap.logout() } catch { /* já fechada */ }
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return resposta({ erro: 'Método não permitido' }, 405)
 
-  let imap: ImapFlow | null = null
   try {
     // só utilizadores com sessão iniciada na aplicação
     const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
@@ -64,107 +161,52 @@ Deno.serve(async (req) => {
     if (eSessao || !quem.user) return resposta({ erro: 'Sessão inválida ou expirada. Volte a entrar na aplicação.' }, 401)
 
     const { acao } = await req.json() as { acao: 'testar' | 'verificar' }
-    const pasta = env('EMAIL_PASTA') || 'INBOX'
-
-    imap = cliente()
-    await imap.connect()
+    const lista = contas()
 
     if (acao === 'testar') {
-      const pastas = (await imap.list()).map((p) => p.path)
-      const estado = await imap.status(pasta, { messages: true, unseen: true })
-      return resposta({ ok: true, utilizador: env('EMAIL_USER'), pasta, pastas, mensagens: estado.messages ?? 0, porLer: estado.unseen ?? 0 })
+      const resultado = await Promise.all(lista.map(async (c) => {
+        const imap = cliente(c)
+        try {
+          await imap.connect()
+          const estado = await imap.status(c.pasta, { messages: true, unseen: true })
+          return { conta: c.user, pasta: c.pasta, ok: true, mensagens: estado.messages ?? 0, porLer: estado.unseen ?? 0 }
+        } catch (e) {
+          return { conta: c.user, pasta: c.pasta, ok: false, erro: amigavel(c, e) }
+        } finally {
+          try { await imap.logout() } catch { /* já fechada */ }
+        }
+      }))
+      return resposta({ ok: true, contas: resultado })
     }
     if (acao !== 'verificar') return resposta({ erro: 'Pedido inválido' }, 400)
 
     // filtros e emails já registados
     const { data: cfgLinha } = await supabase.from('documentos').select('dados').eq('colecao', 'configuracao').eq('id', 'email').maybeSingle()
     const cfg = (cfgLinha?.dados ?? {}) as Config
-    const remetentes = (cfg.remetentes ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean)
-    const palavras = (cfg.palavras ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean)
-    const dias = Math.min(Math.max(Number(cfg.dias) || 14, 1), 90)
+    const filtros = {
+      remetentes: (cfg.remetentes ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean),
+      palavras: (cfg.palavras ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean),
+      dias: Math.min(Math.max(Number(cfg.dias) || 14, 1), 90),
+    }
     const { data: existentes, error: eEx } = await supabase.from('documentos').select('id').eq('colecao', 'emails')
     if (eEx) throw new Error(`Base de dados: ${eEx.message}`)
     const jaVistos = new Set((existentes ?? []).map((l) => l.id as string))
 
-    const lock = await imap.getMailboxLock(pasta, { readOnly: true })
-    const novos: { id: string; assunto: string; de: string; anexos: number }[] = []
-    let candidatos = 0, restantes = 0
-    try {
-      const validade = String((imap.mailbox && typeof imap.mailbox === 'object' ? imap.mailbox.uidValidity : '') ?? '')
-      const desde = new Date(Date.now() - dias * 864e5)
-      const uids = (await imap.search({ since: desde }, { uid: true })) || []
-      // 1.º passo, leve: cabeçalhos e estrutura (sem descarregar o conteúdo)
-      const escolhidos: number[] = []
-      if (uids.length) for await (const m of imap.fetch(uids, { uid: true, envelope: true, bodyStructure: true, size: true }, { uid: true })) {
-        const id = `${validade}-${m.uid}`
-        if (jaVistos.has(id)) continue
-        const de = (m.envelope?.from ?? []).map((a) => `${a.name ?? ''} <${a.address ?? ''}>`).join(', ').toLowerCase()
-        const assunto = (m.envelope?.subject ?? '').toLowerCase()
-        const nomes: string[] = []
-        const percorrer = (n: { dispositionParameters?: Record<string, string>; parameters?: Record<string, string>; childNodes?: unknown[] } | undefined) => {
-          if (!n) return
-          const nome = n.dispositionParameters?.filename ?? n.parameters?.name
-          if (nome) nomes.push(nome)
-          for (const c of (n.childNodes ?? []) as typeof n[]) percorrer(c)
-        }
-        percorrer(m.bodyStructure as Parameters<typeof percorrer>[0])
-        if (!nomes.some((n) => ANEXO_UTIL.test(n))) continue
-        const semFiltros = !remetentes.length && !palavras.length
-        if (!semFiltros && !remetentes.some((r) => de.includes(r)) && !palavras.some((p) => assunto.includes(p))) continue
-        if ((m.size ?? 0) > MAX_BYTES) continue
-        candidatos++
-        escolhidos.push(m.uid)
+    const novos: Novo[] = []
+    const erros: { conta: string; erro: string }[] = []
+    let restantes = 0
+    for (const c of lista) {
+      try {
+        restantes += await verificarConta(c, supabase, filtros, jaVistos, MAX_POR_VEZ - novos.length, novos)
+      } catch (e) {
+        console.error(c.user, e)
+        erros.push({ conta: c.user, erro: amigavel(c, e) })
       }
-      escolhidos.sort((a, b) => a - b)
-      restantes = Math.max(0, escolhidos.length - MAX_POR_VEZ)
-
-      // 2.º passo: descarregar e guardar os escolhidos (BODY.PEEK: não marca como lido)
-      for (const uid of escolhidos.slice(0, MAX_POR_VEZ)) {
-        const msg = await imap.fetchOne(String(uid), { source: true, envelope: true }, { uid: true })
-        if (!msg || !msg.source) continue
-        const id = `${validade}-${uid}`
-        const mail = await simpleParser(msg.source)
-        const anexos: { nome: string; caminho: string; tipo: string; tamanho: number }[] = []
-        for (const [i, a] of (mail.attachments ?? []).entries()) {
-          const nome = a.filename ?? `anexo-${i + 1}`
-          if (!ANEXO_UTIL.test(nome)) continue
-          const caminho = `email/${id}/${i}-${nomeFicheiro(nome)}`
-          const { error } = await supabase.storage.from('documentos').upload(caminho, a.content, { contentType: a.contentType || undefined, upsert: true })
-          if (error) throw new Error(`Não consegui guardar o anexo ${nome}: ${error.message}`)
-          anexos.push({ nome, caminho, tipo: a.contentType ?? '', tamanho: a.size ?? a.content.length })
-        }
-        const de = mail.from?.value?.[0]
-        const dados = {
-          id,
-          uid,
-          messageId: mail.messageId ?? null,
-          de: de?.address ?? '',
-          deNome: de?.name ?? '',
-          assunto: mail.subject ?? '(sem assunto)',
-          data: (mail.date ?? msg.envelope?.date ?? new Date()).toISOString(),
-          texto: (mail.text ?? '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 4000),
-          anexos,
-          estado: 'nova',
-          recebidoEm: new Date().toISOString(),
-        }
-        const { error } = await supabase.from('documentos').upsert({ colecao: 'emails', id, dados })
-        if (error) throw new Error(`Base de dados: ${error.message}`)
-        novos.push({ id, assunto: dados.assunto, de: dados.de, anexos: anexos.length })
-      }
-    } finally {
-      lock.release()
     }
-    return resposta({ ok: true, novos, candidatos, restantes, dias })
+    if (erros.length === lista.length) return resposta({ erro: erros.map((e) => `${e.conta}: ${e.erro}`).join(' · ') }, 500)
+    return resposta({ ok: true, novos, restantes, erros, dias: filtros.dias })
   } catch (e) {
     console.error(e)
-    const m = e instanceof Error ? e.message : String(e)
-    const amigavel = /AUTHENTICATIONFAILED|Invalid credentials|authentication failed|LOGIN failed/i.test(m)
-      ? 'O servidor de email recusou o utilizador ou a palavra-passe (EMAIL_USER / EMAIL_PASSWORD).'
-      : /ENOTFOUND|getaddrinfo|ECONNREFUSED|timed? ?out/i.test(m)
-        ? `Não consegui chegar ao servidor de email (${env('EMAIL_IMAP_HOST')}:${env('EMAIL_IMAP_PORT') || 993}). Confirme o EMAIL_IMAP_HOST e a porta.`
-        : m
-    return resposta({ erro: amigavel }, 500)
-  } finally {
-    try { await imap?.logout() } catch { /* já fechada */ }
+    return resposta({ erro: e instanceof Error ? e.message : String(e) }, 500)
   }
 })

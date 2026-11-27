@@ -5,6 +5,8 @@ import { supabase } from './supabase'
 export interface AnexoEmail { nome: string; caminho: string; tipo: string; tamanho: number }
 export interface EmailEncomenda {
   id: string; uid: number; messageId: string | null
+  /** conta de email onde chegou (há várias caixas) */
+  conta?: string
   de: string; deNome: string; assunto: string; data: string; texto: string
   anexos: AnexoEmail[]
   estado: 'nova' | 'tratada' | 'ignorada'
@@ -30,9 +32,14 @@ async function chamar<T>(corpo: Record<string, unknown>): Promise<T> {
   return data as T
 }
 
-export interface TesteEmail { utilizador: string; pasta: string; pastas: string[]; mensagens: number; porLer: number }
-export const testarEmail = () => chamar<TesteEmail>({ acao: 'testar' })
-export interface ResultadoVerificar { novos: { id: string; assunto: string; de: string; anexos: number }[]; candidatos: number; restantes: number; dias: number }
+export interface TesteConta { conta: string; pasta: string; ok: boolean; mensagens?: number; porLer?: number; erro?: string }
+export const testarEmail = () => chamar<{ contas: TesteConta[] }>({ acao: 'testar' }).then((r) => r.contas)
+export interface ResultadoVerificar {
+  novos: { id: string; conta: string; assunto: string; de: string; anexos: number }[]
+  restantes: number; dias: number
+  /** contas que falharam (as outras foram lidas na mesma) */
+  erros: { conta: string; erro: string }[]
+}
 
 // ---------- estado partilhado (lista, número de novos no menu e no sino) ----------
 interface EstadoEmails {
@@ -65,7 +72,7 @@ export async function verificarEmails(): Promise<ResultadoVerificar> {
   try {
     const r = await chamar<ResultadoVerificar>({ acao: 'verificar' })
     await carregarEmails()
-    useEmails.setState({ ultimaVerificacao: new Date().toISOString() })
+    useEmails.setState({ ultimaVerificacao: new Date().toISOString(), erro: (r.erros ?? []).map((e) => `${e.conta}: ${e.erro}`).join(' · ') })
     return r
   } catch (e) {
     useEmails.setState({ erro: e instanceof Error ? e.message : String(e) })
