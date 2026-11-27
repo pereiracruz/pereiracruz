@@ -44,3 +44,13 @@ não apaga. No Thunderbird fica tudo como estava.
 ## Dados
 - Tabela `documentos`, coleção `emails` (um registo por email: remetente, assunto, data, texto, anexos, estado) e
   `configuracao/email` (filtros). Não entram nas cópias de segurança; os anexos ficam no bucket.
+
+## Responder a partir da aplicação
+- Botão **Responder** em cada email: a resposta sai da conta onde o email chegou, só para o remetente (ou o
+  «Responder para» do email), com o assunto «RE: …», ligada à conversa (In-Reply-To / References), com a assinatura
+  dessa conta e o email original citado. Fica uma cópia na pasta **Enviados** da conta (aparece no Thunderbird) e o
+  registo da resposta no próprio email.
+- **Assinaturas** (Filtros e ligação → Assinaturas das respostas): nome do remetente, texto e imagem por conta. A imagem
+  fica no bucket (`assinaturas/`) e vai embutida no email.
+- **Servidor de envio**: por omissão o mesmo do IMAP, porta 465 (SSL/TLS), mesmo utilizador e palavra-passe. Se for
+  diferente: `EMAIL_SMTP_HOST` / `EMAIL_SMTP_PORT` (e `EMAIL_2_SMTP_HOST`, …). O Supabase bloqueia a porta 587.

@@ -9,6 +9,8 @@
 //   3.ª conta: EMAIL_3_…  e assim por diante, até EMAIL_9_…
 //   IMAP_HOST = servidor que aparece no Thunderbird (Definições da conta → Definições do servidor → Nome do servidor).
 //   PASSWORD  = de preferência uma palavra-passe de aplicação só para isto.
+//   Envio (responder): por omissão usa o mesmo servidor do IMAP, porta 465 (SSL/TLS), mesmo utilizador e palavra-passe.
+//   Se for diferente: EMAIL_SMTP_HOST / EMAIL_SMTP_PORT (EMAIL_2_SMTP_HOST, …). O Supabase bloqueia a porta 587.
 //
 // Filtros (na aplicação, página «Emails de encomendas»; guardados em documentos/configuracao/email):
 //   remetentes: partes do endereço ou do nome (ex.: «whitecotton», «@cliente.pt»)
@@ -17,6 +19,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { ImapFlow } from 'npm:imapflow@1'
 import { simpleParser } from 'npm:mailparser@3'
+import nodemailer from 'npm:nodemailer@6'
+import MailComposer from 'npm:nodemailer@6/lib/mail-composer/index.js'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -36,7 +40,7 @@ const imagemDoCorpo = (a: { filename?: string; contentDisposition?: string; rela
 const MAX_POR_VEZ = 15 // emails novos tratados por chamada (o resto fica para a seguinte)
 const MAX_BYTES = 25 * 1024 * 1024
 
-type Conta = { n: number; host: string; port: number; user: string; pass: string; pasta: string }
+type Conta = { n: number; host: string; port: number; user: string; pass: string; pasta: string; smtpHost: string; smtpPort: number }
 function contas(): Conta[] {
   const r: Conta[] = []
   for (let n = 1; n <= 9; n++) {
@@ -46,7 +50,7 @@ function contas(): Conta[] {
     const host = v('IMAP_HOST'), user = v('USER')
     if (!host && !user && !pass) continue
     if (!host || !user || !pass) throw new Error(`Conta ${n}: falta ${!host ? 'IMAP_HOST' : !user ? 'USER' : 'PASSWORD'} nos segredos do Supabase (${pre[pre.length - 1]}…).`)
-    r.push({ n, host, user, pass, port: Number(v('IMAP_PORT') || 993), pasta: v('PASTA') || 'INBOX' })
+    r.push({ n, host, user, pass, port: Number(v('IMAP_PORT') || 993), pasta: v('PASTA') || 'INBOX', smtpHost: v('SMTP_HOST') || host, smtpPort: Number(v('SMTP_PORT') || 465) })
   }
   if (!r.length) throw new Error('Faltam os segredos do email no Supabase (EMAIL_IMAP_HOST, EMAIL_USER, EMAIL_PASSWORD).')
   return r
@@ -70,7 +74,8 @@ const amigavel = (c: Conta, e: unknown) => {
 const nomeFicheiro = (s: string) =>
   s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w.\-]+/g, '_').replace(/_+/g, '_').slice(-120) || 'anexo'
 
-type Config = { remetentes?: string[]; palavras?: string[]; dias?: number }
+type Assinatura = { nome?: string; texto?: string; imagem?: string }
+type Config = { remetentes?: string[]; palavras?: string[]; dias?: number; assinaturas?: Record<string, Assinatura> }
 
 type Novo = { id: string; conta: string; assunto: string; de: string; anexos: number }
 type SupabaseCliente = ReturnType<typeof createClient>
@@ -131,6 +136,8 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
         const dados = {
           id, uid, conta: c.user,
           messageId: mail.messageId ?? null,
+          references: Array.isArray(mail.references) ? mail.references : mail.references ? [mail.references] : [],
+          responderPara: mail.replyTo?.value?.[0]?.address ?? null,
           de: de?.address ?? '',
           deNome: de?.name ?? '',
           assunto: mail.subject ?? '(sem assunto)',
@@ -155,6 +162,64 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
   }
 }
 
+const html = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
+
+/** Envia uma resposta a um email recolhido, pela conta onde ele chegou, e guarda uma cópia na pasta Enviados. */
+async function responder(supabase: SupabaseCliente, lista: Conta[], emailId: string, texto: string, quem: string) {
+  const { data: linha, error } = await supabase.from('documentos').select('dados').eq('colecao', 'emails').eq('id', emailId).maybeSingle()
+  if (error || !linha) throw new Error('Não encontrei este email.')
+  const e = linha.dados as Record<string, unknown> & { conta?: string; de: string; deNome?: string; assunto: string; data: string; texto: string; messageId?: string | null; references?: string[]; responderPara?: string | null; respostas?: unknown[] }
+  const c = lista.find((x) => x.user.toLowerCase() === (e.conta ?? '').toLowerCase()) ?? lista[0]
+  const { data: cfgLinha } = await supabase.from('documentos').select('dados').eq('colecao', 'configuracao').eq('id', 'email').maybeSingle()
+  const ass = ((cfgLinha?.dados ?? {}) as Config).assinaturas?.[c.user.toLowerCase()] ?? {}
+
+  // imagem da assinatura (guardada no bucket pela aplicação), embutida no email
+  const anexos: { filename: string; content: Uint8Array; cid: string; contentType?: string }[] = []
+  if (ass.imagem) {
+    const { data: img } = await supabase.storage.from('documentos').download(ass.imagem)
+    if (img) anexos.push({ filename: ass.imagem.split('/').pop() ?? 'assinatura.png', content: new Uint8Array(await img.arrayBuffer()), cid: 'assinatura@pereiracruz', contentType: img.type || undefined })
+  }
+  const para = e.responderPara || e.de
+  const assunto = /^(re|res|aw|sv)\s*:/i.test(e.assunto) ? e.assunto : `RE: ${e.assunto}`
+  const quando = new Date(e.data).toLocaleString('pt-PT', { timeZone: 'Europe/Lisbon' })
+  const citacao = `${quando}, ${e.deNome || e.de} escreveu:\n${e.texto}`
+  const corpoHtml = `<div style="font-family:Arial,sans-serif;font-size:14px">${html(texto)}<br><br>`
+    + (ass.texto ? `${html(ass.texto)}<br>` : '')
+    + (anexos.length ? `<img src="cid:assinatura@pereiracruz" alt="" style="max-width:480px"><br>` : '')
+    + `<br><div style="border-left:2px solid #ccc;padding-left:10px;color:#555">${html(citacao)}</div></div>`
+  const corpoTexto = `${texto}\n\n${ass.texto ? `${ass.texto}\n` : ''}\n${citacao.split('\n').map((l) => `> ${l}`).join('\n')}`
+  const references = [...(e.references ?? []), ...(e.messageId ? [e.messageId] : [])]
+  const mensagem = {
+    from: { name: ass.nome || 'Pereira & Cruz', address: c.user },
+    to: para, subject: assunto, text: corpoTexto, html: corpoHtml, attachments: anexos,
+    ...(e.messageId ? { inReplyTo: e.messageId, references } : {}),
+  }
+  const bruto: Uint8Array = await new Promise((ok, falha) => new MailComposer(mensagem).compile().build((err: Error | null, b: Uint8Array) => (err ? falha(err) : ok(b))))
+
+  const transporte = nodemailer.createTransport({ host: c.smtpHost, port: c.smtpPort, secure: c.smtpPort === 465, auth: { user: c.user, pass: c.pass } })
+  try {
+    await transporte.sendMail({ envelope: { from: c.user, to: [para] }, raw: bruto })
+  } catch (x) {
+    const m = x instanceof Error ? x.message : String(x)
+    throw new Error(/auth|535|credentials/i.test(m) ? `o servidor de envio recusou o utilizador ou a palavra-passe (${c.smtpHost}:${c.smtpPort}).`
+      : /ENOTFOUND|ECONNREFUSED|timed? ?out|ETIMEDOUT/i.test(m) ? `não consegui chegar ao servidor de envio ${c.smtpHost}:${c.smtpPort}. Pode ser preciso o segredo SMTP_HOST.` : m)
+  }
+
+  // cópia em Enviados (para aparecer no Thunderbird); se falhar, a resposta já foi enviada na mesma
+  let copiaEnviados = false
+  const imap = cliente(c)
+  try {
+    await imap.connect()
+    const pastas = await imap.list()
+    const enviados = pastas.find((p) => p.specialUse === '\\Sent') ?? pastas.find((p) => /^(INBOX[./])?(sent|enviados|itens enviados|sent items|sent messages)$/i.test(p.path))
+    if (enviados) { await imap.append(enviados.path, bruto, ['\\Seen']); copiaEnviados = true }
+  } catch (x) { console.error('Enviados', x) } finally { try { await imap.logout() } catch { /* já fechada */ } }
+
+  const resposta = { data: new Date().toISOString(), para, assunto, texto, conta: c.user, por: quem, copiaEnviados }
+  await supabase.from('documentos').upsert({ colecao: 'emails', id: emailId, dados: { ...e, respostas: [...(e.respostas ?? []), resposta] } })
+  return resposta
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return resposta({ erro: 'Método não permitido' }, 405)
@@ -171,8 +236,15 @@ Deno.serve(async (req) => {
     const { data: quem, error: eSessao } = await supabase.auth.getUser(token)
     if (eSessao || !quem.user) return resposta({ erro: 'Sessão inválida ou expirada. Volte a entrar na aplicação.' }, 401)
 
-    const { acao } = await req.json() as { acao: 'testar' | 'verificar' }
+    const pedido = await req.json() as { acao: 'testar' | 'verificar' | 'responder'; emailId?: string; texto?: string }
+    const { acao } = pedido
     const lista = contas()
+
+    if (acao === 'responder') {
+      if (!pedido.emailId || !pedido.texto?.trim()) return resposta({ erro: 'Falta o texto da resposta.' }, 400)
+      const r = await responder(supabase, lista, pedido.emailId, pedido.texto.trim(), quem.user.email ?? quem.user.id)
+      return resposta({ ok: true, resposta: r })
+    }
 
     if (acao === 'testar') {
       const resultado = await Promise.all(lista.map(async (c) => {
