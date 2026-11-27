@@ -5,6 +5,7 @@ import { useDb } from '../../store/db'
 import { Botao, Cabecalho, Cartao, Etiqueta, Kpi, Pilulas, Tabela, aviso } from '../../components/ui'
 import ComprasEncomenda from '../producao/ComprasEncomenda'
 import PrazosEncomenda from '../producao/PrazosEncomenda'
+import GuiasEncomenda from '../producao/GuiasEncomenda'
 import { resumoCompras } from '../../lib/compras'
 import { situacaoPrazos } from '../../lib/prazos'
 import { NOME_FOLHA, folhasDoModelo } from '../../components/Folhas'
@@ -26,7 +27,7 @@ export default function EncomendaDetalhe() {
   const enc = encomendas.find((e) => e.id === encId)
   const [aExportar, setAExportar] = useState(false)
   const [params, setParams] = useSearchParams()
-  const aba = (params.get('aba') ?? 'modelos') as 'modelos' | 'compras' | 'prazos'
+  const aba = (params.get('aba') ?? 'modelos') as 'modelos' | 'compras' | 'prazos' | 'guias'
   if (!enc) return <Navigate to="/fichas" replace />
   const rc = resumoCompras(enc)
   const sp = situacaoPrazos(enc)
@@ -104,9 +105,11 @@ export default function EncomendaDetalhe() {
         { id: 'modelos', rotulo: 'Modelos e fichas' },
         { id: 'compras', rotulo: <>Compras{rc.porEncomendar > 0 && <span className="ml-1.5 text-[11px] font-semibold bg-ambar-fraco text-ambar rounded-full px-1.5">{rc.porEncomendar}</span>}</> },
         { id: 'prazos', rotulo: <>Prazos{(sp.nivel === 'atrasada' || sp.nivel === 'urgente') && <span className={`ml-1.5 inline-block size-2 rounded-full ${sp.nivel === 'atrasada' ? 'bg-vermelho' : 'bg-ambar'}`} />}</> },
+        { id: 'guias', rotulo: <>Guias{(enc.guias ?? []).some((g) => g.estado === 'rascunho') && <span className="ml-1.5 inline-block size-2 rounded-full bg-ambar" />}</> },
       ]} /></div>
       {aba === 'compras' && <ComprasEncomenda enc={enc} />}
       {aba === 'prazos' && <PrazosEncomenda enc={enc} />}
+      {aba === 'guias' && <GuiasEncomenda enc={enc} />}
       {aba === 'modelos' && <>
       <div className="flex gap-x-6 gap-y-1 flex-wrap text-[13px] mb-5">
         {verif.map((v) => <span key={v.texto} className={`flex items-center gap-1.5 ${v.ok ? 'text-verde' : 'text-ambar'}`}>{v.ok ? <Check size={14} /> : <AlertTriangle size={14} />}{v.texto}</span>)}

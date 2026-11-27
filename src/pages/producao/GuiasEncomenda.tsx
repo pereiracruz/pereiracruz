@@ -1,0 +1,282 @@
+import { useState } from 'react'
+import { AlertTriangle, FileText, RefreshCw, Trash2, Truck } from 'lucide-react'
+import { useDb } from '../../store/db'
+import { Botao, Campo, Cartao, Entrada, Etiqueta, Modal, aviso } from '../../components/ui'
+import { qtdParaEmbalar, soma } from '../../lib/calc'
+import { dataCurta, eur, hojeISO, int, parseNum } from '../../lib/format'
+import { NOME_EMPRESA_TOC, apagarRascunhoTOC, consultarTOC, criarGuiaTOC, listarTOC, testarTOC, tocDisponivel, type EmpresaTOC, type GuiaParaTOC } from '../../lib/toconline'
+import type { Encomenda, GuiaTOC } from '../../types'
+
+/** Valores habituais de cada empresa (lidos das guias reais em 26/11/2026; editáveis em cada guia). */
+const HABITUAL: Record<EmpresaTOC, { carga: { morada: string; cp: string; localidade: string }; texto: string; artigo: string; comPreco: boolean }> = {
+  PP: { carga: { morada: 'RUA DA AGRA, N.º 70', cp: '4775-205', localidade: 'NEGREIROS' }, texto: 'Artigos p/armazém', artigo: 'CONF', comPreco: true },
+  PC: { carga: { morada: 'Rua da Agra, nº40', cp: '4775-205', localidade: 'Negreiros' }, texto: 'Artigos confecionados a feitio p/armazém', artigo: '', comPreco: false },
+}
+const VIATURAS = ['V/carro', 'BD-35-HS']
+
+type Reg = { id: string } & Record<string, unknown>
+const s = (v: unknown) => (v == null ? '' : String(v))
+interface Linha { chave: string; incluir: boolean; produto: string; descricao: string; quantidade: number; preco: number }
+interface Dados { series: { id: string; rotulo: string }[]; clientes: Reg[]; produtos: Reg[]; taxId?: string; unidadeId?: string }
+
+const agoraLocal = () => {
+  const d = new Date(Date.now() + 30 * 60_000)
+  d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+const rotuloProduto = (p: Reg) => [s(p.item_code), s(p.item_description ?? p.description ?? p.name)].filter(Boolean).join(' · ')
+
+export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
+  const { atualizarEncomenda, log } = useDb()
+  const [empresa, setEmpresa] = useState<EmpresaTOC>('PP')
+  const [dados, setDados] = useState<Dados | null>(null)
+  const [aCarregar, setACarregar] = useState(false)
+  const [erro, setErro] = useState('')
+  const [serie, setSerie] = useState('')
+  const [clienteId, setClienteId] = useState('')
+  const [filtro, setFiltro] = useState('')
+  const [descarga, setDescarga] = useState({ morada: '', cp: '', localidade: '' })
+  const [carga, setCarga] = useState(HABITUAL.PP.carga)
+  const [viatura, setViatura] = useState('V/carro')
+  const [hora, setHora] = useState(agoraLocal())
+  const [texto, setTexto] = useState(HABITUAL.PP.texto)
+  const [linhas, setLinhas] = useState<Linha[]>([])
+  const [confirmar, setConfirmar] = useState(false)
+  const [aCriar, setACriar] = useState(false)
+  const [aAtualizar, setAAtualizar] = useState('')
+
+  const guias = enc.guias ?? []
+  const guardarGuias = (fn: (g: GuiaTOC[]) => GuiaTOC[]) => atualizarEncomenda(enc.id, (e) => ({ ...e, guias: fn(e.guias ?? []) }))
+
+  const linhasIniciais = (emp: EmpresaTOC, produtos: Reg[]): Linha[] =>
+    enc.modelos.flatMap((m) => m.variantes.map((v) => {
+      const qtd = soma(qtdParaEmbalar(v))
+      const tipo = (m.tipoPeca || '').toLowerCase()
+      const prod = emp === 'PP'
+        ? produtos.find((p) => s(p.item_code).toUpperCase() === HABITUAL.PP.artigo)
+        : produtos.find((p) => tipo && (s(p.item_code).toLowerCase().startsWith(tipo.split(' ')[0]) || s(p.item_description).toLowerCase().includes(tipo.split(' ')[0])))
+      const descricao = emp === 'PP'
+        ? `${m.nome} ${v.nome}`.trim()
+        : [m.tipoPeca, `${m.nome} ${v.nome}`, enc.numeroDocumento].filter(Boolean).map((x) => String(x).toUpperCase()).join('\n')
+      return { chave: `${m.id}:${v.id}`, incluir: qtd > 0, produto: prod?.id ?? '', descricao, quantidade: qtd, preco: HABITUAL[emp].comPreco ? v.preco : 0 }
+    }))
+
+  const carregar = async (emp: EmpresaTOC) => {
+    setEmpresa(emp); setErro(''); setACarregar(true); setDados(null); setClienteId('')
+    setCarga(HABITUAL[emp].carga); setTexto(HABITUAL[emp].texto)
+    try {
+      const [teste, clientes, produtos, taxas, unidades] = await Promise.all([
+        testarTOC(emp),
+        listarTOC(emp, 'customers?page[size]=500'),
+        listarTOC(emp, 'products?page[size]=500'),
+        listarTOC(emp, 'taxes?page[size]=100').catch(() => [] as Reg[]),
+        listarTOC(emp, 'units_of_measure?page[size]=100').catch(() => [] as Reg[]),
+      ])
+      const ano = hojeISO().slice(0, 4)
+      const series = teste.series.filter((x) => x.document_type === 'GT').map((x) => ({ id: x.id, rotulo: `GT ${x.prefix ?? x.name ?? x.id}` }))
+      const taxa = taxas.find((t) => s(t.tax_code) === 'NOR' && (!t.tax_country_region || s(t.tax_country_region) === 'PT'))
+      const un = unidades.find((u) => /^un/i.test(s(u.unit_of_measure ?? u.abbreviation ?? u.name)))
+      setDados({ series, clientes, produtos, taxId: taxa?.id, unidadeId: un?.id })
+      setSerie(series.find((x) => x.rotulo.endsWith(ano))?.id ?? series[0]?.id ?? '')
+      setLinhas(linhasIniciais(emp, produtos))
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e))
+    } finally { setACarregar(false) }
+  }
+
+  const escolherCliente = async (id: string) => {
+    setClienteId(id)
+    const c = dados?.clientes.find((x) => x.id === id)
+    setDescarga({ morada: s(c?.address_detail), cp: s(c?.postcode), localidade: s(c?.city) })
+    if (!id) return
+    try {
+      const r = await consultarTOC(empresa, `customers/${id}?include=addresses`) as { included?: { type: string; attributes?: Record<string, unknown> }[] }
+      const m = r?.included?.find((x) => x.type === 'addresses')?.attributes
+      if (m) setDescarga({ morada: s(m.address_detail), cp: s(m.postcode), localidade: s(m.city) })
+    } catch { /* fica o que houver; edita-se à mão */ }
+  }
+
+  const cliente = dados?.clientes.find((x) => x.id === clienteId)
+  const nomeCliente = s(cliente?.business_name ?? cliente?.name)
+  const escolhidas = linhas.filter((l) => l.incluir && l.quantidade > 0)
+  const pecas = soma(escolhidas.map((l) => l.quantidade))
+  const valor = soma(escolhidas.map((l) => l.quantidade * l.preco))
+  const falta = !dados ? 'Carregue os dados do TOConline.' : !clienteId ? 'Escolha o destinatário.' : !escolhidas.length ? 'Escolha pelo menos uma linha com quantidade.'
+    : escolhidas.some((l) => !l.produto) ? 'Escolha o artigo do TOConline em todas as linhas.' : !descarga.morada || !descarga.cp ? 'Falta a morada de descarga.'
+      : !viatura.trim() ? 'Falta a viatura.' : !hora ? 'Falta a data e hora de carga.' : ''
+
+  const mudarLinha = (chave: string, x: Partial<Linha>) => setLinhas((ls) => ls.map((l) => (l.chave === chave ? { ...l, ...x } : l)))
+
+  const criar = async () => {
+    if (falta || !dados || !cliente) return
+    setACriar(true)
+    const guia: GuiaParaTOC = {
+      serie_id: serie || undefined, data: hojeISO(),
+      cliente: { id: cliente.id, nome: nomeCliente, nif: s(cliente.tax_registration_number) || undefined },
+      carga, descarga, viatura: viatura.trim(), hora_carga: `${hora.replace('T', ' ')}:00`,
+      notas: `Encomenda ${enc.cliente} · ${enc.colecao}`,
+      linhas: [
+        ...(texto.trim() ? [{ tipo: 'texto' as const, descricao: texto.trim() }] : []),
+        ...escolhidas.map((l) => ({ tipo: 'artigo' as const, descricao: l.descricao.replace(/\n/g, '\r\n'), item_id: l.produto, quantidade: l.quantidade, preco: l.preco, tax_id: dados.taxId, unidade_id: dados.unidadeId })),
+      ],
+    }
+    try {
+      const r = await criarGuiaTOC(empresa, guia)
+      guardarGuias((g) => [...g, { id: String(r.id), empresa, criadaEm: new Date().toISOString(), destinatario: nomeCliente, pecas, viatura: viatura.trim(), estado: (r.finalizado ? 'finalizada' : 'rascunho') as GuiaTOC['estado'], numero: r.document_no || undefined }])
+      log('Guia criada no TOConline', `${enc.cliente} · ${enc.colecao} · ${NOME_EMPRESA_TOC[empresa]} · ${nomeCliente} · ${pecas} peças${r.finalizado ? ' · FINALIZADA' : ' · rascunho'}`)
+      aviso(r.finalizado ? 'Atenção: o TOConline finalizou a guia logo ao criar.' : 'Rascunho da guia criado no TOConline. Reveja-o e finalize-o lá.')
+      setConfirmar(false)
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e)); setConfirmar(false)
+    } finally { setACriar(false) }
+  }
+
+  const atualizar = async (g: GuiaTOC) => {
+    setAAtualizar(g.id)
+    try {
+      const r = await consultarTOC(g.empresa, `commercial_sales_documents/${g.id}`) as { data?: { attributes?: Record<string, unknown> } }
+      const a = r?.data?.attributes ?? {}
+      guardarGuias((gs) => gs.map((x) => (x.id === g.id && x.empresa === g.empresa ? { ...x, estado: (Number(a.status) === 0 ? 'rascunho' : 'finalizada') as GuiaTOC['estado'], numero: s(a.document_no) || x.numero, codigoAT: s(a.communication_code) || x.codigoAT } : x)))
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e)
+      if (/404/.test(m)) guardarGuias((gs) => gs.map((x) => (x.id === g.id && x.empresa === g.empresa ? { ...x, estado: 'apagada' as const } : x)))
+      else aviso(m)
+    } finally { setAAtualizar('') }
+  }
+
+  const apagar = async (g: GuiaTOC) => {
+    if (!window.confirm(`Apagar o rascunho da guia para ${g.destinatario} no TOConline? Só funciona enquanto não estiver finalizada.`)) return
+    try {
+      await apagarRascunhoTOC(g.empresa, g.id)
+      guardarGuias((gs) => gs.map((x) => (x.id === g.id && x.empresa === g.empresa ? { ...x, estado: 'apagada' as const } : x)))
+      log('Rascunho de guia apagado', `${enc.cliente} · ${enc.colecao} · ${g.destinatario}`)
+    } catch (e) { aviso(e instanceof Error ? e.message : String(e)) }
+  }
+
+  if (!tocDisponivel) return <Cartao className="p-5 text-[13.5px] text-suave">As guias do TOConline só funcionam no site publicado.</Cartao>
+  const clientesFiltrados = (dados?.clientes ?? []).filter((c) => !filtro || `${s(c.business_name)} ${s(c.tax_registration_number)}`.toLowerCase().includes(filtro.toLowerCase())).slice(0, 300)
+
+  return (
+    <div className="space-y-4">
+      {guias.length > 0 && (
+        <Cartao>
+          <div className="px-5 pt-5 pb-2"><h3 className="font-semibold">Guias desta encomenda</h3></div>
+          <table className="w-full text-[13.5px]">
+            <thead><tr className="text-[11px] uppercase tracking-wider text-suave border-y border-linha bg-fundo/40">
+              <th className="text-left px-5 py-2 font-medium">Empresa</th><th className="text-left px-2 font-medium">Destinatário</th><th className="text-right px-2 font-medium">Peças</th>
+              <th className="text-left px-2 font-medium">Estado</th><th className="text-left px-2 font-medium">Nº / código AT</th><th className="px-5" /></tr></thead>
+            <tbody>{guias.map((g) => (
+              <tr key={`${g.empresa}${g.id}`} className="border-b border-linha">
+                <td className="px-5 py-2.5">{NOME_EMPRESA_TOC[g.empresa]}<div className="text-[11.5px] text-tenue">{dataCurta(g.criadaEm.slice(0, 10))} · {g.viatura}</div></td>
+                <td className="px-2">{g.destinatario}</td>
+                <td className="px-2 text-right num">{int(g.pecas)}</td>
+                <td className="px-2">{g.estado === 'rascunho' ? <Etiqueta tom="ambar">Rascunho: finalizar no TOConline</Etiqueta> : g.estado === 'finalizada' ? <Etiqueta tom="verde">Finalizada</Etiqueta> : <Etiqueta tom="neutro">Apagada</Etiqueta>}</td>
+                <td className="px-2">{g.numero || '—'}{g.codigoAT && <div className="text-[11.5px] text-tenue">AT {g.codigoAT}</div>}</td>
+                <td className="px-5 text-right whitespace-nowrap">
+                  {g.estado !== 'apagada' && <Botao pequeno variante="fantasma" icone={<RefreshCw size={13} className={aAtualizar === g.id ? 'animate-spin' : ''} />} onClick={() => atualizar(g)}>Atualizar</Botao>}
+                  {g.estado === 'rascunho' && <Botao pequeno variante="fantasma" icone={<Trash2 size={13} />} onClick={() => apagar(g)}>Apagar</Botao>}
+                </td>
+              </tr>))}</tbody>
+          </table>
+          <p className="px-5 py-3 text-[12px] text-tenue">Depois de finalizar a guia no TOConline (e comunicar à AT), carregue em Atualizar para trazer o número e o código AT.</p>
+        </Cartao>
+      )}
+
+      <Cartao className="p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+          <div>
+            <h3 className="font-semibold flex items-center gap-2"><Truck size={16} /> Nova guia de transporte</h3>
+            <p className="text-[13px] text-suave">Cria um <b>rascunho</b> da guia no TOConline com os dados desta encomenda. Revê-se e finaliza-se no TOConline (que comunica à AT); enquanto for rascunho pode apagar-se.</p>
+          </div>
+          <div className="flex gap-2">
+            {(['PP', 'PC'] as EmpresaTOC[]).map((e) => <Botao key={e} pequeno variante={dados && empresa === e ? 'primario' : 'secundario'} disabled={aCarregar} onClick={() => carregar(e)}>{NOME_EMPRESA_TOC[e]}</Botao>)}
+          </div>
+        </div>
+        {aCarregar && <p className="text-[13px] text-suave">A ler clientes, artigos e séries do TOConline…</p>}
+        {erro && <div className="mb-3 text-[13px] text-vermelho bg-vermelho-fraco border border-vermelho/30 rounded-controlo px-3 py-2 flex gap-2"><AlertTriangle size={15} className="mt-0.5 shrink-0" /><span className="break-all">{erro}</span></div>}
+        {!dados && !aCarregar && <p className="text-[13px] text-tenue">Escolha a empresa que emite a guia.</p>}
+
+        {dados && (
+          <div className="space-y-4">
+            <div className="grid md:grid-cols-3 gap-3">
+              <Campo rotulo="Série">
+                <select value={serie} onChange={(e) => setSerie(e.target.value)} className="w-full h-10 px-3 rounded-controlo border border-linha bg-papel text-[14px]">
+                  {dados.series.map((x) => <option key={x.id} value={x.id}>{x.rotulo}</option>)}
+                </select>
+              </Campo>
+              <Campo rotulo="Viatura">
+                <Entrada value={viatura} onChange={(e) => setViatura(e.target.value)} list="viaturas-guia" />
+                <datalist id="viaturas-guia">{VIATURAS.map((v) => <option key={v} value={v} />)}</datalist>
+              </Campo>
+              <Campo rotulo="Data e hora de carga"><Entrada type="datetime-local" value={hora} onChange={(e) => setHora(e.target.value)} /></Campo>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-3">
+              <Campo rotulo="Destinatário (cliente no TOConline)">
+                <Entrada placeholder="Procurar por nome ou NIF" value={filtro} onChange={(e) => setFiltro(e.target.value)} className="mb-2" />
+                <select value={clienteId} onChange={(e) => escolherCliente(e.target.value)} className="w-full h-10 px-3 rounded-controlo border border-linha bg-papel text-[14px]">
+                  <option value="">— escolher —</option>
+                  {clientesFiltrados.map((c) => <option key={c.id} value={c.id}>{s(c.business_name ?? c.name)}{c.tax_registration_number ? ` · ${s(c.tax_registration_number)}` : ''}</option>)}
+                </select>
+              </Campo>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 text-[12px] font-medium text-suave">Carga (de onde sai)</div>
+                <Entrada className="col-span-2" value={carga.morada} onChange={(e) => setCarga({ ...carga, morada: e.target.value })} />
+                <Entrada value={carga.cp} onChange={(e) => setCarga({ ...carga, cp: e.target.value })} />
+                <Entrada value={carga.localidade} onChange={(e) => setCarga({ ...carga, localidade: e.target.value })} />
+                <div className="col-span-2 text-[12px] font-medium text-suave mt-1">Descarga (para onde vai)</div>
+                <Entrada className="col-span-2" placeholder="Morada" value={descarga.morada} onChange={(e) => setDescarga({ ...descarga, morada: e.target.value })} />
+                <Entrada placeholder="0000-000" value={descarga.cp} onChange={(e) => setDescarga({ ...descarga, cp: e.target.value })} />
+                <Entrada placeholder="Localidade" value={descarga.localidade} onChange={(e) => setDescarga({ ...descarga, localidade: e.target.value })} />
+              </div>
+            </div>
+
+            <Campo rotulo="Linha de texto (primeira linha da guia)"><Entrada value={texto} onChange={(e) => setTexto(e.target.value)} /></Campo>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead><tr className="text-[11px] uppercase tracking-wider text-suave border-y border-linha bg-fundo/40">
+                  <th className="px-2 py-2" /><th className="text-left px-2 font-medium">Artigo (TOConline)</th><th className="text-left px-2 font-medium">Descrição</th>
+                  <th className="text-right px-2 font-medium w-24">Quantidade</th><th className="text-right px-2 font-medium w-24">Preço</th></tr></thead>
+                <tbody>{linhas.map((l) => (
+                  <tr key={l.chave} className="border-b border-linha align-top">
+                    <td className="px-2 py-2"><input type="checkbox" checked={l.incluir} onChange={(e) => mudarLinha(l.chave, { incluir: e.target.checked })} /></td>
+                    <td className="px-2 py-1.5">
+                      <select value={l.produto} onChange={(e) => mudarLinha(l.chave, { produto: e.target.value })} className="h-8 w-48 px-2 rounded-md border border-linha bg-papel text-[13px]">
+                        <option value="">— escolher —</option>
+                        {dados.produtos.map((p) => <option key={p.id} value={p.id}>{rotuloProduto(p)}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-2 py-1.5"><textarea value={l.descricao} rows={Math.max(1, l.descricao.split('\n').length)} onChange={(e) => mudarLinha(l.chave, { descricao: e.target.value })}
+                      className="w-full min-w-56 px-2 py-1 rounded-md border border-linha bg-papel text-[13px]" /></td>
+                    <td className="px-2 py-1.5"><Entrada className="h-8 text-right" value={l.quantidade} onChange={(e) => mudarLinha(l.chave, { quantidade: Math.max(0, Math.round(parseNum(e.target.value) ?? 0)) })} /></td>
+                    <td className="px-2 py-1.5"><Entrada className="h-8 text-right" value={l.preco} onChange={(e) => mudarLinha(l.chave, { preco: Math.max(0, parseNum(e.target.value) ?? 0) })} /></td>
+                  </tr>))}</tbody>
+              </table>
+              <p className="text-[12px] text-tenue mt-1">Quantidades: embalado → confecionado → encomenda. {HABITUAL[empresa].comPreco ? 'Na Pereira’s Project a guia leva o preço por peça.' : 'Na Pereira & Cruz a guia vai a 0 € (o preço entra na fatura).'}</p>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
+              <span className="text-[13px] text-suave">{escolhidas.length} linha(s) · <b>{int(pecas)}</b> peças{valor > 0 && <> · {eur(valor)} sem IVA</>}</span>
+              <div className="flex items-center gap-3">
+                {falta && <span className="text-[12.5px] text-ambar">{falta}</span>}
+                <Botao variante="primario" icone={<FileText size={15} />} disabled={!!falta} onClick={() => setConfirmar(true)}>Criar rascunho no TOConline</Botao>
+              </div>
+            </div>
+          </div>
+        )}
+      </Cartao>
+
+      <Modal aberto={confirmar} onFechar={() => !aCriar && setConfirmar(false)} titulo="Criar rascunho da guia?" sub={`${NOME_EMPRESA_TOC[empresa]} → ${nomeCliente}`}
+        rodape={<><Botao onClick={() => setConfirmar(false)} disabled={aCriar}>Cancelar</Botao><Botao variante="primario" onClick={criar} disabled={aCriar}>{aCriar ? 'A criar…' : 'Criar rascunho'}</Botao></>}>
+        <div className="text-[13.5px] space-y-2">
+          <p>Viatura <b>{viatura}</b> · carga a <b>{hora.replace('T', ' ')}</b></p>
+          <p>De {carga.morada}, {carga.cp} {carga.localidade}<br />Para {descarga.morada}, {descarga.cp} {descarga.localidade}</p>
+          <ul className="list-disc pl-5">{escolhidas.map((l) => <li key={l.chave}>{l.descricao.split('\n').join(' · ')}: {int(l.quantidade)} un.{l.preco > 0 && <> × {eur(l.preco)}</>}</li>)}</ul>
+          <p className="text-suave">Fica como <b>rascunho</b> no TOConline: confira-o lá e finalize (é na finalização que a guia ganha número e é comunicada à AT).</p>
+        </div>
+      </Modal>
+    </div>
+  )
+}

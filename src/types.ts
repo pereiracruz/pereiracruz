@@ -106,6 +106,19 @@ export interface EstadoCompra { chave: string; estado: EstadoCompraTipo; data?: 
 export type Etapa = 'Materiais' | 'Corte' | 'Confeção' | 'Lavandaria' | 'Embalamento' | 'Expedição'
 export interface Prazo { etapa: Etapa; data?: string; feito?: string; quem?: string } // quem: escolhido na encomenda (ex.: confeção feita fora)
 
+/** Guia de transporte criada no TOConline a partir da encomenda (começa como rascunho; finaliza-se no TOConline). */
+export interface GuiaTOC {
+  id: string // id do documento no TOConline
+  empresa: 'PP' | 'PC'
+  criadaEm: string
+  destinatario: string
+  pecas: number
+  viatura: string
+  estado: 'rascunho' | 'finalizada' | 'apagada'
+  numero?: string // ex.: GT 2026/345 (só depois de finalizada)
+  codigoAT?: string
+}
+
 export type EstadoEncomenda = 'Em revisão' | 'Fichas geradas' | 'Concluída'
 
 export interface Encomenda {
@@ -126,6 +139,7 @@ export interface Encomenda {
   compras?: EstadoCompra[] // estado de cada material a comprar (pela Pereira's Project)
   margemCompras?: { tecido: number; acessorios: number } // % de quebra a acrescentar
   prazos?: Prazo[] // datas planeadas e concluídas de cada etapa até à entrega
+  guias?: GuiaTOC[] // guias de transporte criadas no TOConline
   criadaEm: string
   estado: EstadoEncomenda
   preEncomenda: number
