@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { AlertTriangle, CalendarClock, CircleCheck, Download, RotateCcw, Upload } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CircleCheck, Download, Eraser, RotateCcw, Upload } from 'lucide-react'
+import { IDS_EXEMPLO, dadosExemplo, type GrupoExemplo } from '../lib/exemplo'
 import { COLECOES, useDb, type Colecao } from '../store/db'
 import { Botao, Cabecalho, Cartao, Entrada, Modal, aviso } from '../components/ui'
 import { ACAO_DESCARREGADA, compararCopia, criarCopia, descarregarCopia, lerCopia, listarAutomaticas, obterAutomatica, type Copia, type CopiaAutomatica, type Diferenca } from '../lib/copias'
@@ -49,6 +50,28 @@ export default function Copias() {
     const total = COLECOES.reduce((n, col) => n + (c.colecoes[col]?.length ?? 0), 0)
     log(ACAO_DESCARREGADA, `${nome} · ${total} registos`)
     aviso('Cópia de segurança descarregada.')
+  }
+
+  // ---- dados de exemplo (encomendas, pedido e histórico carregados no primeiro arranque)
+  const exemplo = dadosExemplo(estado)
+  const temExemplo = exemplo.encomendas.length + exemplo.pedidos.length + exemplo.historico.length > 0
+  const [limpar, setLimpar] = useState(false)
+  const [grupos, setGrupos] = useState<Record<GrupoExemplo, boolean>>({ encomendas: true, pedidos: true, historico: false })
+  const [textoLimpar, setTextoLimpar] = useState('')
+  const aApagar = (g: GrupoExemplo) => (grupos[g] ? exemplo[g].length : 0)
+  const limparExemplo = () => {
+    descarregar() // cópia antes de apagar
+    const fora = <T extends { id: string }>(g: GrupoExemplo, lista: T[]) => (grupos[g] ? lista.filter((x) => !IDS_EXEMPLO[g].has(x.id)) : lista)
+    const s = useDb.getState()
+    const detalhe = [
+      aApagar('encomendas') ? `encomendas: ${exemplo.encomendas.map((e) => `${e.cliente} ${e.colecao}`).join(', ')}` : '',
+      aApagar('pedidos') ? `pedidos: ${exemplo.pedidos.map((p) => `${p.peca} ${p.variante}`.trim()).join(', ')}` : '',
+      aApagar('historico') ? `histórico: ${exemplo.historico.length} preços` : '',
+    ].filter(Boolean).join(' · ')
+    useDb.setState({ encomendas: fora('encomendas', s.encomendas), pedidos: fora('pedidos', s.pedidos), historico: fora('historico', s.historico) })
+    log('Dados de exemplo apagados', detalhe)
+    setLimpar(false); setTextoLimpar('')
+    aviso(modoServidor ? 'Dados de exemplo apagados. A gravar no servidor…' : 'Dados de exemplo apagados.')
   }
 
   const abrirAutomatica = async (id: number, acao: 'descarregar' | 'repor') => {
@@ -129,6 +152,40 @@ export default function Copias() {
             )}
         </Cartao>
       )}
+
+      {temExemplo && (
+        <Cartao className="p-5 mb-5">
+          <div className="flex items-center gap-2 mb-1"><Eraser size={16} className="text-suave" /><h3 className="font-semibold">Dados de exemplo</h3></div>
+          <p className="text-[13px] text-suave mb-3">Encomendas, pedidos e preços carregados no primeiro arranque, a partir dos documentos de exemplo.
+            Contam nas compras, nos prazos, no sino e nas margens. Os dados mestre (clientes, tecidos, tabelas da Clothius…) não são apagados.</p>
+          <ul className="text-[13px] space-y-0.5 mb-4">
+            {exemplo.encomendas.length > 0 && <li>Encomendas: {exemplo.encomendas.map((e) => `${e.cliente} · ${e.colecao}`).join(', ')}</li>}
+            {exemplo.pedidos.length > 0 && <li>Pedidos de orçamento: {exemplo.pedidos.map((p) => `${p.peca} ${p.variante}`.trim()).join(', ')}</li>}
+            {exemplo.historico.length > 0 && <li>Histórico de preços: {exemplo.historico.length} preços</li>}
+          </ul>
+          <Botao icone={<Eraser size={15} />} disabled={aGuardar > 0} onClick={() => { setLimpar(true); setTextoLimpar('') }}>Limpar dados de exemplo…</Botao>
+        </Cartao>
+      )}
+
+      <Modal aberto={limpar} onFechar={() => setLimpar(false)} titulo="Limpar dados de exemplo" sub="Antes de apagar é descarregada uma cópia de segurança."
+        rodape={<>
+          <Botao variante="fantasma" onClick={() => setLimpar(false)}>Cancelar</Botao>
+          <Botao variante="perigo" icone={<Eraser size={15} />} disabled={textoLimpar.trim().toUpperCase() !== 'LIMPAR' || !(aApagar('encomendas') + aApagar('pedidos') + aApagar('historico'))} onClick={limparExemplo}>Apagar os escolhidos</Botao>
+        </>}>
+        <div className="space-y-3 text-[14px]">
+          {([['encomendas', 'Encomendas de exemplo', exemplo.encomendas.map((e) => `${e.cliente} · ${e.colecao}`).join(', ')],
+            ['pedidos', 'Pedidos de orçamento de exemplo', exemplo.pedidos.map((p) => `${p.peca} ${p.variante}`.trim()).join(', ')],
+            ['historico', 'Histórico de preços de exemplo', `${exemplo.historico.length} preços das encomendas de exemplo da Imprevu. Podem servir de referência nos orçamentos: só apague se não quiser usá-los.`]] as const)
+            .filter(([g]) => exemplo[g].length > 0).map(([g, rotulo, det]) => (
+              <label key={g} className="flex gap-3 items-start">
+                <input type="checkbox" className="mt-1" checked={grupos[g]} onChange={(e) => setGrupos({ ...grupos, [g]: e.target.checked })} />
+                <span><span className="font-medium">{rotulo}</span> <span className="text-suave">({exemplo[g].length})</span><span className="block text-[13px] text-suave">{det}</span></span>
+              </label>
+            ))}
+          <p className="text-[13px]">Escreva <b>LIMPAR</b> para confirmar.</p>
+          <Entrada value={textoLimpar} onChange={(e) => setTextoLimpar(e.target.value)} placeholder="LIMPAR" />
+        </div>
+      </Modal>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
         <Cartao className="p-5">

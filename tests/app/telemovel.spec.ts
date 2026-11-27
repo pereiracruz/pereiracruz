@@ -4,7 +4,8 @@ import { expect, test } from '../apoio/app'
 test.use({ viewport: { width: 390, height: 664 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true })
 
 const PAGINAS = ['/', '/fichas', '/fichas/longratex-frqm2026-0130', '/fichas/longratex-frqm2026-0130?aba=compras', '/fichas/longratex-frqm2026-0130?aba=prazos',
-  '/compras', '/prazos', '/orcamentos', '/margens', '/historico', '/dados', '/conta', '/copias', '/orcamentos/novo']
+  '/compras', '/prazos', '/orcamentos', '/margens', '/historico', '/dados', '/conta', '/copias', '/orcamentos/novo',
+  '/conciliacao', '/faturas', '/producao-diaria', '/faltas']
 
 test('telemóvel: nenhuma página passa a largura do ecrã', async ({ pagina: p }) => {
   for (const url of PAGINAS) {
