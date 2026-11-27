@@ -35,17 +35,19 @@ export function prepararGoogle() {
   return gis
 }
 
-let token: { valor: string; expira: number } | null = null
+let token: { valor: string; expira: number; ambito: string } | null = null
+/** Âmbito para editar as folhas de cálculo que já existem no Drive (ex.: a conciliação bancária). */
+export const AMBITO_FOLHAS = 'https://www.googleapis.com/auth/spreadsheets'
 /** Pede o token ao Google. Tem de ser chamado diretamente no clique (sem esperas antes), para a janela não ser bloqueada. */
-function obterToken(): Promise<string> {
-  if (token && token.expira > Date.now() + 60_000) return Promise.resolve(token.valor)
+export function obterToken(ambito = AMBITO): Promise<string> {
+  if (token && token.expira > Date.now() + 60_000 && ambito.split(' ').every((a) => token!.ambito.includes(a))) return Promise.resolve(token.valor)
   if (!window.google?.accounts?.oauth2) return Promise.reject(new Error('O Google ainda está a carregar. Tente de novo dentro de segundos.'))
   return new Promise((ok, falha) => {
     const cliente = window.google!.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID!, scope: AMBITO,
+      client_id: CLIENT_ID!, scope: ambito,
       callback: (r) => {
         if (r.error || !r.access_token) return falha(new Error(r.error_description || r.error || 'Autorização recusada.'))
-        token = { valor: r.access_token, expira: Date.now() + (r.expires_in ?? 3600) * 1000 }
+        token = { valor: r.access_token, expira: Date.now() + (r.expires_in ?? 3600) * 1000, ambito }
         ok(r.access_token)
       },
       error_callback: (e) => falha(new Error(e.type === 'popup_closed' ? 'A janela do Google foi fechada antes de autorizar.' : e.type === 'popup_failed_to_open' ? 'O browser bloqueou a janela do Google: autorize janelas pop-up para este site.' : e.message || 'Autorização cancelada.')),
@@ -54,13 +56,15 @@ function obterToken(): Promise<string> {
   })
 }
 
-async function google(url: string, t: string, init: RequestInit = {}) {
+export async function google(url: string, t: string, init: RequestInit = {}) {
   const r = await fetch(url, { ...init, headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) } })
   const corpo = await r.json().catch(() => ({}))
   if (r.status === 401) { token = null; throw new Error('A autorização do Google expirou. Exporte de novo.') }
   if (!r.ok) {
     const msg: string = corpo?.error?.message ?? `HTTP ${r.status}`
     if (r.status === 403 && /has not been used|disabled/i.test(msg)) throw new Error('Ative a Google Sheets API e a Google Drive API no projeto Google Cloud.')
+    if (r.status === 403 && /insufficient|scope|permission/i.test(msg)) { token = null; throw new Error('Falta autorizar a aplicação a editar as suas folhas do Google (ou a conta escolhida não tem acesso a este ficheiro). Tente de novo e aceite o pedido do Google.') }
+    if (r.status === 404) throw new Error('Não encontrei a folha de cálculo no Google Drive (confirme o link e a conta Google escolhida).')
     throw new Error(msg)
   }
   return corpo

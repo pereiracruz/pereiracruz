@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { AlertTriangle, ArrowLeft, Check, CircleCheck, Download, FileUp, Landmark, Link2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, CircleCheck, Download, ExternalLink, FileUp, Landmark, Link2, Plus, RefreshCw, Save, FileSpreadsheet, Trash2 } from 'lucide-react'
 import { Botao, Cabecalho, Campo, Cartao, Entrada, Etiqueta, Modal, Seletor, Vazio, aviso } from '../components/ui'
 import { lerComIA, type ExtratoLido } from '../lib/ia'
 import { lerExtratoFicheiro } from '../lib/extratoFicheiro'
 import { abrirModelo, descarregarModelo, folhaPara, preencher, type Modelo } from '../lib/excelModelo'
+import { abrirLivroGoogle, ficheiroDaEmpresa, guardarFicheiroDaEmpresa, idDoLink, preencherGoogle, prepararGoogle, sheetsDisponivel, sugestaoFolha, type LivroGoogle } from '../lib/conciliacaoSheets'
 import {
   MESES, apagarConciliacao, arred, candidatas, carregarFaturas, cruzar, guardarConciliacao, idConciliacao,
   listarConciliacoes, saldoCalculado, textoFaturas, type Conciliacao, type DocTOC, type Movimento,
@@ -85,6 +86,15 @@ function Editor({ inicial, anteriores, onSair, log }: { inicial: Conciliacao; an
   const inputExcel = useRef<HTMLInputElement>(null)
   const [modelo, setModelo] = useState<Modelo | null>(null)
   const nova = !inicial.id
+
+  // folha de cálculo Google da empresa (Drive): o id lê-se antes, para o clique abrir logo a janela do Google
+  const [idGoogle, setIdGoogle] = useState<string | null>(null)
+  const [livro, setLivro] = useState<LivroGoogle | null>(null)
+  useEffect(() => { void prepararGoogle(); setIdGoogle(null); void ficheiroDaEmpresa(c.empresa).then(setIdGoogle) }, [c.empresa])
+  const abrirGoogle = async () => {
+    if (!idGoogle) return
+    try { setLivro(await abrirLivroGoogle(idGoogle)) } catch (e) { aviso(e instanceof Error ? e.message : String(e)) }
+  }
 
   const abrirExcel = async (f: File) => {
     try { setModelo(await abrirModelo(f)) } catch (e) { aviso(e instanceof Error ? e.message : String(e)) }
@@ -170,7 +180,8 @@ function Editor({ inicial, anteriores, onSair, log }: { inicial: Conciliacao; an
         acoes={<>
           <Botao variante="fantasma" icone={<ArrowLeft size={15} />} onClick={() => { if (!alterado || confirm('Sair sem guardar as alterações?')) onSair() }}>Voltar</Botao>
           {!nova && <Botao variante="perigo" icone={<Trash2 size={15} />} onClick={apagar}>Apagar</Botao>}
-          <Botao icone={<Download size={15} />} disabled={!c.movimentos.length} onClick={() => inputExcel.current?.click()}>Preencher o meu Excel</Botao>
+          {sheetsDisponivel && <Botao icone={<FileSpreadsheet size={15} />} disabled={!c.movimentos.length || !idGoogle} onClick={abrirGoogle}>Preencher no Google Sheets</Botao>}
+          <Botao variante={sheetsDisponivel ? 'fantasma' : 'secundario'} icone={<Download size={15} />} disabled={!c.movimentos.length} onClick={() => inputExcel.current?.click()}>{sheetsDisponivel ? 'Ficheiro Excel' : 'Preencher o meu Excel'}</Botao>
           <input ref={inputExcel} type="file" hidden accept=".xlsx" onChange={(e) => { const f = e.target.files?.[0]; if (f) void abrirExcel(f); e.target.value = '' }} />
           <Botao variante="primario" icone={<Save size={15} />} disabled={!alterado} onClick={guardar}>Guardar</Botao>
         </>} />
@@ -269,6 +280,8 @@ function Editor({ inicial, anteriores, onSair, log }: { inicial: Conciliacao; an
         </>
       )}
 
+      {livro && <PreencherGoogle livro={livro} c={c} onFechar={() => setLivro(null)} log={log}
+        onTrocar={async (id) => { await guardarFicheiroDaEmpresa(c.empresa, id); setIdGoogle(id); try { setLivro(await abrirLivroGoogle(id)) } catch (e) { aviso(e instanceof Error ? e.message : String(e)) } }} />}
       {modelo && <PreencherExcel modelo={modelo} c={c} onFechar={() => setModelo(null)} log={log} />}
       <Escolher mov={escolher} docs={docs} onFechar={() => setEscolher(null)}
         onEscolher={(m) => { mudarMov(m.id, () => m); setEscolher(null) }} />
@@ -371,6 +384,65 @@ function PreencherExcel({ modelo, c, onFechar, log }: { modelo: Modelo; c: Conci
         </div>}
         <p className="text-[13px] text-suave">Só a folha escolhida é alterada: as outras folhas, o logótipo e a formatação ficam como estão. O nº da fatura vai entre parênteses na descrição e o saldo fica com as fórmulas. Guarde o ficheiro descarregado no lugar do antigo.</p>
       </div>
+    </Modal>
+  )
+}
+
+/** Preencher a folha do mês na folha de cálculo Google da empresa (no Drive). */
+function PreencherGoogle({ livro, c, onFechar, onTrocar, log }: { livro: LivroGoogle; c: Conciliacao; onFechar: () => void; onTrocar: (id: string) => void; log: (a: string, d: string) => void }) {
+  const sugestao = useMemo(() => sugestaoFolha(livro, c), [livro, c])
+  const NOVA = '__nova__'
+  const [folha, setFolha] = useState(sugestao.existente?.nome ?? NOVA)
+  const [base, setBase] = useState(sugestao.base?.nome ?? livro.folhas[0]?.nome ?? '')
+  const [nome, setNome] = useState(sugestao.novoNome)
+  const [link, setLink] = useState('')
+  const [aFazer, setAFazer] = useState(false)
+  const [feito, setFeito] = useState<string | null>(null)
+  useEffect(() => { setFolha(sugestao.existente?.nome ?? NOVA); setBase(sugestao.base?.nome ?? livro.folhas[0]?.nome ?? ''); setNome(sugestao.novoNome); setFeito(null) }, [sugestao, livro])
+  const repetido = folha === NOVA && livro.folhas.some((f) => f.nome === nome.trim())
+  const fazer = async () => {
+    setAFazer(true)
+    try {
+      const url = await preencherGoogle(livro, c, folha === NOVA ? { copiarDe: base, nome: nome.trim() } : { folha })
+      const usada = folha === NOVA ? nome.trim() : folha
+      log('Conciliação passada para o Google Sheets', `${livro.titulo} · folha ${usada}`)
+      setFeito(url)
+    } catch (e) { aviso(`Não foi possível preencher: ${e instanceof Error ? e.message : String(e)}`) } finally { setAFazer(false) }
+  }
+  return (
+    <Modal aberto onFechar={onFechar} titulo="Preencher no Google Sheets" sub={livro.titulo}
+      rodape={feito ? <>
+        <Botao variante="fantasma" onClick={onFechar}>Fechar</Botao>
+        <a href={feito} target="_blank" rel="noreferrer"><Botao variante="primario" icone={<ExternalLink size={15} />}>Abrir a folha</Botao></a>
+      </> : <>
+        <Botao variante="fantasma" onClick={onFechar}>Cancelar</Botao>
+        <Botao variante="primario" icone={<FileSpreadsheet size={15} />} disabled={aFazer || (folha === NOVA && (!nome.trim() || repetido))} onClick={fazer}>{aFazer ? 'A preencher…' : 'Preencher'}</Botao>
+      </>}>
+      {feito ? <p className="text-[14px]">Feito: a folha «{folha === NOVA ? nome : folha}» de {livro.titulo} está preenchida. O Google guarda o histórico de versões (Ficheiro → Histórico de versões), se precisar de voltar atrás.</p> : (
+        <div className="space-y-4">
+          <Campo rotulo="Folha" ajuda={sugestao.existente ? 'É a folha deste mês e desta conta: os movimentos que lá estão são substituídos.' : 'Ainda não há folha deste mês para esta conta: é criada uma nova, duplicando a última da mesma conta (com a mesma formatação).'}>
+            <select value={folha} onChange={(e) => setFolha(e.target.value)} className="w-full h-10 px-3 rounded-controlo border border-linha bg-papel text-[14px]">
+              <option value={NOVA}>Criar folha nova…</option>
+              {livro.folhas.map((f) => <option key={f.sheetId} value={f.nome}>{f.nome}</option>)}
+            </select>
+          </Campo>
+          {folha === NOVA && <div className="grid grid-cols-2 gap-3">
+            <Campo rotulo="Nome da folha nova" ajuda={repetido ? 'Já existe uma folha com este nome.' : undefined}><Entrada value={nome} onChange={(e) => setNome(e.target.value)} /></Campo>
+            <Campo rotulo="Duplicar a folha">
+              <select value={base} onChange={(e) => setBase(e.target.value)} className="w-full h-10 px-3 rounded-controlo border border-linha bg-papel text-[14px]">
+                {livro.folhas.map((f) => <option key={f.sheetId} value={f.nome}>{f.nome}</option>)}
+              </select>
+            </Campo>
+          </div>}
+          <details className="text-[13px] text-suave">
+            <summary className="cursor-pointer">Usar outra folha de cálculo (ex.: a de 2027)</summary>
+            <div className="flex gap-2 mt-2">
+              <Entrada value={link} onChange={(e) => setLink(e.target.value)} placeholder="Cole o link da folha do Google Sheets" />
+              <Botao disabled={!idDoLink(link)} onClick={() => onTrocar(idDoLink(link)!)}>Usar</Botao>
+            </div>
+          </details>
+        </div>
+      )}
     </Modal>
   )
 }
