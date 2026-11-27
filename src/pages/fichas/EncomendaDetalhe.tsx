@@ -1,8 +1,8 @@
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, Check, CheckCheck, ExternalLink, FileSpreadsheet, Info, Package, Sheet, Trash2, Upload } from 'lucide-react'
+import { AlertTriangle, Check, CheckCheck, ExternalLink, FileSpreadsheet, FileText, Info, Package, RefreshCw, Sheet, Trash2, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { useDb } from '../../store/db'
-import { Botao, Cabecalho, Cartao, Etiqueta, Kpi, Pilulas, Tabela, aviso } from '../../components/ui'
+import { Botao, Cabecalho, Cartao, Etiqueta, Kpi, Pilulas, Tabela, aviso, type Tom } from '../../components/ui'
 import ComprasEncomenda from '../producao/ComprasEncomenda'
 import PrazosEncomenda from '../producao/PrazosEncomenda'
 import GuiasEncomenda from '../producao/GuiasEncomenda'
@@ -14,7 +14,9 @@ import { exportarLivro, montarLivro, nomeLivro } from '../../lib/exportar'
 import { exportarSheets, sheetsDisponivel } from '../../lib/sheets'
 import { hojeISO } from '../../lib/format'
 import { gerarFichaDoTechPack } from '../../lib/gerarFicha'
-import type { TechPackLido } from '../../lib/ia'
+import { lerGuardadoComIA, ligarTechPack, type TechPackLido } from '../../lib/ia'
+import { abrirOF, cfgCliente, guardarOF } from '../../lib/of'
+import { modoServidor } from '../../lib/supabase'
 import { dataCurta, eur, int } from '../../lib/format'
 import { ESTADO_FICHA } from './FichaModelo'
 import { tomEstado } from './Encomendas'
@@ -26,6 +28,7 @@ export default function EncomendaDetalhe() {
   const { encomendas, destinatarios, fornecedores, tecidos, equivalencias, acessorios, clientes, atualizarEncomenda, atualizarModelo, apagarEncomenda, log } = useDb()
   const enc = encomendas.find((e) => e.id === encId)
   const [aExportar, setAExportar] = useState(false)
+  const [aTratarOF, setATratarOF] = useState<string | null>(null) // modelo cuja OF está a ser guardada/lida
   const [params, setParams] = useSearchParams()
   const aba = (params.get('aba') ?? 'modelos') as 'modelos' | 'compras' | 'prazos' | 'guias'
   if (!enc) return <Navigate to="/fichas" replace />
@@ -37,6 +40,63 @@ export default function EncomendaDetalhe() {
   const todasAprovadas = enc.modelos.filter((m) => m.estado !== 'sem-ficha').every((m) => m.estado === 'aprovada' || m.estado === 'enviada')
   const aprovadas = enc.modelos.filter((m) => m.estado === 'aprovada' || m.estado === 'enviada')
   const destNome = (f: string) => destinatarios.find((d) => d.folha === f)?.nome
+
+  // clientes com ordem de fabrico (OF) por modelo em vez de tech pack (ex.: Simão e Olgando, GBTX)
+  const cfg = cfgCliente(clientes, enc.cliente)
+  const comOF = cfg?.documentoModelo === 'OF'
+  const encId_ = enc.id
+
+  /** Lê a OF com IA (mesma leitura do tech pack) e liga-a ao modelo, para se poder gerar a ficha. */
+  const lerOF = async (m: Modelo, ficheiro: string, caminho: string) => {
+    const chave = `${ficheiro} (OF ${m.nome})`
+    try {
+      const contexto = `Ordem de fabrico (OF) do cliente ${enc.cliente}, para o modelo ${m.nome}${m.refCliente ? ` (ref. ${m.refCliente})` : ''}; referências das variantes: ${m.variantes.map((v) => v.ref).filter(Boolean).join(', ') || '—'}. Não há tech pack: a OF é o documento técnico do modelo.${cfg?.acessorios === 'Do cliente' ? ' Os acessórios e a embalagem são fornecidos pelo cliente; a fábrica trata do tecido, lavandaria, corte e confeção.' : ''}`
+      const r = await lerGuardadoComIA<TechPackLido>(caminho, 'techpack', contexto)
+      if (!r.dados.modelos?.length) throw new Error('a leitura não encontrou nenhum modelo na OF')
+      const indice = ligarTechPack([m], r.dados)[m.id] ?? 0
+      atualizarEncomenda(encId_, (e) => ({
+        ...e,
+        techPacks: [...(e.techPacks ?? []).filter((t) => t.ficheiro !== chave), { ficheiro: chave, caminho, dados: r.dados as unknown }],
+        modelos: e.modelos.map((x) => (x.id === m.id ? { ...x, techPack: true, techPackLido: { ficheiro: chave, indice }, of: x.of && { ...x.of, erroLeitura: undefined } } : x)),
+      }))
+      log('OF lida com IA', `${enc.cliente} · ${m.nome} · ${ficheiro}`)
+      aviso('OF lida. Já pode gerar a ficha.')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      atualizarModelo(encId_, m.id, (x) => ({ ...x, of: x.of && { ...x.of, erroLeitura: msg } }))
+      aviso(`OF guardada, mas a leitura com IA falhou: ${msg}`)
+    }
+  }
+
+  const carregarOF = async (m: Modelo, f: File) => {
+    if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { alert('A OF tem de ser um PDF.'); return }
+    if (!modoServidor) { alert('Guardar a OF precisa do servidor (Supabase).'); return }
+    setATratarOF(m.id)
+    try {
+      const caminho = await guardarOF(f)
+      atualizarModelo(encId_, m.id, (x) => ({ ...x, of: { ficheiro: f.name, caminho, data: hojeISO() }, ...(x.estado === 'sem-ficha' ? { techPackLido: undefined } : {}) }))
+      log(m.of ? 'OF substituída' : 'OF carregada', `${enc.cliente} · ${m.nome} · ${f.name}`)
+      if (m.estado === 'sem-ficha') await lerOF(m, f.name, caminho)
+      else aviso('OF guardada. A ficha já existente não foi alterada.')
+    } catch (e) { alert(e instanceof Error ? e.message : String(e)) } finally { setATratarOF(null) }
+  }
+
+  /** Botão que abre a escolha do PDF da OF. */
+  const botaoOF = (m: Modelo, texto: string) => (
+    <span onClick={(e) => e.stopPropagation()} className="inline-block">
+      <input type="file" accept="application/pdf,.pdf" className="hidden" disabled={aTratarOF === m.id}
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void carregarOF(m, f) }} />
+      <Botao pequeno variante="fantasma" icone={<Upload size={13} />} disabled={aTratarOF === m.id} onClick={(e) => (e.currentTarget.previousElementSibling as HTMLInputElement).click()}>
+        {aTratarOF === m.id ? 'A guardar e ler…' : texto}
+      </Botao>
+    </span>
+  )
+
+  const estadoFicha = (m: Modelo): { rotulo: string; tom: Tom } => {
+    if (m.estado !== 'sem-ficha') return ESTADO_FICHA[m.estado]
+    if (comOF) return !m.of ? { rotulo: 'Falta OF', tom: 'neutro' } : m.of.erroLeitura && !m.techPackLido ? { rotulo: 'OF por ler', tom: 'ambar' } : { rotulo: 'OF carregada', tom: 'azul' }
+    return m.techPack ? ESTADO_FICHA[m.estado] : { rotulo: 'Falta tech pack', tom: 'neutro' }
+  }
 
   return (
     <>
@@ -120,7 +180,12 @@ export default function EncomendaDetalhe() {
         colunas={[
           { id: 'modelo', rotulo: 'Modelo', valor: (m) => `${m.nome} ${m.refCliente ?? ''}`, filtro: 'texto', render: (m) => (
             <div><p className="font-medium">{m.nome}{m.alias && <span className="text-suave font-normal"> ({m.alias})</span>}</p>
-              {m.refCliente && <p className="text-[12px] text-tenue font-mono">{m.linhaEncomenda} · {m.refCliente}</p>}</div>) },
+              {m.refCliente && <p className="text-[12px] text-tenue font-mono">{m.linhaEncomenda} · {m.refCliente}</p>}
+              {comOF && m.of && <p className="text-[12px] mt-0.5 flex items-center gap-2">
+                <button onClick={(e) => { e.stopPropagation(); void abrirOF(m.of!.caminho) }} className="inline-flex items-center gap-1 text-azul hover:underline"><FileText size={12} />OF: {m.of.ficheiro}</button>
+                {m.estado !== 'sem-ficha' && <label onClick={(e) => e.stopPropagation()} className="text-tenue hover:text-tinta cursor-pointer">substituir
+                  <input type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void carregarOF(m, f) }} /></label>}
+              </p>}</div>) },
           { id: 'tipo', rotulo: 'Tipo de peça', valor: (m) => m.tipoPeca, filtro: 'lista' },
           { id: 'var', rotulo: 'Variantes', valor: (m) => m.variantes.map((v) => v.nome).join(' · '), render: (m) => <span className="text-[13px] text-tinta-2">{m.variantes.map((v) => (
             <span key={v.id} className="whitespace-nowrap">{v.nome}{(v.linhasOrigem ?? 1) > 1 && <span className="ml-1 text-[11px] text-azul bg-azul-fraco rounded px-1" title="A mesma cor vinha partida em várias linhas da encomenda">{v.linhasOrigem} linhas juntas</span>}</span>
@@ -128,17 +193,25 @@ export default function EncomendaDetalhe() {
           { id: 'pecas', rotulo: 'Peças', valor: (m) => pecasModelo(m), render: (m) => int(pecasModelo(m)), alinhar: 'centro' },
           { id: 'dest', rotulo: 'Folhas por destinatário', valor: (m) => (m.estado === 'sem-ficha' ? '' : folhasDoModelo(m).join()), render: (m) => m.estado === 'sem-ficha' ? <span className="text-tenue">—</span> :
             <span className="text-[12px] text-suave">{folhasDoModelo(m).filter((f) => f !== 'medidas').map((f) => f === 'produto' || f === 'embalamento' ? NOME_FOLHA[f] : `${NOME_FOLHA[f]} (${destNome(f)})`).join(' · ')}</span> },
-          { id: 'ficha', rotulo: 'Ficha', valor: (m) => (m.estado === 'sem-ficha' && !m.techPack ? 'Falta tech pack' : ESTADO_FICHA[m.estado].rotulo), filtro: 'lista', alinhar: 'centro',
-            render: (m) => m.estado === 'sem-ficha' && !m.techPack ? <Etiqueta>Falta tech pack</Etiqueta> : <Etiqueta tom={ESTADO_FICHA[m.estado].tom}>{ESTADO_FICHA[m.estado].rotulo}</Etiqueta> },
+          { id: 'ficha', rotulo: 'Ficha', valor: (m) => estadoFicha(m).rotulo, filtro: 'lista', alinhar: 'centro',
+            render: (m) => { const e = estadoFicha(m); return <Etiqueta tom={e.tom}>{e.rotulo}</Etiqueta> } },
         ]}
         acaoLinha={(m) => {
           if (m.estado !== 'sem-ficha') return <Botao pequeno onClick={() => nav(`/fichas/${enc.id}/${m.id}`)}>Abrir fichas</Botao>
+          if (comOF && !m.of) return botaoOF(m, 'Carregar OF')
           const tp = m.techPackLido && (enc.techPacks ?? []).find((t) => t.ficheiro === m.techPackLido!.ficheiro)
           const modeloTP = tp ? (tp.dados as TechPackLido).modelos[m.techPackLido!.indice] : undefined
+          if (comOF && !modeloTP) return (
+            <span className="inline-flex gap-1.5">
+              <Botao pequeno variante="primario" icone={<RefreshCw size={13} />} disabled={aTratarOF === m.id} title={m.of?.erroLeitura}
+                onClick={async () => { setATratarOF(m.id); try { await lerOF(m, m.of!.ficheiro, m.of!.caminho) } finally { setATratarOF(null) } }}>{aTratarOF === m.id ? 'A ler…' : 'Ler OF'}</Botao>
+              {botaoOF(m, 'Substituir')}
+            </span>
+          )
           if (modeloTP) return (
             <Botao pequeno variante="primario" onClick={() => {
               atualizarModelo(enc.id, m.id, (x) => gerarFichaDoTechPack(x, modeloTP, enc, { fornecedores, tecidos, equivalencias, acessorios, clientes }))
-              log('Ficha gerada do tech pack', `${enc.cliente} · ${m.nome} · ${tp!.ficheiro}`)
+              log(comOF ? 'Ficha gerada da OF' : 'Ficha gerada do tech pack', `${enc.cliente} · ${m.nome} · ${tp!.ficheiro}`)
               aviso('Ficha gerada. Reveja os valores assinalados e aprove.')
               nav(`/fichas/${enc.id}/${m.id}`)
             }}>Gerar ficha</Botao>

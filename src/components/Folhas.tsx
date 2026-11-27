@@ -159,7 +159,7 @@ export function Folha({ enc, m, v, folha, idEnc, destinatarios, dataFicha, logo 
           <T cab={['Cor do cliente', 'Código de lavagem', ...tam, 'Totais']} destacarUltima
             linhas={[[v.refCor.charAt(0) + v.refCor.slice(1).toLowerCase(), v.codigoLavagem, ...qtdLinha]]} total={['TOTAL', '', ...qtdLinha]} />
           <Obs titulo="Observações para a lavandaria" itens={[
-            `Lavagem: ${(m.lavagem ?? v.nome).toLowerCase()}, como no tech pack.`,
+            `Lavagem: ${(m.lavagem ?? v.nome).toLowerCase()}, como ${m.of ? 'na OF' : 'no tech pack'}.`,
             m.operacoes.some((o) => o.tipo === 'Bordado') ? 'Enviar a peça confecionada, com o bordado já feito.' : 'Enviar a peça confecionada.',
             'Seguir amostra física para a tonalidade.',
           ]} />
@@ -176,7 +176,7 @@ export function Folha({ enc, m, v, folha, idEnc, destinatarios, dataFicha, logo 
             <Obs titulo={`Observações para o ${tipo === 'Bordado' ? 'bordador' : 'estampador'}`} itens={[
               tipo === 'Bordado' ? 'Bordar antes de confecionar a frente.' : 'Estampar antes de confecionar.',
               'A quantidade é a do corte desta variante: confere com a ficha de produto.',
-              `Seguir a imagem e a posição do tech pack.`,
+              `Seguir a imagem e a posição ${m.of ? 'da OF' : 'do tech pack'}.`,
             ]} />
           </>
         )
@@ -211,11 +211,11 @@ export function Folha({ enc, m, v, folha, idEnc, destinatarios, dataFicha, logo 
           <>
             <Faixa>Tabela de medidas e graduação · tamanho base: {m.medidasBase ?? '—'} · medidas em cm</Faixa>
             <T cab={['Ponto de medida', '', ...tam, 'Graduação']}
-              linhas={m.medidas.map((md) => [md.ponto, md.techPack ? <span key="t" className="text-[10px] font-bold text-azul bg-azul-fraco px-1 rounded">TECH PACK</span> : '', ...md.valores.map((x) => (x == null ? '—' : num(x))), md.graduacao])} />
-            <Obs titulo="Nota" itens={['Só os pontos marcados TECH PACK vêm do documento da cliente; os restantes são da modelista.']} />
+              linhas={m.medidas.map((md) => [md.ponto, md.techPack ? <span key="t" className="text-[10px] font-bold text-azul bg-azul-fraco px-1 rounded">{m.of ? 'OF' : 'TECH PACK'}</span> : '', ...md.valores.map((x) => (x == null ? '—' : num(x))), md.graduacao])} />
+            <Obs titulo="Nota" itens={[`Só os pontos marcados ${m.of ? 'OF' : 'TECH PACK'} vêm do documento da cliente; os restantes são da modelista.`]} />
           </>
         ) : (
-          <div className="p-6 text-center text-[13px] text-vermelho bg-vermelho-fraco">O tech pack não inclui tabela de medidas: medidas por preencher pela modelista.</div>
+          <div className="p-6 text-center text-[13px] text-vermelho bg-vermelho-fraco">{m.of ? 'A OF' : 'O tech pack'} não inclui tabela de medidas: medidas por preencher pela modelista.</div>
         )
       )}
     </div>

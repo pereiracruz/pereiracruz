@@ -89,7 +89,7 @@ function grelha(enc: Encomenda, m: Modelo, v: Variante, folha: FolhaTipo, idEnc:
       push('Cor do cliente', 'Código de lavagem', ...tam, 'Totais')
       const r = L.length + 1
       push(v.refCor, v.codigoLavagem, ...tam.map((_, i) => F(`${col(c0 + i)}${rq}`, v.qtd[i])), somaLinha(r, tot))
-      push(); obs('Observações para a lavandaria', [`Lavagem: ${(m.lavagem ?? v.nome).toLowerCase()}, como no tech pack.`, 'Seguir amostra física para a tonalidade.'])
+      push(); obs('Observações para a lavandaria', [`Lavagem: ${(m.lavagem ?? v.nome).toLowerCase()}, como ${m.of ? 'na OF' : 'no tech pack'}.`, 'Seguir amostra física para a tonalidade.'])
       break
     }
     case 'bordador': case 'estampador': {
@@ -104,10 +104,10 @@ function grelha(enc: Encomenda, m: Modelo, v: Variante, folha: FolhaTipo, idEnc:
       obs('Observações para embalamento', m.obsEmbalamento?.length ? m.obsEmbalamento : ['Uma peça por saco, com o autocolante colado no saco.'])
       break
     case 'packing': case 'medidas':
-      if (folha === 'packing' || !m.medidas.length) { push('Medidas por preencher: o tech pack não inclui tabela de medidas.'); break }
+      if (folha === 'packing' || !m.medidas.length) { push(`Medidas por preencher: ${m.of ? 'a OF' : 'o tech pack'} não inclui tabela de medidas.`); break }
       push(`Tamanho base: ${m.medidasBase ?? ''} · medidas em cm`)
       push('Ponto de medida', 'Origem', ...tam, 'Graduação')
-      m.medidas.forEach((md) => push(md.ponto, md.techPack ? 'TECH PACK' : '', ...md.valores.map((x) => x ?? ''), md.graduacao))
+      m.medidas.forEach((md) => push(md.ponto, md.techPack ? (m.of ? 'OF' : 'TECH PACK') : '', ...md.valores.map((x) => x ?? ''), md.graduacao))
       break
   }
 

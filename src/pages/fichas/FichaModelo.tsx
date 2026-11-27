@@ -9,6 +9,7 @@ import { idInterno, qtdEmbaladaPreenchida, soma, totalVariante, verificarFicha }
 import { exportarLivro, exportarPDF, montarLivro, nomeLivro } from '../../lib/exportar'
 import { exportarSheets, sheetsDisponivel } from '../../lib/sheets'
 import { hojeISO, parseNum, uid, num } from '../../lib/format'
+import { abrirOF, cfgCliente } from '../../lib/of'
 import type { EstadoFicha, FolhaTipo, LinhaMaterial, Modelo } from '../../types'
 
 export const ESTADO_FICHA: Record<EstadoFicha, { rotulo: string; tom: Tom }> = {
@@ -21,8 +22,9 @@ export const ESTADO_FICHA: Record<EstadoFicha, { rotulo: string; tom: Tom }> = {
 export default function FichaModelo() {
   const { encId, modId } = useParams()
   const nav = useNavigate()
-  const { encomendas, destinatarios, fornecedores, atualizarModelo, atualizarEncomenda, log } = useDb()
+  const { encomendas, destinatarios, fornecedores, clientes, atualizarModelo, atualizarEncomenda, log } = useDb()
   const enc = encomendas.find((e) => e.id === encId)
+  const oCliente = enc ? cfgCliente(clientes, enc.cliente) : undefined
   const m = enc?.modelos.find((x) => x.id === modId)
   const comFicha = m?.variantes.filter((v) => v.fichaGerada) ?? []
   const [varId, setVarId] = useState(comFicha[0]?.id)
@@ -72,6 +74,7 @@ export default function FichaModelo() {
         migalhas={[{ rotulo: 'Encomendas', para: '/fichas' }, { rotulo: `${enc.cliente} · ${enc.colecao}`, para: `/fichas/${enc.id}` }, { rotulo: m.nome }]}
         sobre="Fichas de produção" titulo={m.nome} extra={<Etiqueta tom={ESTADO_FICHA[m.estado].tom}>{ESTADO_FICHA[m.estado].rotulo}</Etiqueta>}
         acoes={m.estado !== 'sem-ficha' && <>
+          {m.of && <Botao icone={<FileText size={15} />} onClick={() => void abrirOF(m.of!.caminho)} title={m.of.ficheiro}>Ver OF</Botao>}
           <Botao variante={editar ? 'primario' : 'secundario'} icone={editar ? <Check size={15} /> : <Pencil size={15} />} onClick={() => setEditar(!editar)}>{editar ? 'Concluir edição' : 'Editar'}</Botao>
           {m.estado === 'rascunho' && <Botao variante="primario" icone={<CircleCheck size={16} />} disabled={bloqueios.length > 0} onClick={aprovar}
             title={bloqueios.length ? 'Resolva os pontos assinalados antes de aprovar' : ''}>Aprovar ficha</Botao>}
@@ -84,7 +87,9 @@ export default function FichaModelo() {
       {m.estado === 'sem-ficha' || !v ? (
         <Cartao className="p-8 text-center">
           <p className="font-semibold">Este modelo ainda não tem ficha.</p>
-          <p className="text-[14px] text-suave mt-1">{m.techPack ? 'Gere a ficha a partir do tech pack ligado.' : 'Falta o tech pack. Carregue-o numa nova leitura da encomenda.'}</p>
+          <p className="text-[14px] text-suave mt-1">{oCliente?.documentoModelo === 'OF'
+            ? (m.of ? 'Gere a ficha a partir da OF, na página da encomenda.' : 'Falta a OF deste modelo. Carregue o PDF na página da encomenda.')
+            : m.techPack ? 'Gere a ficha a partir do tech pack ligado.' : 'Falta o tech pack. Carregue-o numa nova leitura da encomenda.'}</p>
           <Botao className="mt-5" onClick={() => nav(`/fichas/${enc.id}`)}>Voltar à encomenda</Botao>
         </Cartao>
       ) : (

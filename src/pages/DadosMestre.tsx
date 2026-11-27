@@ -65,6 +65,8 @@ const SEPARADORES: Separador[] = [
     { campo: 'comissaoTipo', rotulo: 'Agente: tipo de comissão', tipo: 'lista', opcoes: ['percentual', 'fixa'] },
     { campo: 'comissao', rotulo: 'Comissão do agente (% sobre custo + N/ comissão, ou € por peça)', tipo: 'numero', mostrar: (l) => (!Number(l.comissao) ? <span className="text-tenue">sem agente</span> : l.comissaoTipo === 'fixa' ? `${eur(Number(l.comissao))}/peça` : `${l.comissao} %`) },
     { campo: 'escala', rotulo: 'Escala de tamanhos' },
+    { campo: 'documentoModelo', rotulo: 'Documento de cada modelo', tipo: 'lista', opcoes: ['Tech pack', 'OF'], mostrar: (l) => (l.documentoModelo === 'OF' ? <Etiqueta tom="azul" ponto={false}>OF</Etiqueta> : <span className="text-tenue">Tech pack</span>) },
+    { campo: 'acessorios', rotulo: 'Acessórios', tipo: 'lista', opcoes: ['Comprados por nós', 'Do cliente'], mostrar: (l) => (l.acessorios === 'Do cliente' ? 'Do cliente' : <span className="text-tenue">Comprados por nós</span>) },
     { campo: 'notasFixas', rotulo: 'Notas fixas (uma por linha)', tipo: 'linhas', mostrar: (l) => ((l.notasFixas as string[] | undefined)?.length ? <span className="text-[13px] text-suave">{(l.notasFixas as string[]).length} notas</span> : <span className="text-tenue">—</span>) },
   ] },
   { id: 'precosRef', rotulo: 'Tabela de preços', desc: 'Mão de obra, serviços e valores de referência da ficha de custo.', titulo: (l) => String(l.linha), defs: [
