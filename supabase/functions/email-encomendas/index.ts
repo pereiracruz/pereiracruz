@@ -51,9 +51,12 @@ const cliente = (c: Conta) => new ImapFlow({
   socketTimeout: 60_000, greetingTimeout: 20_000,
 })
 const amigavel = (c: Conta, e: unknown) => {
-  const m = e instanceof Error ? e.message : String(e)
-  return /AUTHENTICATIONFAILED|Invalid credentials|authentication failed|LOGIN failed|Command failed/i.test(m)
-    ? 'o servidor recusou o utilizador ou a palavra-passe.'
+  // o ImapFlow guarda a resposta exata do servidor em responseText / serverResponseCode
+  const x = e as { message?: string; responseText?: string; serverResponseCode?: string; authenticationFailed?: boolean }
+  const servidor = [x?.serverResponseCode, x?.responseText].filter(Boolean).join(' ')
+  const m = `${e instanceof Error ? e.message : String(e)}${servidor ? ` (${servidor})` : ''}`
+  return x?.authenticationFailed || /AUTHENTICATIONFAILED|Invalid credentials|authentication failed|LOGIN failed/i.test(m)
+    ? `o servidor recusou o utilizador ou a palavra-passe${servidor ? `. Resposta do servidor: «${servidor}»` : ''} (utilizador usado: «${c.user}», servidor ${c.host}:${c.port}, palavra-passe com ${c.pass.length} caracteres).`
     : /ENOTFOUND|getaddrinfo|ECONNREFUSED|timed? ?out/i.test(m)
       ? `não consegui chegar ao servidor ${c.host}:${c.port}. Confirme o IMAP_HOST e a porta.`
       : m
