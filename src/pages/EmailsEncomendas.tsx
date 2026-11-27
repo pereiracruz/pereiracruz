@@ -9,6 +9,8 @@ import {
 } from '../lib/email'
 import { dataHora } from '../lib/format'
 import { useDb } from '../store/db'
+import LeituraEmail from './emails/LeituraEmail'
+import { modoServidor } from '../lib/supabase'
 
 type Vista = 'nova' | 'tratada' | 'ignorada'
 const lista = (s: string) => s.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean)
@@ -242,6 +244,7 @@ export default function EmailsEncomendas({ modo = 'encomenda' }: { modo?: 'encom
                           <p className="whitespace-pre-wrap mt-1">{r.texto}</p>
                         </div>
                       ))}
+                      {modoServidor && <LeituraEmail email={e} />}
                       {enc && <p className="mt-2 text-[13px]">Encomenda: <button className="underline" onClick={() => nav(`/fichas/${enc.id}`)}>{enc.cliente} · {enc.colecao}</button></p>}
                     </div>
                     <div className="flex gap-2 flex-wrap">

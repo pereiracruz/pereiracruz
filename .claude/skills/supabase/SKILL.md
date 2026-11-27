@@ -19,6 +19,7 @@ description: Trabalhar com o Supabase deste projeto — sincronização de docum
 - `toconline`: OAuth por empresa (`TOC_PP_*`, `TOC_PC_*`), leitura (`testar`, `consultar` com lista branca de recursos)
   e guias (`criar_guia`, `finalizar_guia`, `enviar_email`, `apagar_rascunho`). Ver skill `documentos-fiscais`.
 - `email-encomendas`: lê caixas de correio (IMAP), classifica pedidos/faturas/encomendas, responde (SMTP).
+- `ler-email`: lê um email e anexos com IA pelo OpenRouter (`OPENROUTER_*`), structured outputs; ver agente `especialista-openrouter`.
 - Padrão obrigatório: CORS, só `POST`, **verificar o JWT dentro da função** (`supabase.auth.getUser(token)`) e o perfil ativo,
   erros em PT-PT com a causa provável, nunca devolver segredos. Chamar do browser com `supabase.functions.invoke`.
 

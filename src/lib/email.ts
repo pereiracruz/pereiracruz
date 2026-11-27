@@ -1,3 +1,4 @@
+import type { LeituraEmailIA } from './emailIA'
 import { create } from 'zustand'
 import { supabase } from './supabase'
 
@@ -15,6 +16,8 @@ export interface EmailEncomenda {
   encomendaId?: string
   recebidoEm: string
   respostas?: RespostaEmail[]
+  /** leitura com IA (OpenRouter, função «ler-email»), guardada para não voltar a pagar */
+  leituraIA?: LeituraEmailIA
 }
 export interface RespostaEmail { data: string; para: string; assunto: string; texto: string; conta: string; por: string; copiaEnviados: boolean }
 export interface AssinaturaConta { nome?: string; texto?: string; imagem?: string }
