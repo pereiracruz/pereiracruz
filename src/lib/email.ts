@@ -25,6 +25,8 @@ export interface ConfigEmail {
   /** pedidos de preço/cotação: palavras no assunto e no texto (vazio = as da aplicação) */
   palavrasPedidos?: string[]
   palavrasPedidosTexto?: string[]
+  /** assuntos com estas palavras nunca são pedidos (faturas, pagamentos, publicidade…) */
+  palavrasPedidosExcluir?: string[]
   /** nome a mostrar por conta (endereço → nome), ex.: geral@… → «Geral» */
   nomesContas: Record<string, string>
   /** assinatura das respostas por conta (endereço em minúsculas) */

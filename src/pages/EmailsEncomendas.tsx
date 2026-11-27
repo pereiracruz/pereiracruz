@@ -74,6 +74,7 @@ export default function EmailsEncomendas({ modo = 'encomenda' }: { modo?: 'encom
   const [palavrasTexto, setPalavrasTexto] = useState('')
   const [palavrasPedidos, setPalavrasPedidos] = useState('')
   const [palavrasPedidosTexto, setPalavrasPedidosTexto] = useState('')
+  const [palavrasExcluir, setPalavrasExcluir] = useState('')
   const [dias, setDias] = useState('14')
   const [teste, setTeste] = useState<TesteConta[] | null>(null)
   const [aTestar, setATestar] = useState(false)
@@ -97,7 +98,7 @@ export default function EmailsEncomendas({ modo = 'encomenda' }: { modo?: 'encom
   useEffect(() => { if (emailDisponivel && !carregado) void carregarEmails() }, [carregado])
   useEffect(() => {
     setRemetentes(config.remetentes.join(', ')); setPalavras(config.palavras.join(', ')); setPalavrasTexto((config.palavrasTexto ?? []).join(', ')); setDias(String(config.dias))
-    setPalavrasPedidos((config.palavrasPedidos ?? []).join(', ')); setPalavrasPedidosTexto((config.palavrasPedidosTexto ?? []).join(', '))
+    setPalavrasPedidos((config.palavrasPedidos ?? []).join(', ')); setPalavrasPedidosTexto((config.palavrasPedidosTexto ?? []).join(', ')); setPalavrasExcluir((config.palavrasPedidosExcluir ?? []).join(', '))
     if (carregado && !pedidos && !config.remetentes.length && !config.palavras.length) setFiltrosAbertos(true)
   }, [config, carregado, pedidos])
 
@@ -118,7 +119,7 @@ export default function EmailsEncomendas({ modo = 'encomenda' }: { modo?: 'encom
 
   const guardarFiltros = async () => {
     try {
-      await guardarConfigEmail({ ...config, remetentes: lista(remetentes), palavras: lista(palavras), palavrasTexto: lista(palavrasTexto), palavrasPedidos: lista(palavrasPedidos).length ? lista(palavrasPedidos) : undefined, palavrasPedidosTexto: lista(palavrasPedidosTexto).length ? lista(palavrasPedidosTexto) : undefined, dias: Math.min(Math.max(Number(dias) || 14, 1), 90) })
+      await guardarConfigEmail({ ...config, remetentes: lista(remetentes), palavras: lista(palavras), palavrasTexto: lista(palavrasTexto), palavrasPedidos: lista(palavrasPedidos).length ? lista(palavrasPedidos) : undefined, palavrasPedidosTexto: lista(palavrasPedidosTexto).length ? lista(palavrasPedidosTexto) : undefined, palavrasPedidosExcluir: lista(palavrasExcluir).length ? lista(palavrasExcluir) : undefined, dias: Math.min(Math.max(Number(dias) || 14, 1), 90) })
       aviso('Filtros guardados.')
     } catch (e) { aviso(`Não foi possível guardar: ${e instanceof Error ? e.message : String(e)}`) }
   }
@@ -162,7 +163,9 @@ export default function EmailsEncomendas({ modo = 'encomenda' }: { modo?: 'encom
             <Campo rotulo="Palavras no texto da mensagem" ajuda="Vazio = as da aplicação: pedido de cotação, pedido de orçamento, preço, qual o preço, quanto custa, best price, target price, please quote…">
               <Entrada value={palavrasPedidosTexto} onChange={(e) => setPalavrasPedidosTexto(e.target.value)} placeholder="pedido de cotação, preço, best price" />
             </Campo>
-            <div className="lg:col-span-1" />
+            <Campo rotulo="Excluir (assunto)" ajuda="Assuntos com estas palavras nunca são pedidos. Vazio = fatura, invoice, liquidação, pagamento, recibo, documentação, apoios, newsletter, promoção, status update…">
+              <Entrada value={palavrasExcluir} onChange={(e) => setPalavrasExcluir(e.target.value)} placeholder="fatura, liquidação, pagamento" />
+            </Campo>
             </> : <>
             <Campo rotulo="Remetentes" ajuda="Parte do endereço ou do nome, separados por vírgulas (ex.: whitecotton, @cliente.pt).">
               <Entrada value={remetentes} onChange={(e) => setRemetentes(e.target.value)} placeholder="whitecotton, @cliente.pt" />
