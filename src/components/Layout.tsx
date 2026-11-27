@@ -37,9 +37,15 @@ function Grupo({ titulo, children }: { titulo: string; children: ReactNode }) {
 }
 
 // Pendentes já vistos (ao abrir o sino): o número a vermelho só conta os novos.
+// Pendentes limpos («Limpar»): saem da lista até aparecer um pendente novo (ou mudar, ex.: mais um dia de atraso).
 const CHAVE_VISTOS = 'sino-vistos'
-function lerVistos(): string[] {
-  try { return JSON.parse(localStorage.getItem(CHAVE_VISTOS) || '[]') } catch { return [] }
+const CHAVE_LIMPOS = 'sino-limpos'
+function ler(chave: string): string[] {
+  try { return JSON.parse(localStorage.getItem(chave) || '[]') } catch { return [] }
+}
+function gravar(chave: string, v: string[]) {
+  try { localStorage.setItem(chave, JSON.stringify(v)) } catch { /* sem armazenamento */ }
+  window.dispatchEvent(new Event('sino-vistos'))
 }
 
 function Sino({ direita }: { direita?: boolean }) {
@@ -48,7 +54,7 @@ function Sino({ direita }: { direita?: boolean }) {
   const emails = useEmails((s) => s.emails)
   const nav = useNavigate()
   const [aberto, setAberto] = useState(false)
-  const itens = [
+  const todos = [
     ...encomendas.flatMap((e) => e.modelos.filter((m) => m.estado === 'rascunho').map((m) => ({
       texto: `Ficha por aprovar: ${m.nome}`, sub: `${e.cliente} · ${e.colecao}`, para: `/fichas/${e.id}/${m.id}`,
     }))),
@@ -58,25 +64,29 @@ function Sino({ direita }: { direita?: boolean }) {
     ...pedidos.filter((p) => p.estado === 'Por validar').map((p) => ({ texto: `Orçamento por validar: ${p.peca}`, sub: p.cliente, para: `/orcamentos/${p.id}` })),
     ...emails.filter((m) => m.estado === 'nova').map((m) => ({ texto: `Email de encomenda: ${m.assunto}`, sub: m.deNome || m.de, para: `/emails#${m.id}` })),
   ]
-  const [vistos, setVistos] = useState<string[]>(lerVistos)
+  const [vistos, setVistos] = useState<string[]>(() => ler(CHAVE_VISTOS))
+  const [limpos, setLimpos] = useState<string[]>(() => ler(CHAVE_LIMPOS))
+  const [verLimpos, setVerLimpos] = useState(false)
   // os dois sinos (computador e telemóvel) ficam sincronizados
   useEffect(() => {
-    const atualizar = () => setVistos(lerVistos())
+    const atualizar = () => { setVistos(ler(CHAVE_VISTOS)); setLimpos(ler(CHAVE_LIMPOS)) }
     window.addEventListener('sino-vistos', atualizar)
     window.addEventListener('storage', atualizar)
     return () => { window.removeEventListener('sino-vistos', atualizar); window.removeEventListener('storage', atualizar) }
   }, [])
   const chave = (i: { texto: string; para: string }) => `${i.para}|${i.texto}`
+  const escondidos = todos.filter((i) => limpos.includes(chave(i))).length
+  const itens = verLimpos ? todos : todos.filter((i) => !limpos.includes(chave(i)))
+  const limpar = () => { const atuais = todos.map(chave); gravar(CHAVE_LIMPOS, atuais); setLimpos(atuais); setVerLimpos(false) }
   const novos = itens.filter((i) => !vistos.includes(chave(i))).length
   const abrir = () => {
     if (!aberto) {
       // guarda só os pendentes atuais, para a lista não crescer sem fim
       const atuais = itens.map(chave)
-      try { localStorage.setItem(CHAVE_VISTOS, JSON.stringify(atuais)) } catch { /* sem armazenamento */ }
+      gravar(CHAVE_VISTOS, atuais)
       setVistos(atuais)
-      window.dispatchEvent(new Event('sino-vistos'))
     }
-    setAberto(!aberto)
+    setAberto(!aberto); setVerLimpos(false)
   }
   return (
     <div className="relative">
@@ -88,13 +98,21 @@ function Sino({ direita }: { direita?: boolean }) {
         <>
           <div className="fixed inset-0 z-30" onClick={() => setAberto(false)} />
           <div className={clsx('absolute top-9 z-40 w-80 max-w-[calc(100vw-2rem)] bg-papel', direita ? 'right-0' : 'left-0', 'border border-linha rounded-cartao shadow-xl p-2')}>
-            <p className="px-3 py-2 text-[12px] font-semibold uppercase tracking-wider text-suave">Pendentes</p>
+            <div className="flex items-center justify-between px-3 py-2">
+              <p className="text-[12px] font-semibold uppercase tracking-wider text-suave">Pendentes</p>
+              {itens.length > 0 && <button onClick={limpar} className="text-[12px] font-medium text-suave hover:text-tinta">Limpar</button>}
+            </div>
             {itens.length === 0 && <p className="px-3 py-4 text-[14px] text-tenue">Nada por tratar.</p>}
             {itens.map((i, k) => (
               <button key={k} onClick={() => { setAberto(false); nav(i.para) }} className="w-full text-left px-3 py-2 rounded-md hover:bg-fundo">
                 <p className="text-[14px]">{i.texto}</p><p className="text-[12px] text-tenue">{i.sub}</p>
               </button>
             ))}
+            {!verLimpos && escondidos > 0 && (
+              <button onClick={() => setVerLimpos(true)} className="w-full text-left px-3 py-2 text-[12px] text-tenue hover:text-tinta border-t border-linha mt-1">
+                Mostrar {escondidos} limpo{escondidos === 1 ? '' : 's'}
+              </button>
+            )}
           </div>
         </>
       )}
