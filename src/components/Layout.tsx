@@ -1,12 +1,13 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Archive, Bell, Factory, UserCheck, Landmark, Mail, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, X, PanelLeftOpen, Receipt } from 'lucide-react'
+import { Archive, Bell, Factory, UserCheck, Landmark, Mail, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, X, PanelLeftOpen, Receipt, Search } from 'lucide-react'
 import { useDb } from '../store/db'
 import { fichasPorAprovar } from '../lib/calc'
 import { situacaoPrazos } from '../lib/prazos'
 import { resumoCompras } from '../lib/compras'
 import { Toasts } from './ui'
+import { CaixaPesquisa, JanelaPesquisa, abrirPesquisa } from './Pesquisa'
 import { modoServidor } from '../lib/supabase'
 import { ACAO_AUTOMATICA, ACAO_DESCARREGADA, ultimaCopiaServidor } from '../lib/copias'
 import { carregarEmails, emailDisponivel, emailsNovos, faturasNovas, pedidosNovos, useEmails, verificarEmails } from '../lib/email'
@@ -175,6 +176,8 @@ export default function Layout() {
           </div>
         </div>
 
+        <div className="px-3 pb-2" onClick={() => setMenuAberto(false)}><CaixaPesquisa /></div>
+
         <nav className="flex-none lg:flex-1 lg:overflow-y-auto">
           <div className="px-3 pb-4 pt-1 space-y-1">
             <Item para="/" fim icone={<LayoutGrid size={17} />}>Painel</Item>
@@ -244,7 +247,10 @@ export default function Layout() {
           <div className="h-14 flex items-center justify-between px-2">
             <button onClick={() => setMenuAberto(true)} className="p-2.5 text-tinta" aria-label="Abrir o menu"><Menu size={22} /></button>
             <span className="flex items-center gap-2"><img src="/logo-mark.png" alt="" className="h-7 w-auto" /><span className="font-semibold text-[15px] tracking-tight">Pereira's Project</span></span>
-            <span className="p-1.5"><Sino direita /></span>
+            <span className="flex items-center">
+              <button onClick={abrirPesquisa} className="p-2.5 text-tinta" aria-label="Pesquisar"><Search size={21} /></button>
+              <span className="p-1.5"><Sino direita /></span>
+            </span>
           </div>
         </div>
         {recolhida && (
@@ -255,6 +261,7 @@ export default function Layout() {
           <footer className="no-print mt-12 pt-5 border-t border-linha text-[11px] tracking-[0.12em] uppercase text-tenue text-right">© {new Date().getFullYear()} Pereira & Cruz</footer>
         </div>
       </main>
+      <JanelaPesquisa />
       <Toasts />
     </div>
   )
