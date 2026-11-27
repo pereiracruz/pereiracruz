@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 undefined/
+
+# testes automáticos
+test-results/
+playwright-report/
+blob-report/

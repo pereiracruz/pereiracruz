@@ -1,0 +1,50 @@
+# Verificação automática: em cada pedido de alteração (pull request) e em cada envio para o main,
+# instala as dependências, corre os testes automáticos e compila a aplicação.
+name: Testes
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # o browser dos testes (Chromium) não vem com o npm ci
+      - name: Instalar o Chromium para os testes
+        run: npx playwright install --with-deps chromium
+
+      - name: Testes automáticos
+        run: npm test
+
+      - name: Compilar a aplicação
+        run: npm run build
+
+      - name: Relatório dos testes (se falharem)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-testes
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
