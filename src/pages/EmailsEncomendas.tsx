@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { ChevronDown, FilePlus2, FileSpreadsheet, FileText, Mail, PlugZap, RefreshCw, RotateCcw, Settings2, X } from 'lucide-react'
-import { Botao, Cabecalho, Campo, Cartao, Entrada, Pilulas, Vazio, aviso } from '../components/ui'
+import { ChevronDown, CornerUpLeft, FilePlus2, FileSpreadsheet, FileText, ImagePlus, Mail, PlugZap, RefreshCw, RotateCcw, Send, Settings2, X } from 'lucide-react'
+import { Botao, Cabecalho, Campo, Cartao, Entrada, Modal, Pilulas, Vazio, aviso } from '../components/ui'
 import {
-  abrirAnexo, carregarEmails, emailDisponivel, guardarConfigEmail, marcarEmail, nomeConta, testarEmail, useEmails, verificarEmails,
-  type EmailEncomenda, type TesteConta,
+  abrirAnexo, carregarEmails, emailDisponivel, guardarConfigEmail, guardarImagemAssinatura, marcarEmail, nomeConta, responderEmail, testarEmail, urlImagem,
+  useEmails, verificarEmails, type EmailEncomenda, type TesteConta,
 } from '../lib/email'
 import { dataHora } from '../lib/format'
 import { useDb } from '../store/db'
@@ -13,6 +13,49 @@ import { useDb } from '../store/db'
 type Vista = 'nova' | 'tratada' | 'ignorada'
 const lista = (s: string) => s.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean)
 const tamanho = (b: number) => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`)
+
+const area = 'w-full px-3 py-2 rounded-controlo border border-linha bg-papel text-[14px] outline-none focus:border-tinta-2 focus:ring-2 focus:ring-ouro/25'
+
+/** Assinatura das respostas de uma conta: nome do remetente, texto e imagem. */
+function Assinatura({ conta }: { conta: string }) {
+  const config = useEmails((s) => s.config)
+  const atual = config.assinaturas?.[conta] ?? {}
+  const [nome, setNome] = useState(atual.nome ?? 'Pereira & Cruz')
+  const [texto, setTexto] = useState(atual.texto ?? '')
+  const [imagem, setImagem] = useState(atual.imagem ?? '')
+  const [ver, setVer] = useState('')
+  const [aGuardar, setAGuardar] = useState(false)
+  const input = useRef<HTMLInputElement>(null)
+  useEffect(() => { if (imagem) void urlImagem(imagem).then(setVer); else setVer('') }, [imagem])
+  const escolher = async (f: File) => {
+    try { setImagem(await guardarImagemAssinatura(conta, f)) } catch (e) { aviso(`Não foi possível carregar a imagem: ${e instanceof Error ? e.message : String(e)}`) }
+  }
+  const guardar = async () => {
+    setAGuardar(true)
+    try {
+      await guardarConfigEmail({ ...config, assinaturas: { ...config.assinaturas, [conta]: { nome: nome.trim(), texto: texto.trim(), imagem: imagem || undefined } } })
+      aviso(`Assinatura de ${nomeConta(config, conta)} guardada.`)
+    } catch (e) { aviso(`Não foi possível guardar: ${e instanceof Error ? e.message : String(e)}`) } finally { setAGuardar(false) }
+  }
+  return (
+    <div className="border border-linha rounded-controlo p-4">
+      <p className="font-medium text-[14px] mb-3">{nomeConta(config, conta)} <span className="text-tenue font-normal">· {conta}</span></p>
+      <div className="space-y-3">
+        <Campo rotulo="Nome do remetente"><Entrada value={nome} onChange={(e) => setNome(e.target.value)} /></Campo>
+        <Campo rotulo="Texto da assinatura">
+          <textarea rows={3} value={texto} onChange={(e) => setTexto(e.target.value)} className={area} placeholder={'Com os melhores cumprimentos,\nSofia\nPereira & Cruz'} />
+        </Campo>
+        <div className="flex items-center gap-3 flex-wrap">
+          {ver && <img src={ver} alt="" className="max-h-16 max-w-[220px] border border-linha rounded" />}
+          <Botao pequeno icone={<ImagePlus size={14} />} onClick={() => input.current?.click()}>{imagem ? 'Trocar imagem' : 'Imagem da assinatura'}</Botao>
+          {imagem && <Botao pequeno variante="fantasma" onClick={() => setImagem('')}>Tirar imagem</Botao>}
+          <input ref={input} type="file" hidden accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) void escolher(f); e.target.value = '' }} />
+        </div>
+        <Botao pequeno variante="primario" disabled={aGuardar} onClick={guardar}>Guardar assinatura</Botao>
+      </div>
+    </div>
+  )
+}
 
 export default function EmailsEncomendas() {
   const nav = useNavigate()
@@ -28,6 +71,21 @@ export default function EmailsEncomendas() {
   const [teste, setTeste] = useState<TesteConta[] | null>(null)
   const [aTestar, setATestar] = useState(false)
   const [erroTeste, setErroTeste] = useState('')
+  const [aResponder, setAResponder] = useState<EmailEncomenda | null>(null)
+  const [resposta, setResposta] = useState('')
+  const [aEnviar, setAEnviar] = useState(false)
+  const contas = [...new Set([...Object.keys(config.nomesContas ?? {}), ...emails.map((e) => (e.conta ?? '').toLowerCase()).filter(Boolean)])]
+
+  const enviar = async () => {
+    if (!aResponder) return
+    setAEnviar(true)
+    try {
+      const r = await responderEmail(aResponder, resposta)
+      log('Resposta a email enviada', `${r.para} · ${r.assunto}`)
+      aviso(r.copiaEnviados ? 'Resposta enviada.' : 'Resposta enviada (não consegui guardar cópia em Enviados).')
+      setAResponder(null); setResposta('')
+    } catch (e) { aviso(`Não foi enviada: ${e instanceof Error ? e.message : String(e)}`) } finally { setAEnviar(false) }
+  }
 
   useEffect(() => { if (emailDisponivel && !carregado) void carregarEmails() }, [carregado])
   useEffect(() => {
@@ -109,6 +167,11 @@ export default function EmailsEncomendas() {
             ))}
           </ul>}
           {erroTeste && <p className="mt-3 text-[13px] text-vermelho bg-vermelho-fraco border border-vermelho-borda rounded-controlo px-3 py-2">{erroTeste}</p>}
+          {contas.length > 0 && <>
+            <h3 className="font-semibold mt-6 mb-1">Assinaturas das respostas</h3>
+            <p className="text-[13px] text-suave mb-3">Vão no fim de cada resposta enviada pela aplicação, conforme a conta onde o email chegou.</p>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">{contas.map((c) => <Assinatura key={c} conta={c} />)}</div>
+          </>}
         </Cartao>
       )}
 
@@ -146,9 +209,16 @@ export default function EmailsEncomendas() {
                         </button>
                       )}
                       {aberto === e.id && <pre className="mt-2 whitespace-pre-wrap text-[13px] text-tinta-2 bg-fundo border border-linha rounded-controlo p-3 max-h-72 overflow-auto font-sans">{e.texto}</pre>}
+                      {(e.respostas ?? []).map((r, i) => (
+                        <div key={i} className="mt-2 text-[13px] bg-verde-fraco/50 border border-verde-borda rounded-controlo px-3 py-2">
+                          <p className="text-suave">Respondido {dataHora(r.data)} por {r.por} para {r.para}{r.copiaEnviados ? '' : ' · sem cópia em Enviados'}</p>
+                          <p className="whitespace-pre-wrap mt-1">{r.texto}</p>
+                        </div>
+                      ))}
                       {enc && <p className="mt-2 text-[13px]">Encomenda: <button className="underline" onClick={() => nav(`/fichas/${enc.id}`)}>{enc.cliente} · {enc.colecao}</button></p>}
                     </div>
                     <div className="flex gap-2 flex-wrap">
+                      <Botao pequeno icone={<CornerUpLeft size={14} />} onClick={() => { setAResponder(e); setResposta('') }}>Responder</Botao>
                       {e.estado === 'nova' && <>
                         <Botao variante="primario" pequeno icone={<FilePlus2 size={14} />} disabled={!e.anexos.length}
                           onClick={() => nav('/fichas/nova', { state: { emailId: e.id } })}>Criar encomenda</Botao>
@@ -162,6 +232,22 @@ export default function EmailsEncomendas() {
             })}
           </ul>}
       </Cartao>
+
+      <Modal aberto={!!aResponder} onFechar={() => !aEnviar && setAResponder(null)} titulo="Responder" largura="max-w-2xl"
+        sub={aResponder ? `De ${nomeConta(config, aResponder.conta)} (${aResponder.conta}) para ${aResponder.de}` : ''}
+        rodape={<>
+          <Botao variante="fantasma" disabled={aEnviar} onClick={() => setAResponder(null)}>Cancelar</Botao>
+          <Botao variante="primario" icone={<Send size={15} />} disabled={aEnviar || !resposta.trim()} onClick={enviar}>{aEnviar ? 'A enviar…' : 'Enviar'}</Botao>
+        </>}>
+        {aResponder && <>
+          <p className="text-[13px] text-suave mb-2">Assunto: {/^(re|res|aw|sv)\s*:/i.test(aResponder.assunto) ? aResponder.assunto : `RE: ${aResponder.assunto}`}</p>
+          <textarea autoFocus rows={8} value={resposta} onChange={(x) => setResposta(x.target.value)} className={area} placeholder="Escreva a resposta…" />
+          <p className="text-[12px] text-tenue mt-2">
+            {aResponder.conta && config.assinaturas?.[aResponder.conta.toLowerCase()]?.texto ? 'Leva a assinatura desta conta e o email original citado em baixo.' : 'Esta conta ainda não tem assinatura (Filtros e ligação → Assinaturas). O email original vai citado em baixo.'}
+            {' '}Responde só ao remetente e fica guardada em Enviados.
+          </p>
+        </>}
+      </Modal>
     </>
   )
 }

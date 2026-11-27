@@ -12,13 +12,18 @@ export interface EmailEncomenda {
   estado: 'nova' | 'tratada' | 'ignorada'
   encomendaId?: string
   recebidoEm: string
+  respostas?: RespostaEmail[]
 }
+export interface RespostaEmail { data: string; para: string; assunto: string; texto: string; conta: string; por: string; copiaEnviados: boolean }
+export interface AssinaturaConta { nome?: string; texto?: string; imagem?: string }
 export interface ConfigEmail {
   remetentes: string[]; palavras: string[]; dias: number
   /** nome a mostrar por conta (endereço → nome), ex.: geral@… → «Geral» */
   nomesContas: Record<string, string>
+  /** assinatura das respostas por conta (endereço em minúsculas) */
+  assinaturas: Record<string, AssinaturaConta>
 }
-export const CONFIG_EMAIL_INICIAL: ConfigEmail = { remetentes: [], palavras: [], dias: 14, nomesContas: {} }
+export const CONFIG_EMAIL_INICIAL: ConfigEmail = { remetentes: [], palavras: [], dias: 14, nomesContas: {}, assinaturas: {} }
 export const nomeConta = (cfg: ConfigEmail, conta?: string) => (conta ? cfg.nomesContas?.[conta.toLowerCase()] || conta : '')
 
 export const emailDisponivel = !!supabase
@@ -115,6 +120,28 @@ export async function abrirAnexo(a: AnexoEmail) {
   const { data, error } = await supabase.storage.from('documentos').createSignedUrl(a.caminho, 300)
   if (error || !data) throw new Error(`Não consegui abrir o anexo ${a.nome}.`)
   window.open(data.signedUrl, '_blank', 'noopener')
+}
+
+/** Envia a resposta pela conta onde o email chegou (com a assinatura dessa conta) e guarda cópia em Enviados. */
+export async function responderEmail(email: EmailEncomenda, texto: string): Promise<RespostaEmail> {
+  const r = await chamar<{ resposta: RespostaEmail }>({ acao: 'responder', emailId: email.id, texto })
+  useEmails.setState((s) => ({ emails: s.emails.map((e) => (e.id === email.id ? { ...e, respostas: [...(e.respostas ?? []), r.resposta] } : e)) }))
+  return r.resposta
+}
+
+/** Guarda a imagem da assinatura de uma conta no servidor e devolve o caminho. */
+export async function guardarImagemAssinatura(conta: string, f: File): Promise<string> {
+  if (!supabase) throw new Error('Sem servidor.')
+  const ext = (f.name.match(/\.[a-z0-9]+$/i)?.[0] ?? '.png').toLowerCase()
+  const caminho = `assinaturas/${conta.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString(36)}${ext}`
+  const { error } = await supabase.storage.from('documentos').upload(caminho, f, { contentType: f.type || undefined })
+  if (error) throw new Error(error.message)
+  return caminho
+}
+export async function urlImagem(caminho: string) {
+  if (!supabase) return ''
+  const { data } = await supabase.storage.from('documentos').createSignedUrl(caminho, 3600)
+  return data?.signedUrl ?? ''
 }
 
 export const emailsNovos = (s: EstadoEmails) => s.emails.filter((e) => e.estado === 'nova').length
