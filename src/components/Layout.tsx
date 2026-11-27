@@ -8,6 +8,7 @@ import { situacaoPrazos } from '../lib/prazos'
 import { resumoCompras } from '../lib/compras'
 import { Toasts } from './ui'
 import { modoServidor } from '../lib/supabase'
+import { ACAO_AUTOMATICA, ACAO_DESCARREGADA, ultimaCopiaServidor } from '../lib/copias'
 import { carregarEmails, emailDisponivel, emailsNovos, faturasNovas, pedidosNovos, useEmails, verificarEmails } from '../lib/email'
 
 function Item({ para, icone, children, fim }: { para: string; icone?: ReactNode; children: ReactNode; fim?: boolean }) {
@@ -149,10 +150,12 @@ export default function Layout() {
   const emCurso = encomendas.filter((e) => e.estado !== 'Concluída')
   const atrasadas = emCurso.filter((e) => situacaoPrazos(e).nivel === 'atrasada').length
   const porEncomendar = emCurso.reduce((n, e) => n + resumoCompras(e).porEncomendar, 0)
-  const copiaEmFalta = useDb((s) => {
-    const u = s.atividade.find((a) => a.acao === 'Cópia de segurança descarregada')
-    return !u || Date.now() - new Date(u.data).getTime() > 7 * 864e5
-  })
+  const [ultimaAuto, setUltimaAuto] = useState<string | null>(null)
+  const sessao = useDb((s) => s.sessao)
+  useEffect(() => { if (sessao) ultimaCopiaServidor().then(setUltimaAuto).catch(() => { /* sem tabela: conta só a descarregada */ }) }, [sessao])
+  const ultimaDescarregada = useDb((s) => s.atividade.find((a) => a.acao === ACAO_DESCARREGADA || a.acao === ACAO_AUTOMATICA)?.data ?? null)
+  // a cópia automática é semanal: dá-se um dia de folga antes de avisar
+  const copiaEmFalta = ![ultimaAuto, ultimaDescarregada].some((d) => d && Date.now() - new Date(d).getTime() <= 8 * 864e5)
 
   return (
     <div className="h-full flex">
