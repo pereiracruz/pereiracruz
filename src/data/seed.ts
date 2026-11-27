@@ -1,6 +1,6 @@
 import type {
   AcessorioCliente, Atividade, ClienteCfg, Destinatario, Encomenda, Equivalencia, Escala, Fornecedor, Lavagem,
-  LinhaCusto, LinhaMaterial, Medida, Modelo, Pedido, PrecoHistorico, PrecoRef, Tecido, Variante, PrecoTingimento, PrecoLavagem,
+  LinhaCusto, LinhaMaterial, Medida, Modelo, Pedido, PrecoHistorico, PrecoRef, Tecido, Variante, PrecoTingimento, PrecoLavagem, EstadoProducao, CategoriaPeca,
 } from '../types'
 import { distribuir } from '../lib/calc'
 import { slug } from '../lib/format'
@@ -639,3 +639,13 @@ export const atividadeInicial = (): Atividade[] => [
   { id: 'a1', data: '2026-08-20T16:40:00Z', acao: 'Fichas aprovadas', detalhe: 'Dr. Collectors · SS/27 · 8 modelos' },
   { id: 'a2', data: '2026-08-21T09:05:00Z', acao: 'Fichas enviadas à produção', detalhe: 'Dr. Collectors · SS/27' },
 ]
+
+// ---------- Produção: estados e categorias do planeamento da Pereira & Cruz ----------
+export const estadosProducao: EstadoProducao[] = ['01. Espera tecido', '02. Espera encolhimento', '03. Espera planos', '04. Espera corte', '05. Corte', '06. Espera bordado',
+  '07. Para entrar na linha', '08. Producao', '09. Aprovação de amostra', '10. Producao-Fora', '11. Fase final da linha', '12. Revista', '13. Espera lavandaria',
+  '14. Espera recolha', '15. Acabamento', '16. Entregue', '18. Faturado'].map((nome) => ({ id: `ep${nome.slice(0, 2)}`, ordem: Number(nome.slice(0, 2)), nome }))
+export const categoriasPeca: CategoriaPeca[] = ['Calça Vaqueiro Adulto', 'Calça Vaqueiro Adulto CA', 'Calça Chino Adulto', 'Calça Adulto', 'Calça Adulto c/elástico',
+  'Calção Vaqueiro Adulto', 'Calção Chino Adulto', 'Calção adulto c/elástico', 'Calça Vaqueiro Criança', 'Calça Chino Criança', 'Calça criança c/elastico',
+  'Calção Vaqueiro Criança', 'Calção Chino Criança', 'Calção criança c/elastico', 'Casaco Vaqueiro Adulto', 'Casaco Adulto', 'Casaco Vaqueiro Criança', 'Avental',
+  'Casaco Criança', 'Chapeu', 'Saco', 'Saia adulto', 'Saia criança', 'Macacão Adulto', 'Macacão Criança', 'Vestido Adulto', 'Vestido Criança', 'Top Adulto',
+  'Top Criança', 'Camisa Adulto', 'Camisa Criança', 'Mosquear', 'Casear'].map((nome, i) => ({ id: `cp${String(i + 1).padStart(2, '0')}`, nome }))

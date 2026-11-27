@@ -15,6 +15,7 @@ const EmailsEncomendas = lazy(() => import('./pages/EmailsEncomendas'))
 const ConciliacaoBancaria = lazy(() => import('./pages/Conciliacao'))
 const FaturasRecebidas = lazy(() => import('./pages/FaturasRecebidas'))
 const Producao = lazy(() => import('./pages/Producao'))
+const OrdensFabrico = lazy(() => import('./pages/producao/OrdensFabrico'))
 const Faltas = lazy(() => import('./pages/Faltas'))
 const EncomendaDetalhe = lazy(() => import('./pages/fichas/EncomendaDetalhe'))
 const FichaModelo = lazy(() => import('./pages/fichas/FichaModelo'))
@@ -52,6 +53,7 @@ function App() {
         <Route path="conciliacao" element={<ConciliacaoBancaria />} />
         <Route path="faturas" element={<FaturasRecebidas />} />
         <Route path="producao-diaria" element={<Producao />} />
+        <Route path="producao" element={<OrdensFabrico />} />
         <Route path="faltas" element={<Faltas />} />
         <Route path="fichas/:encId" element={<EncomendaDetalhe />} />
         <Route path="fichas/:encId/packing" element={<PackingList />} />

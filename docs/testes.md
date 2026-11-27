@@ -1,7 +1,7 @@
 # Testes automáticos
 
 ```bash
-npm test              # todos (54 testes, ~30 s)
+npm test              # todos (60 testes, ~30 s)
 npm run test:unidade  # só cálculos e leitores de ficheiros (sem browser)
 npm run test:app      # só a aplicação no browser
 ```
@@ -32,6 +32,8 @@ npm run test:app      # só a aplicação no browser
 | `tests/unidade/faltas.spec.ts` | Feriados e dias úteis, tolerância, picagens esquecidas, horas extra (período e blocos de 15 min), banco de horas, baixa, subsídio |
 | `tests/unidade/faturas-juntar-producao.spec.ts` | Conferência de faturas com o e-Fatura e recibos verdes; junção de alterações de dois aparelhos; grelha da produção diária |
 | `tests/app/modulos-novos.spec.ts` | Conciliação, faturas, produção diária, faltas e emails abrem sem erros; pesquisa geral (Ctrl+K, «/», Enter, Escape) |
+| `tests/unidade/planeamento.spec.ts` | Importação do planeamento (folha PLAN_RENT, salários não lidos, datas, nº repetidos), comparação, ligação às encomendas pelo nº e cliente |
+| `tests/app/producao.spec.ts` | Página Produção: importar, mudar o estado, ver na encomenda, desfazer com cópia; estados e categorias nos dados mestre |
 | `tests/app/dados-exemplo.spec.ts` | Limpar dados de exemplo: cópia antes, confirmação com LIMPAR, só o que foi escolhido |
 
 Em modo local, as partes que dependem do servidor (Gmail, TOConline, leitura com IA, Google Sheets) só se testam pelas funções

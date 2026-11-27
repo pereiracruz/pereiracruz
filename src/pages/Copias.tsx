@@ -12,6 +12,7 @@ const NOMES: Record<Colecao, string> = {
   encomendas: 'Encomendas (com as fichas)', pedidos: 'Pedidos de orçamento', historico: 'Histórico de preços',
   fornecedores: 'Fornecedores', tecidos: 'Tecidos', equivalencias: 'Equivalências de tecido', lavagens: 'Lavagens e tingimentos',
   acessorios: 'Acessórios por cliente', escalas: 'Tamanhos', destinatarios: 'Destinatários', precosRef: 'Tabela de preços', precosTingimento: 'Clothius · tingimento', precosLavagem: 'Clothius · lavandaria', clientes: 'Clientes',
+  ordensFabrico: 'Ordens de fabrico (planeamento)', estadosProducao: 'Estados de produção', categoriasPeca: 'Categorias de peça',
 }
 const DIAS_AVISO = 7
 const tamanhoLegivel = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(b / 1024))} KB`)

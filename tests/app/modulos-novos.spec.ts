@@ -35,6 +35,7 @@ test('pesquisa geral: Ctrl+K, por nome do modelo e por nº interno, Enter abre',
   await p.locator('main h1').first().click()
   await p.keyboard.press('/')
   await expect(janela).toBeVisible()
+  await expect(caixa).toBeFocused() // o Escape é lido na caixa de pesquisa
   await p.keyboard.press('Escape')
   await expect(janela).toBeHidden()
 })

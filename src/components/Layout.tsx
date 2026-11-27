@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Archive, Bell, Factory, UserCheck, Landmark, Mail, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, X, PanelLeftOpen, Receipt, Search } from 'lucide-react'
+import { Archive, Bell, Factory, SquareKanban, UserCheck, Landmark, Mail, CalendarClock, Check, Percent, ChevronDown, Cloud, ClipboardList, Database, ShoppingCart, FileClock, History, KeyRound, LayoutGrid, LogOut, Menu, PanelLeftClose, X, PanelLeftOpen, Receipt, Search } from 'lucide-react'
 import { useDb } from '../store/db'
 import { fichasPorAprovar } from '../lib/calc'
 import { situacaoPrazos } from '../lib/prazos'
@@ -191,6 +191,7 @@ export default function Layout() {
               <span className="flex-1">Emails de encomendas</span>
               {novosEmails > 0 && <span className="text-[11px] font-semibold bg-vermelho-fraco text-vermelho rounded-full px-1.5" title="Emails de encomendas por tratar">{novosEmails}</span>}
             </Item>}
+            <Item para="/producao" icone={<SquareKanban size={17} />}>Produção</Item>
             <Item para="/compras" icone={<ShoppingCart size={17} />}>
               <span className="flex-1">Compras</span>
               {porEncomendar > 0 && <span className="text-[11px] font-semibold bg-ambar-fraco text-ambar rounded-full px-1.5" title="Materiais por encomendar">{porEncomendar}</span>}
