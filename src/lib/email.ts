@@ -80,7 +80,12 @@ export async function verificarEmails(): Promise<ResultadoVerificar> {
   if (useEmails.getState().aVerificar) throw new Error('Já está a verificar.')
   useEmails.setState({ aVerificar: true, erro: '' })
   try {
+    // a função trata poucos emails de cada vez (limites do servidor): repete enquanto houver mais
     const r = await chamar<ResultadoVerificar>({ acao: 'verificar' })
+    for (let i = 0; i < 10 && r.restantes > 0; i++) {
+      const mais = await chamar<ResultadoVerificar>({ acao: 'verificar' })
+      r.novos.push(...mais.novos); r.restantes = mais.restantes; r.erros = mais.erros
+    }
     await carregarEmails()
     useEmails.setState({ ultimaVerificacao: new Date().toISOString(), erro: (r.erros ?? []).map((e) => `${e.conta}: ${e.erro}`).join(' · ') })
     return r

@@ -37,8 +37,8 @@ const IMAGEM = /\.(png|jpe?g|webp|gif)$/i
 // imagens da assinatura / do corpo do email (image001.png, logótipos…) não são anexos da encomenda
 const imagemDoCorpo = (a: { filename?: string; contentDisposition?: string; related?: boolean; cid?: string }) =>
   IMAGEM.test(a.filename ?? '') && (a.related || a.contentDisposition !== 'attachment' || /^image\d{3}\.|assinatura|signature|logo/i.test(a.filename ?? ''))
-const MAX_POR_VEZ = 15 // emails novos tratados por chamada (o resto fica para a seguinte)
-const MAX_BYTES = 25 * 1024 * 1024
+const MAX_POR_VEZ = 4 // emails novos tratados por chamada (o resto fica para a seguinte; a aplicação volta a chamar)
+const MAX_BYTES = 15 * 1024 * 1024
 
 type Conta = { n: number; host: string; port: number; user: string; pass: string; pasta: string; smtpHost: string; smtpPort: number }
 function contas(): Conta[] {
