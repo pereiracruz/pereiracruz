@@ -7,8 +7,8 @@ export interface EmailEncomenda {
   id: string; uid: number; messageId: string | null
   /** conta de email onde chegou (há várias caixas) */
   conta?: string
-  /** «fatura» = fatura/recibo verde de fornecedor (página Faturas recebidas); sem tipo = encomenda */
-  tipo?: 'encomenda' | 'fatura'
+  /** «fatura» = fatura/recibo verde de fornecedor (Faturas recebidas); «pedido» = pedido de preço/cotação (Emails de pedidos); sem tipo = encomenda */
+  tipo?: 'encomenda' | 'fatura' | 'pedido'
   de: string; deNome: string; assunto: string; data: string; texto: string
   anexos: AnexoEmail[]
   estado: 'nova' | 'tratada' | 'ignorada'
@@ -22,6 +22,9 @@ export interface ConfigEmail {
   remetentes: string[]; palavras: string[]; dias: number
   /** palavras procuradas no texto da mensagem (só as inequívocas; as do assunto vão em «palavras») */
   palavrasTexto: string[]
+  /** pedidos de preço/cotação: palavras no assunto e no texto (vazio = as da aplicação) */
+  palavrasPedidos?: string[]
+  palavrasPedidosTexto?: string[]
   /** nome a mostrar por conta (endereço → nome), ex.: geral@… → «Geral» */
   nomesContas: Record<string, string>
   /** assinatura das respostas por conta (endereço em minúsculas) */
@@ -49,7 +52,7 @@ async function chamar<T>(corpo: Record<string, unknown>): Promise<T> {
 export interface TesteConta { conta: string; pasta: string; ok: boolean; mensagens?: number; porLer?: number; erro?: string }
 export const testarEmail = () => chamar<{ contas: TesteConta[] }>({ acao: 'testar' }).then((r) => r.contas)
 export interface ResultadoVerificar {
-  novos: { id: string; conta: string; assunto: string; de: string; anexos: number }[]
+  novos: { id: string; conta: string; assunto: string; de: string; anexos: number; tipo?: string }[]
   restantes: number; dias: number
   /** contas que falharam (as outras foram lidas na mesma) */
   erros: { conta: string; erro: string }[]
@@ -80,12 +83,12 @@ export async function carregarEmails() {
 }
 
 /** Pede ao servidor que vá à caixa de correio buscar emails novos; depois recarrega a lista. */
-export async function verificarEmails(): Promise<ResultadoVerificar> {
+export async function verificarEmails(reclassificar = false): Promise<ResultadoVerificar> {
   if (useEmails.getState().aVerificar) throw new Error('Já está a verificar.')
   useEmails.setState({ aVerificar: true, erro: '' })
   try {
     // a função trata poucos emails de cada vez (limites do servidor): repete enquanto houver mais
-    const r = await chamar<ResultadoVerificar>({ acao: 'verificar' })
+    const r = await chamar<ResultadoVerificar>({ acao: 'verificar', reclassificar })
     for (let i = 0; i < 10 && r.restantes > 0; i++) {
       const mais = await chamar<ResultadoVerificar>({ acao: 'verificar' })
       r.novos.push(...mais.novos); r.restantes = mais.restantes; r.erros = mais.erros
@@ -153,5 +156,7 @@ export async function urlImagem(caminho: string) {
   return data?.signedUrl ?? ''
 }
 
-export const emailsNovos = (s: EstadoEmails) => s.emails.filter((e) => e.estado === 'nova' && e.tipo !== 'fatura').length
+export const ehEncomenda = (e: EmailEncomenda) => e.tipo !== 'fatura' && e.tipo !== 'pedido'
+export const emailsNovos = (s: EstadoEmails) => s.emails.filter((e) => e.estado === 'nova' && ehEncomenda(e)).length
+export const pedidosNovos = (s: EstadoEmails) => s.emails.filter((e) => e.estado === 'nova' && e.tipo === 'pedido').length
 export const faturasNovas = (s: EstadoEmails) => s.emails.filter((e) => e.estado === 'nova' && e.tipo === 'fatura').length

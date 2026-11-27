@@ -55,3 +55,11 @@ não apaga. No Thunderbird fica tudo como estava.
   fica no bucket (`assinaturas/`) e vai embutida no email.
 - **Servidor de envio**: por omissão o mesmo do IMAP, porta 465 (SSL/TLS), mesmo utilizador e palavra-passe. Se for
   diferente: `EMAIL_SMTP_HOST` / `EMAIL_SMTP_PORT` (e `EMAIL_2_SMTP_HOST`, …). O Supabase bloqueia a porta 587.
+
+## Emails de pedidos (Pré-orçamentação → Emails de pedidos)
+- A mesma verificação das 3 caixas também apanha **pedidos de preço / cotação** de produção ou amostra (tipo `pedido`), com ou sem anexo.
+- Palavras no assunto (por omissão): pedido, cotação, orçamento, preço, price, quotation, quote, RFQ, costing, amostra, sample, devis, presupuesto…;
+  no texto: pedido de cotação/orçamento/preço/amostra, preço, qual o preço, quanto custa, best price, target price, please quote, request for quotation…
+  Editáveis em «Filtros e ligação» da página (guardadas em `palavrasPedidos` / `palavrasPedidosTexto`).
+- Se o assunto tiver uma palavra de encomenda «forte» (as de encomenda que não são de pedido, ex.: encomenda, order) e um Excel/PDF, fica como encomenda.
+- Ao verificar a partir desta página, os emails antigos guardados como encomenda (sem encomenda criada e não tratados) que tenham estas palavras passam para pedidos (por tratar).

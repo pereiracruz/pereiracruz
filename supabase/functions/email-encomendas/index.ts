@@ -17,6 +17,8 @@
 //   palavras:      palavras no assunto (ex.: «encomenda», «order», «pedido»)
 //   palavrasTexto: palavras no texto da mensagem — só as inequívocas (ex.: «encomenda», «tech pack»)
 //   palavrasFaturas / palavrasFaturasTexto: o mesmo para faturas e recibos verdes de fornecedores (tipo «fatura»)
+//   palavrasPedidos / palavrasPedidosTexto: pedidos de preço/cotação de produção ou amostra (tipo «pedido», página «Emails de pedidos»;
+//                  não precisam de anexo)
 //   Um email entra se tiver anexo Excel ou PDF E (sem filtros, ou se coincidir com algum remetente ou palavra).
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { ImapFlow } from 'npm:imapflow@1'
@@ -87,13 +89,22 @@ async function lerTudo(stream: AsyncIterable<Uint8Array>, max: number): Promise<
   return r
 }
 
-type Config = { remetentes?: string[]; palavras?: string[]; palavrasTexto?: string[]; palavrasFaturas?: string[]; palavrasFaturasTexto?: string[]; dias?: number; assinaturas?: Record<string, Assinatura> }
+type Config = { remetentes?: string[]; palavras?: string[]; palavrasTexto?: string[]; palavrasFaturas?: string[]; palavrasFaturasTexto?: string[]; palavrasPedidos?: string[]; palavrasPedidosTexto?: string[]; dias?: number; assinaturas?: Record<string, Assinatura> }
 
-type Novo = { id: string; conta: string; assunto: string; de: string; anexos: number }
+type Novo = { id: string; conta: string; assunto: string; de: string; anexos: number; tipo?: string }
+type Tipo = 'fatura' | 'encomenda' | 'pedido'
+type Filtros = { remetentes: string[]; palavras: string[]; palavrasTexto: string[]; palavrasFaturas: string[]; palavrasFaturasTexto: string[]; palavrasPedidos: string[]; palavrasPedidosTexto: string[]; dias: number }
+// pedidos de preço / cotação de produção ou amostra (PT, EN, FR, ES); editáveis em «Emails de pedidos»
+const PEDIDOS_ASSUNTO = ['pedido', 'cotação', 'cotacao', 'cotações', 'cotacoes', 'orçamento', 'orcamento', 'preço', 'preco', 'preços', 'precos',
+  'price', 'prices', 'pricing', 'quotation', 'quote', 'rfq', 'costing', 'amostra', 'amostras', 'sample', 'samples', 'proto', 'devis', 'prix', 'presupuesto', 'cotización', 'precio']
+const PEDIDOS_TEXTO = ['pedido de cotação', 'pedido de cotacao', 'pedido de orçamento', 'pedido de orcamento', 'pedido de preço', 'pedido de preco', 'pedido de amostra',
+  'preço', 'qual o preço', 'qual o valor', 'quanto custa', 'preço por peça', 'preço unitário', 'cotação', 'orçamento para',
+  'price request', 'request for quotation', 'please quote', 'best price', 'target price', 'price per piece', 'unit price', 'your price', 'quotation', 'costing',
+  'demande de prix', 'devis', 'presupuesto', 'cotización']
 type SupabaseCliente = ReturnType<typeof createClient>
 
 /** Recolhe os emails de encomendas novos de uma conta. Devolve quantos ficaram por tratar (limite por chamada). */
-async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { remetentes: string[]; palavras: string[]; palavrasTexto: string[]; palavrasFaturas: string[]; palavrasFaturasTexto: string[]; dias: number },
+async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: Filtros,
   jaVistos: Set<string>, limite: number, novos: Novo[]): Promise<number> {
   const imap = cliente(c)
   await imap.connect()
@@ -107,6 +118,7 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
       // palavras no assunto OU na mensagem: a pesquisa é feita pelo próprio servidor de email (não descarrega nada)
       const comPalavra = new Set<number>()
       const comFatura = new Set<number>()
+      const comPedido = new Set<number>()
       const pesquisar = async (criterios: Record<string, string>[], destino: Set<number>) => {
         if (uids.length) for (const criterio of criterios) {
           try {
@@ -117,9 +129,10 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
       }
       await pesquisar([...filtros.palavras.map((p) => ({ subject: p })), ...filtros.palavrasTexto.map((p) => ({ body: p }))], comPalavra)
       await pesquisar([...filtros.palavrasFaturas.map((p) => ({ subject: p })), ...filtros.palavrasFaturasTexto.map((p) => ({ body: p }))], comFatura)
+      await pesquisar([...filtros.palavrasPedidos.map((p) => ({ subject: p })), ...filtros.palavrasPedidosTexto.map((p) => ({ body: p }))], comPedido)
       // 1.º passo, leve: cabeçalhos e estrutura (sem descarregar o conteúdo)
       const escolhidos: number[] = []
-      const tipos = new Map<number, 'fatura' | 'encomenda'>()
+      const tipos = new Map<number, Tipo>()
       const estrutura = new Map<number, { bs: No; env: { messageId?: string; subject?: string; date?: Date | string; from?: { name?: string; address?: string }[]; replyTo?: { address?: string }[] } }>()
       if (uids.length) for await (const m of imap.fetch(uids, { uid: true, envelope: true, bodyStructure: true, size: true }, { uid: true })) {
         if (jaVistos.has(chave(m.uid))) continue
@@ -134,13 +147,21 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
           for (const f of (n.childNodes ?? []) as typeof n[]) percorrer(f)
         }
         percorrer(m.bodyStructure as Parameters<typeof percorrer>[0])
-        if (!nomes.some((n) => DOCUMENTO.test(n))) continue // tem de trazer Excel ou PDF (as imagens sozinhas costumam ser assinaturas)
+        const temDocumento = nomes.some((n) => DOCUMENTO.test(n))
+        const ehPedido = comPedido.has(m.uid) || filtros.palavrasPedidos.some((p) => assunto.includes(p))
+        // encomendas e faturas têm de trazer Excel ou PDF (as imagens sozinhas costumam ser assinaturas); pedidos de preço não
+        if (!temDocumento && !ehPedido) continue
         const semFiltros = !filtros.remetentes.length && !filtros.palavras.length && !filtros.palavrasTexto.length
-        const ehFatura = comFatura.has(m.uid) || filtros.palavrasFaturas.some((p) => assunto.includes(p))
-        const ehEncomenda = semFiltros || filtros.remetentes.some((r) => de.includes(r)) || comPalavra.has(m.uid) || filtros.palavras.some((p) => assunto.includes(p))
-        if (!ehFatura && !ehEncomenda) continue
+        const ehFatura = temDocumento && (comFatura.has(m.uid) || filtros.palavrasFaturas.some((p) => assunto.includes(p)))
+        // palavras de encomenda «fortes» (as que não são também de pedido, ex.: «encomenda», «order»)
+        const fortes = filtros.palavras.filter((p) => !filtros.palavrasPedidos.includes(p))
+        const encomendaForte = temDocumento && fortes.some((p) => assunto.includes(p))
+        const ehEncomenda = temDocumento && (semFiltros || filtros.remetentes.some((r) => de.includes(r)) || comPalavra.has(m.uid) || filtros.palavras.some((p) => assunto.includes(p)))
+        if (!ehFatura && !ehEncomenda && !ehPedido) continue
         // «Fatura da encomenda X» é uma fatura: as palavras de fatura no assunto mandam
-        tipos.set(m.uid, ehFatura && (!ehEncomenda || filtros.palavrasFaturas.some((p) => assunto.includes(p))) ? 'fatura' : 'encomenda')
+        const tipo: Tipo = ehFatura && ((!ehEncomenda && !ehPedido) || filtros.palavrasFaturas.some((p) => assunto.includes(p))) ? 'fatura'
+          : ehPedido && !encomendaForte ? 'pedido' : ehEncomenda ? 'encomenda' : 'pedido'
+        tipos.set(m.uid, tipo)
         if ((m.size ?? 0) > MAX_BYTES) continue
         escolhidos.push(m.uid)
         estrutura.set(m.uid, { bs: m.bodyStructure as No, env: (m.envelope ?? {}) as never })
@@ -209,7 +230,7 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: { re
         if (error) throw new Error(`base de dados: ${error.message}`)
         jaVistos.add(id)
         if (dados.messageId) jaVistos.add(`mid:${dados.messageId}`)
-        novos.push({ id, conta: c.user, assunto: dados.assunto, de: dados.de, anexos: anexos.length })
+        novos.push({ id, conta: c.user, assunto: dados.assunto, de: dados.de, anexos: anexos.length, tipo: dados.tipo })
       }
       return escolhidos.length - agora.length
     } finally {
@@ -294,7 +315,7 @@ Deno.serve(async (req) => {
     const { data: quem, error: eSessao } = await supabase.auth.getUser(token)
     if (eSessao || !quem.user) return resposta({ erro: 'Sessão inválida ou expirada. Volte a entrar na aplicação.' }, 401)
 
-    const pedido = await req.json() as { acao: 'testar' | 'verificar' | 'responder'; emailId?: string; texto?: string }
+    const pedido = await req.json() as { acao: 'testar' | 'verificar' | 'responder'; emailId?: string; texto?: string; reclassificar?: boolean }
     const { acao } = pedido
     const lista = contas()
 
@@ -324,14 +345,30 @@ Deno.serve(async (req) => {
     // filtros e emails já registados
     const { data: cfgLinha } = await supabase.from('documentos').select('dados').eq('colecao', 'configuracao').eq('id', 'email').maybeSingle()
     const cfg = (cfgLinha?.dados ?? {}) as Config
-    const filtros = {
+    const filtros: Filtros = {
       remetentes: (cfg.remetentes ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean),
       palavras: (cfg.palavras ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean),
       palavrasTexto: (cfg.palavrasTexto ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean),
       // faturas e recibos verdes de fornecedores (vão para «Faturas recebidas»)
       palavrasFaturas: (cfg.palavrasFaturas ?? ['fatura', 'factura', 'invoice', 'recibo', 'nota de crédito', 'nota de credito', 'faturação', 'facturação']).map((s) => s.trim().toLowerCase()).filter(Boolean),
       palavrasFaturasTexto: (cfg.palavrasFaturasTexto ?? ['recibo verde', 'fatura-recibo', 'fatura em anexo', 'segue a fatura', 'segue em anexo a fatura']).map((s) => s.trim().toLowerCase()).filter(Boolean),
+      palavrasPedidos: (cfg.palavrasPedidos ?? PEDIDOS_ASSUNTO).map((s) => s.trim().toLowerCase()).filter(Boolean),
+      palavrasPedidosTexto: (cfg.palavrasPedidosTexto ?? PEDIDOS_TEXTO).map((s) => s.trim().toLowerCase()).filter(Boolean),
       dias: Math.min(Math.max(Number(cfg.dias) || 14, 1), 90),
+    }
+    // emails já guardados como encomenda (por tratar ou ignorados, sem encomenda criada) que afinal são pedidos de preço
+    if (pedido.reclassificar) {
+      const { data: antigos } = await supabase.from('documentos').select('id,dados').eq('colecao', 'emails')
+      const fortes = filtros.palavras.filter((p) => !filtros.palavrasPedidos.includes(p))
+      for (const l of antigos ?? []) {
+        const e = l.dados as { tipo?: string; estado?: string; encomendaId?: string; assunto?: string; texto?: string }
+        if ((e.tipo ?? 'encomenda') !== 'encomenda' || e.encomendaId || e.estado === 'tratada') continue
+        const assunto = (e.assunto ?? '').toLowerCase(), texto = (e.texto ?? '').toLowerCase()
+        if (fortes.some((p) => assunto.includes(p))) continue
+        if (filtros.palavrasPedidos.some((p) => assunto.includes(p)) || filtros.palavrasPedidosTexto.some((p) => texto.includes(p))) {
+          await supabase.from('documentos').upsert({ colecao: 'emails', id: l.id, dados: { ...e, tipo: 'pedido', estado: 'nova' } })
+        }
+      }
     }
     const { data: existentes, error: eEx } = await supabase.from('documentos').select('id,mid:dados->>messageId').eq('colecao', 'emails')
     if (eEx) throw new Error(`Base de dados: ${eEx.message}`)
