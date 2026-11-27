@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { AlertTriangle, Copy, FileText, Receipt, RefreshCw, Trash2, Truck } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Copy, FileText, Receipt, RefreshCw, Trash2, Truck } from 'lucide-react'
 import { useDb } from '../../store/db'
 import { Botao, Campo, Cartao, Entrada, Etiqueta, Modal, aviso } from '../../components/ui'
 import { qtdParaEmbalar, soma } from '../../lib/calc'
 import { dataCurta, eur, hojeISO, int, parseNum } from '../../lib/format'
-import { NOME_EMPRESA_TOC, apagarRascunhoTOC, consultarTOC, criarGuiaTOC, listarTOC, tocDisponivel, type EmpresaTOC, type GuiaParaTOC } from '../../lib/toconline'
+import { NOME_EMPRESA_TOC, apagarRascunhoTOC, consultarTOC, criarGuiaTOC, finalizarGuiaTOC, listarTOC, tocDisponivel, type EmpresaTOC, type GuiaParaTOC } from '../../lib/toconline'
 import type { Encomenda, GuiaTOC } from '../../types'
 
 /** Valores habituais de cada empresa (lidos das guias reais em 26/11/2026; editáveis em cada guia). */
@@ -45,6 +45,8 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [confirmar, setConfirmar] = useState(false)
   const [aCriar, setACriar] = useState(false)
+  const [finalizarLogo, setFinalizarLogo] = useState(true)
+  const [aFinalizar, setAFinalizar] = useState('')
   const [aAtualizar, setAAtualizar] = useState('')
   const [faturar, setFaturar] = useState<GuiaTOC | null>(null)
 
@@ -125,10 +127,11 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
       ],
     }
     try {
-      const r = await criarGuiaTOC(empresa, guia)
-      guardarGuias((g) => [...g, { id: String(r.id), empresa, criadaEm: new Date().toISOString(), destinatario: nomeCliente, pecas, viatura: viatura.trim(), estado: (r.finalizado ? 'finalizada' : 'rascunho') as GuiaTOC['estado'], numero: r.document_no || undefined, linhas: escolhidas.map((l) => ({ chave: l.chave, descricao: l.descricao, quantidade: l.quantidade })) }])
-      log('Guia criada no TOConline', `${enc.cliente} · ${enc.colecao} · ${NOME_EMPRESA_TOC[empresa]} · ${nomeCliente} · ${pecas} peças${r.finalizado ? ' · FINALIZADA' : ' · rascunho'}`)
-      aviso(r.finalizado ? 'Atenção: o TOConline finalizou a guia logo ao criar.' : 'Rascunho da guia criado no TOConline. Reveja-o e finalize-o lá.')
+      const r = await criarGuiaTOC(empresa, guia, finalizarLogo)
+      guardarGuias((g) => [...g, { id: String(r.id), empresa, criadaEm: new Date().toISOString(), destinatario: nomeCliente, pecas, viatura: viatura.trim(), estado: (r.finalizado ? 'finalizada' : 'rascunho') as GuiaTOC['estado'], numero: r.document_no || undefined, codigoAT: r.communication_code || undefined, linhas: escolhidas.map((l) => ({ chave: l.chave, descricao: l.descricao, quantidade: l.quantidade })) }])
+      log('Guia criada no TOConline', `${enc.cliente} · ${enc.colecao} · ${NOME_EMPRESA_TOC[empresa]} · ${nomeCliente} · ${pecas} peças${r.finalizado ? ` · FINALIZADA ${r.document_no ?? ''}` : ' · rascunho'}`)
+      if (r.erroFinalizar) setErro(`O rascunho foi criado, mas o TOConline não deixou finalizar: ${r.erroFinalizar}`)
+      else aviso(r.finalizado ? `Guia ${r.document_no ?? ''} gravada e finalizada${r.communication_code ? ` (código AT ${r.communication_code})` : ': confirme no TOConline se foi comunicada à AT'}.` : 'Rascunho da guia criado no TOConline. Reveja-o e finalize-o lá.')
       setConfirmar(false)
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e)); setConfirmar(false)
@@ -153,6 +156,17 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
       if (/404/.test(m)) guardarGuias((gs) => gs.map((x) => (x.id === g.id && x.empresa === g.empresa ? { ...x, estado: 'apagada' as const } : x)))
       else aviso(m)
     } finally { setAAtualizar('') }
+  }
+
+  const finalizar = async (g: GuiaTOC) => {
+    if (!window.confirm(`Gravar e finalizar a guia para ${g.destinatario} (${int(g.pecas)} peças)? Depois de finalizada já não se altera nem apaga, só se anula no TOConline.`)) return
+    setAFinalizar(g.id)
+    try {
+      const r = await finalizarGuiaTOC(g.empresa, g.id)
+      guardarGuias((gs) => gs.map((x) => (x.id === g.id && x.empresa === g.empresa ? { ...x, estado: (r.finalizado ? 'finalizada' : 'rascunho') as GuiaTOC['estado'], numero: r.document_no || x.numero, codigoAT: r.communication_code || x.codigoAT } : x)))
+      log('Guia finalizada no TOConline', `${enc.cliente} · ${enc.colecao} · ${g.destinatario} · ${r.document_no ?? ''}`)
+      aviso(r.finalizado ? `Guia ${r.document_no ?? ''} finalizada${r.communication_code ? ` (código AT ${r.communication_code})` : ': confirme no TOConline se foi comunicada à AT'}.` : 'O TOConline não finalizou a guia.')
+    } catch (e) { aviso(e instanceof Error ? e.message : String(e)) } finally { setAFinalizar('') }
   }
 
   const apagar = async (g: GuiaTOC) => {
@@ -181,17 +195,18 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
                 <td className="px-5 py-2.5">{NOME_EMPRESA_TOC[g.empresa]}<div className="text-[11.5px] text-tenue">{dataCurta(g.criadaEm.slice(0, 10))} · {g.viatura}</div></td>
                 <td className="px-2">{g.destinatario}</td>
                 <td className="px-2 text-right num">{int(g.pecas)}</td>
-                <td className="px-2">{g.estado === 'rascunho' ? <Etiqueta tom="ambar">Rascunho: finalizar no TOConline</Etiqueta> : g.estado === 'finalizada' ? <Etiqueta tom="verde">Finalizada</Etiqueta> : <Etiqueta tom="neutro">Apagada</Etiqueta>}</td>
+                <td className="px-2">{g.estado === 'rascunho' ? <Etiqueta tom="ambar">Rascunho</Etiqueta> : g.estado === 'finalizada' ? <Etiqueta tom="verde">Finalizada</Etiqueta> : <Etiqueta tom="neutro">Apagada</Etiqueta>}</td>
                 <td className="px-2">{g.numero || '—'}{g.codigoAT && <div className="text-[11.5px] text-tenue">AT {g.codigoAT}</div>}</td>
                 <td className="px-2">{g.fatura ? <><Etiqueta tom="verde">{g.fatura.numero}</Etiqueta>{g.fatura.total != null && <div className="text-[11.5px] text-tenue">{eur(g.fatura.total)} c/ IVA</div>}</>
                   : g.estado === 'finalizada' ? <Botao pequeno variante="secundario" icone={<Receipt size={13} />} onClick={() => setFaturar(g)}>Valores para faturar</Botao> : <span className="text-tenue">—</span>}</td>
                 <td className="px-5 text-right whitespace-nowrap">
                   {g.estado !== 'apagada' && <Botao pequeno variante="fantasma" icone={<RefreshCw size={13} className={aAtualizar === g.id ? 'animate-spin' : ''} />} onClick={() => atualizar(g)}>Atualizar</Botao>}
+                  {g.estado === 'rascunho' && <Botao pequeno variante="secundario" icone={<CheckCircle2 size={13} />} disabled={aFinalizar === g.id} onClick={() => finalizar(g)}>{aFinalizar === g.id ? 'A finalizar…' : 'Gravar e finalizar'}</Botao>}
                   {g.estado === 'rascunho' && <Botao pequeno variante="fantasma" icone={<Trash2 size={13} />} onClick={() => apagar(g)}>Apagar</Botao>}
                 </td>
               </tr>))}</tbody>
           </table>
-          <p className="px-5 py-3 text-[12px] text-tenue">Depois de finalizar a guia no TOConline (e comunicar à AT), carregue em Atualizar para trazer o número e o código AT. A fatura faz-se no TOConline, convertendo a guia; «Valores para faturar» mostra os preços da encomenda e, depois de converter, Atualizar traz o número da fatura.</p>
+          <p className="px-5 py-3 text-[12px] text-tenue">Se a guia ainda não tiver código AT, comunique-a no TOConline e carregue em Atualizar para trazer o código. A fatura faz-se no TOConline, convertendo a guia; «Valores para faturar» mostra os preços da encomenda e, depois de converter, Atualizar traz o número da fatura.</p>
         </Cartao>
       )}
 
@@ -199,7 +214,7 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
         <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
           <div>
             <h3 className="font-semibold flex items-center gap-2"><Truck size={16} /> Nova guia de transporte</h3>
-            <p className="text-[13px] text-suave">Cria um <b>rascunho</b> da guia no TOConline com os dados desta encomenda. Revê-se e finaliza-se no TOConline (que comunica à AT); enquanto for rascunho pode apagar-se.</p>
+            <p className="text-[13px] text-suave">Cria a guia no TOConline com os dados desta encomenda e, se escolher, grava e finaliza logo. Em rascunho pode rever-se e apagar-se; finalizada, só se anula no TOConline.</p>
           </div>
           <div className="flex gap-2">
             {(['PP', 'PC'] as EmpresaTOC[]).map((e) => <Botao key={e} pequeno variante={dados && empresa === e ? 'primario' : 'secundario'} disabled={aCarregar} onClick={() => carregar(e)}>{NOME_EMPRESA_TOC[e]}</Botao>)}
@@ -272,7 +287,7 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
               <span className="text-[13px] text-suave">{escolhidas.length} linha(s) · <b>{int(pecas)}</b> peças</span>
               <div className="flex items-center gap-3">
                 {falta && <span className="text-[12.5px] text-ambar">{falta}</span>}
-                <Botao variante="primario" icone={<FileText size={15} />} disabled={!!falta} onClick={() => setConfirmar(true)}>Criar rascunho no TOConline</Botao>
+                <Botao variante="primario" icone={<FileText size={15} />} disabled={!!falta} onClick={() => setConfirmar(true)}>Criar guia no TOConline</Botao>
               </div>
             </div>
           </div>
@@ -281,13 +296,15 @@ export default function GuiasEncomenda({ enc }: { enc: Encomenda }) {
 
       <ValoresFatura enc={enc} guia={faturar} onFechar={() => setFaturar(null)} />
 
-      <Modal aberto={confirmar} onFechar={() => !aCriar && setConfirmar(false)} titulo="Criar rascunho da guia?" sub={`${NOME_EMPRESA_TOC[empresa]} → ${nomeCliente}`}
-        rodape={<><Botao onClick={() => setConfirmar(false)} disabled={aCriar}>Cancelar</Botao><Botao variante="primario" onClick={criar} disabled={aCriar}>{aCriar ? 'A criar…' : 'Criar rascunho'}</Botao></>}>
+      <Modal aberto={confirmar} onFechar={() => !aCriar && setConfirmar(false)} titulo={finalizarLogo ? 'Criar e finalizar a guia?' : 'Criar rascunho da guia?'} sub={`${NOME_EMPRESA_TOC[empresa]} → ${nomeCliente}`}
+        rodape={<><Botao onClick={() => setConfirmar(false)} disabled={aCriar}>Cancelar</Botao><Botao variante="primario" onClick={criar} disabled={aCriar}>{aCriar ? 'A criar…' : finalizarLogo ? 'Criar, gravar e finalizar' : 'Criar rascunho'}</Botao></>}>
         <div className="text-[13.5px] space-y-2">
           <p>Viatura <b>{viatura}</b> · carga a <b>{hora.replace('T', ' ')}</b></p>
           <p>De {carga.morada}, {carga.cp} {carga.localidade}<br />Para {descarga.morada}, {descarga.cp} {descarga.localidade}</p>
           <ul className="list-disc pl-5">{escolhidas.map((l) => <li key={l.chave}>{l.descricao.split('\n').join(' · ')}: {int(l.quantidade)} un.</li>)}</ul>
-          <p className="text-suave">Fica como <b>rascunho</b> no TOConline: confira-o lá e finalize (é na finalização que a guia ganha número e é comunicada à AT).</p>
+          <label className="flex items-start gap-2 pt-1"><input type="checkbox" className="mt-1" checked={finalizarLogo} onChange={(e) => setFinalizarLogo(e.target.checked)} />
+            <span><b>Gravar e finalizar</b> logo (a guia ganha número). Depois de finalizada já não se altera nem apaga, só se anula no TOConline.</span></label>
+          {!finalizarLogo && <p className="text-suave">Fica como <b>rascunho</b>: pode conferi-lo e finalizá-lo depois com «Gravar e finalizar».</p>}
         </div>
       </Modal>
     </div>

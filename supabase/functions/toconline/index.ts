@@ -60,13 +60,13 @@ async function get(e: Empresa, caminho: string) {
 }
 
 // Escrita (fase 2): só RASCUNHOS de guias de transporte (GT), pela API anterior (/api/…, sem v1), que cria o documento
-// em preparação: pode ser revisto e apagado no TOConline. A finalização e a comunicação à AT fazem-se no TOConline.
+// em preparação; «finalizar_guia» (ou criar_guia com finalizar) grava e finaliza (PATCH status 1). Finalizada, só se anula no TOConline.
 const baseRascunhos = (e: Empresa) => {
   let u = cfg(e).api.replace(/\/v1$/, '')
   if (!/\/api$/.test(u)) u += '/api'
   return u
 }
-async function enviar(e: Empresa, metodo: 'POST' | 'DELETE', caminho: string, corpo?: unknown) {
+async function enviar(e: Empresa, metodo: 'POST' | 'PATCH' | 'DELETE', caminho: string, corpo?: unknown) {
   const r = await fetch(`${baseRascunhos(e)}/${caminho}`, {
     method: metodo,
     headers: { 'Content-Type': 'application/vnd.api+json', Accept: 'application/json', Authorization: `Bearer ${await token(e)}` },
@@ -135,6 +135,22 @@ async function criarRascunhoGuia(e: Empresa, g: Guia) {
   return { id, status: a.status, document_no: a.document_no, finalizado: Number(a.status) === 1 }
 }
 
+/** Grava e finaliza (status 0 → 1) uma guia em rascunho. Depois de finalizada só se anula no TOConline. */
+async function finalizarGuia(e: Empresa, id: string) {
+  if (!/^\d+$/.test(id)) throw new Error('Documento inválido.')
+  const ler = async () => ((await get(e, `commercial_sales_documents/${id}`)) as { data?: { attributes?: Record<string, unknown> } }).data?.attributes ?? {}
+  const a = await ler()
+  if (a.document_type !== 'GT') throw new Error('Só se finalizam guias de transporte (GT).')
+  if (Number(a.status) === 0) {
+    await enviar(e, 'PATCH', `commercial_sales_documents/${id}`, { data: { type: 'commercial_sales_documents', id: Number(id), attributes: { status: 1 } } })
+  }
+  const f = await ler()
+  return {
+    id, status: f.status, finalizado: Number(f.status) === 1, document_no: f.document_no,
+    communication_status: f.communication_status ?? null, communication_code: f.communication_code ?? null, communication_message: f.communication_message ?? null,
+  }
+}
+
 async function apagarRascunho(e: Empresa, id: string) {
   if (!/^\d+$/.test(id)) throw new Error('Documento inválido.')
   const doc = await get(e, `commercial_sales_documents/${id}`) as { data?: { attributes?: Record<string, unknown> } }
@@ -162,7 +178,7 @@ Deno.serve(async (req) => {
     const { data: perfil } = await supabase.from('perfis').select('ativo').eq('id', quem.user.id).maybeSingle()
     if (!perfil?.ativo) return resposta({ erro: 'Utilizador sem acesso.' }, 403)
 
-    const { empresa, acao, caminho, guia, id } = await req.json() as { empresa: Empresa; acao: 'testar' | 'consultar' | 'criar_guia' | 'apagar_rascunho'; caminho?: string; guia?: Guia; id?: string }
+    const { empresa, acao, caminho, guia, id, finalizar } = await req.json() as { empresa: Empresa; acao: 'testar' | 'consultar' | 'criar_guia' | 'finalizar_guia' | 'apagar_rascunho'; caminho?: string; guia?: Guia; id?: string; finalizar?: boolean }
     if (empresa !== 'PP' && empresa !== 'PC') return resposta({ erro: 'Empresa inválida' }, 400)
 
     if (acao === 'testar') {
@@ -186,7 +202,15 @@ Deno.serve(async (req) => {
       if (!caminho || !PERMITIDOS.test(caminho)) return resposta({ erro: 'Consulta não permitida (só leitura de documentos de venda e compra, recibos, pagamentos, séries, clientes, fornecedores e artigos).' }, 400)
       return resposta({ ok: true, resultado: await get(empresa, caminho) })
     }
-    if (acao === 'criar_guia') return resposta({ ok: true, ...(await criarRascunhoGuia(empresa, guia as Guia)) })
+    if (acao === 'criar_guia') {
+      const r = await criarRascunhoGuia(empresa, guia as Guia)
+      if (!finalizar || r.finalizado) return resposta({ ok: true, ...r })
+      // grava e finaliza logo; se a finalização falhar, o rascunho fica no TOConline (com a mensagem do erro)
+      try { return resposta({ ok: true, ...(await finalizarGuia(empresa, String(r.id))) }) } catch (err) {
+        return resposta({ ok: true, ...r, erroFinalizar: err instanceof Error ? err.message : String(err) })
+      }
+    }
+    if (acao === 'finalizar_guia') return resposta({ ok: true, ...(await finalizarGuia(empresa, String(id ?? ''))) })
     if (acao === 'apagar_rascunho') return resposta(await apagarRascunho(empresa, String(id ?? '')))
     return resposta({ erro: 'Ação desconhecida' }, 400)
   } catch (e) {
