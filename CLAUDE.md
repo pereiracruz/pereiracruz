@@ -24,7 +24,8 @@ Chromium já instalado neste ambiente: **não** correr `playwright install` (no 
 React 19 + TypeScript + Vite 6 + Tailwind v4 (tokens em `src/index.css` `@theme`), React Router 6 (páginas em
 `lazy()` em `src/main.tsx`), Zustand com persist, SheetJS `xlsx` 0.18.5, lucide-react. Servidor: Supabase em Frankfurt
 (Postgres + Auth + Storage + Edge Functions em Deno). Publicação: Netlify a partir do `main` (`netlify.toml`).
-IA: Claude na Google Vertex AI região `eu`, só pela função `ler-documento` (nunca chamar IA do browser).
+IA: Claude na Google Vertex AI região `eu` pela função `ler-documento` (documentos) e OpenRouter pela função `ler-email`
+(emails e anexos, structured outputs; `docs/email-ia.md`). Nunca chamar IA do browser.
 
 ## Mapa
 - `src/types.ts` — todos os tipos de domínio (Encomenda › Modelo › Variante, LinhaMaterial, Pedido, LinhaCusto, OrdemFabrico…).
@@ -91,4 +92,4 @@ nome em `pages/Copias.tsx`. Nunca alterar dados existentes do utilizador sem con
 Skills: `funcionalidade-nova`, `dados-e-migracoes`, `testes`, `ficheiros-de-clientes`, `ui-ux`, `dominio-textil`, `supabase`,
 `documentos-fiscais` (com `referencia-api.md` do TOConline), `publicar`.
 Agentes: `revisor-codigo`, `testador`, `revisor-ui`, `guardiao-seguranca`, `especialista-textil`, `especialista-toconline`,
-`analista-ficheiros`. Usar o revisor e o guardião antes de PRs que mexem em dados, servidor ou documentos fiscais.
+`especialista-openrouter`, `analista-ficheiros`. Usar o revisor e o guardião antes de PRs que mexem em dados, servidor ou documentos fiscais.

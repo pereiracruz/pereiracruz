@@ -34,6 +34,7 @@ npm run test:app      # só a aplicação no browser
 | `tests/app/modulos-novos.spec.ts` | Conciliação, faturas, produção diária, faltas e emails abrem sem erros; pesquisa geral (Ctrl+K, «/», Enter, Escape) |
 | `tests/unidade/planeamento.spec.ts` | Importação do planeamento (folha PLAN_RENT, salários não lidos, datas, nº repetidos), comparação, ligação às encomendas pelo nº e cliente |
 | `tests/app/producao.spec.ts` | Página Produção: importar, mudar o estado, ver na encomenda, desfazer com cópia; estados e categorias nos dados mestre |
+| `tests/unidade/email-ia.spec.ts` | Emails lidos com IA: cliente existente/novo, encomenda e ficha em rascunho a partir da leitura, pedidos de orçamento por peça |
 | `tests/app/dados-exemplo.spec.ts` | Limpar dados de exemplo: cópia antes, confirmação com LIMPAR, só o que foi escolhido |
 
 Em modo local, as partes que dependem do servidor (Gmail, TOConline, leitura com IA, Google Sheets) só se testam pelas funções
