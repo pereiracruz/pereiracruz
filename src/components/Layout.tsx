@@ -136,7 +136,7 @@ export default function Layout() {
       {menuAberto && <div className="no-print fixed inset-0 z-40 bg-tinta/30 lg:hidden" onClick={() => setMenuAberto(false)} />}
       <aside className={clsx('no-print bg-papel border-r border-linha flex flex-col',
         'fixed inset-y-0 left-0 z-50 w-[280px] max-w-[85vw] max-lg:overflow-y-auto transition-transform duration-200 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]', menuAberto ? 'translate-x-0 shadow-xl' : '-translate-x-full',
-        'lg:static lg:z-auto lg:max-w-none lg:translate-x-0 lg:shadow-none lg:shrink-0 lg:transition-[width] lg:pt-0 lg:pb-0', recolhida ? 'lg:w-0 lg:overflow-hidden lg:border-0' : 'lg:w-[248px]')}>
+        'lg:relative lg:z-40 lg:max-w-none lg:translate-none lg:shadow-none lg:shrink-0 lg:transition-[width] lg:pt-0 lg:pb-0', recolhida ? 'lg:w-0 lg:overflow-hidden lg:border-0' : 'lg:w-[248px]')}>
         <div className="flex items-center justify-between px-4 h-16">
           <div className="flex items-center gap-2.5">
             <img src="/logo-mark.png" alt="" className="h-8 w-auto" />
