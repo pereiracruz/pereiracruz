@@ -38,18 +38,36 @@ export const NOME_TIPO: Record<TipoEmailIA, string> = {
   encomenda: 'Encomenda', pedido_preco: 'Pedido de preço', tech_pack: 'Tech pack / OF', alteracao: 'Alteração a encomenda', fatura: 'Fatura', outro: 'Outro',
 }
 
-export async function lerEmailComIA(emailId: string, clientes: string[]): Promise<LeituraEmailIA> {
+/** Lê o email com IA no servidor. Com vários documentos a leitura é feita por partes (um documento por chamada, ~150 s
+ *  cada): repete o pedido até vir «concluido». progresso(feitos, total) para mostrar no botão. */
+export async function lerEmailComIA(emailId: string, clientes: string[], progresso?: (feitos: number, total: number) => void): Promise<LeituraEmailIA> {
   if (!supabase) throw new Error('A leitura de emails com IA precisa do servidor (Supabase).')
-  const { data, error } = await supabase.functions.invoke('ler-email', { body: { emailId, clientes } })
-  if (error) {
-    const ctx = (error as { context?: Response }).context
-    const det = ctx ? await ctx.json().catch(() => null) as { erro?: string } | null : null
-    if (det?.erro) throw new Error(det.erro)
-    if (/not found|404/i.test(error.message)) throw new Error('A função «ler-email» ainda não existe no Supabase.')
-    throw new Error(error.message)
+  const cliente = supabase
+  type Passo = Partial<LeituraEmailIA> & { concluido?: boolean; feitos?: number; total?: number; erro?: string }
+  const chamar = async (recomecar: boolean): Promise<Passo> => {
+    const { data, error } = await cliente.functions.invoke('ler-email', { body: { emailId, clientes, recomecar } })
+    if (error) {
+      const ctx = (error as { context?: Response }).context
+      const det = ctx ? await ctx.json().catch(() => null) as { erro?: string } | null : null
+      if (det?.erro) throw new Error(det.erro)
+      if (/not found|404/i.test(error.message)) throw new Error('A função «ler-email» ainda não existe no Supabase.')
+      throw new Error(error.message)
+    }
+    if ((data as Passo)?.erro) throw new Error((data as Passo).erro)
+    return data as Passo
   }
-  if ((data as { erro?: string })?.erro) throw new Error((data as { erro: string }).erro)
-  return data as LeituraEmailIA
+  let r = await chamar(true)
+  let falhas = 0
+  for (let i = 0; i < 30 && r.concluido === false; i++) {
+    progresso?.(r.feitos ?? 0, r.total ?? 0)
+    try { r = await chamar(false); falhas = 0 } catch (e) {
+      // um documento pode passar o tempo do servidor: à 2.ª falha o servidor passa-o à frente
+      if (++falhas >= 3) throw e
+    }
+  }
+  if (r.concluido === false) throw new Error('A leitura não terminou. Carregue outra vez em «Ler outra vez» para continuar.')
+  const { concluido: _c, feitos: _f, total: _t, ...leitura } = r
+  return leitura as LeituraEmailIA
 }
 
 const letras = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')

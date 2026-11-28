@@ -15,6 +15,7 @@ export default function LeituraEmail({ email }: { email: EmailEncomenda }) {
   const nav = useNavigate()
   const { clientes, fornecedores, tecidos, equivalencias, acessorios, adicionarEncomenda, guardarPedido, guardarLinha, log } = useDb()
   const [aLer, setALer] = useState(false)
+  const [progresso, setProgresso] = useState('')
   const [erro, setErro] = useState('')
   const [aberta, setAberta] = useState(false)
   const leitura = email.leituraIA
@@ -23,9 +24,9 @@ export default function LeituraEmail({ email }: { email: EmailEncomenda }) {
   const [colecao, setColecao] = useState('')
 
   const ler = async () => {
-    setALer(true); setErro('')
+    setALer(true); setErro(''); setProgresso('')
     try {
-      const r: LeituraEmailIA = await lerEmailComIA(email.id, clientes.map((c) => c.nome))
+      const r: LeituraEmailIA = await lerEmailComIA(email.id, clientes.map((c) => c.nome), (f, t) => setProgresso(`${f}/${t}`))
       useEmails.setState((s) => ({ emails: s.emails.map((e) => (e.id === email.id ? { ...e, leituraIA: r } : e)) }))
       log('Email lido com IA', `${email.assunto} · ${NOME_TIPO[r.dados.classificacao.tipo]} · ${r.modelo}`)
       setAberta(true)
@@ -62,7 +63,7 @@ export default function LeituraEmail({ email }: { email: EmailEncomenda }) {
     <div className="mt-2">
       <div className="flex items-center gap-2 flex-wrap">
         <Botao pequeno variante={leitura ? 'fantasma' : 'secundario'} icone={<Sparkles size={14} />} disabled={aLer} onClick={ler}>
-          {aLer ? 'A ler o email e os anexos…' : leitura ? 'Ler outra vez' : 'Ler com IA'}</Botao>
+          {aLer ? `A ler o email e os anexos…${progresso ? ` ${progresso}` : ''}` : leitura ? 'Ler outra vez' : 'Ler com IA'}</Botao>
         {l && <button onClick={() => setAberta(!aberta)} className="text-[12px] text-azul hover:underline">
           {aberta ? 'Esconder leitura' : `Leitura: ${NOME_TIPO[l.classificacao.tipo]} (${dataHora(leitura!.em)})`}</button>}
       </div>

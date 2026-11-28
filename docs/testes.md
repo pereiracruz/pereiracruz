@@ -37,6 +37,7 @@ npm run test:app      # só a aplicação no browser
 | `tests/unidade/email-ia.spec.ts` | Emails lidos com IA: cliente existente/novo, encomenda e ficha em rascunho a partir da leitura, pedidos de orçamento por peça |
 | `tests/unidade/anexos-email.spec.ts` | Anexos dos emails: o que se lê/guarda/ignora, zips (lixo do Mac, nomes com acentos, limites), cópia das regras igual na função |
 | `tests/unidade/esquema-json.spec.ts` | Resposta da IA sem modo estrito acertada ao esquema (campos em falta, números em texto, enums), cópia igual na função |
+| `tests/unidade/juntar-leituras.spec.ts` | Leitura de email por partes: modelos e linhas de todos os documentos, cliente completado, anexos e dúvidas sem repetidos, cópia igual na função |
 | `tests/app/dados-exemplo.spec.ts` | Limpar dados de exemplo: cópia antes, confirmação com LIMPAR, só o que foi escolhido |
 
 Em modo local, as partes que dependem do servidor (Gmail, TOConline, leitura com IA, Google Sheets) só se testam pelas funções
