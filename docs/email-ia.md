@@ -21,6 +21,7 @@ A leitura fica guardada no email (não se volta a pagar para a ver); «Ler outra
 2. Supabase → Edge Functions → **Secrets**: `OPENROUTER_API_KEY` (obrigatório). Opcionais: `OPENROUTER_MODELO`
    (omissão `anthropic/claude-opus-5.5`), `OPENROUTER_PDF` (`native` · `mistral-ocr` para digitalizações · `cloudflare-ai`),
    `OPENROUTER_ZDR=1`, `OPENROUTER_MAX_TOKENS` (omissão 16000), `OPENROUTER_URL=https://eu.openrouter.ai/api/v1` (só planos Business/Enterprise).
+   `OPENROUTER_ESTRITO=0` desliga a validação estrita do esquema. Por omissão, se o fornecedor recusar o pedido («Provider returned error»), a função tenta outra vez sem `strict` e mostra o erro original do fornecedor (campo `metadata.raw`).
    A chave do OpenRouter pode ter um **limite de gasto**: tem de chegar para a reserva de cada pedido (16 000 tokens ≈ 0,32 $ no Opus 5.5).
 3. Supabase → Edge Functions → nova função **ler-email** → colar `supabase/functions/ler-email/index.ts` → Deploy.
 

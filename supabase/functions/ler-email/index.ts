@@ -139,24 +139,38 @@ Deno.serve(async (req) => {
 
     const base = (Deno.env.get('OPENROUTER_URL') || 'https://openrouter.ai/api/v1').replace(/\/+$/, '')
     const modelo = Deno.env.get('OPENROUTER_MODELO') || 'anthropic/claude-opus-5.5'
-    const r = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pereirasproject.netlify.app', 'X-Title': "Pereira's Project" },
-      body: JSON.stringify({
-        // sem «temperature»: os modelos recentes (ex.: Claude Opus 5.5) não a aceitam e, com require_parameters, nenhum fornecedor servia o pedido
-        // reserva de tokens de resposta (o OpenRouter exige crédito para o máximo pedido); 16 000 chega para encomendas grandes
-        model: modelo, max_tokens: Number(Deno.env.get('OPENROUTER_MAX_TOKENS')) || 16000,
-        messages: [{ role: 'system', content: INSTRUCOES }, { role: 'user', content: partes }],
-        response_format: { type: 'json_schema', json_schema: { name: 'email', strict: true, schema: ESQUEMA } },
-        plugins: [{ id: 'file-parser', pdf: { engine: Deno.env.get('OPENROUTER_PDF') || 'native' } }, { id: 'response-healing' }],
-        provider: { require_parameters: true, data_collection: 'deny', ...(Deno.env.get('OPENROUTER_ZDR') === '1' ? { zdr: true } : {}) },
-      }),
-    })
-    const corpo = await r.json().catch(() => ({})) as { choices?: { message?: { content?: string }; finish_reason?: string }[]; model?: string; provider?: string; usage?: Record<string, number>; error?: { message?: string; code?: number } }
-    if (!r.ok || corpo.error) {
+    type Corpo = { choices?: { message?: { content?: string }; finish_reason?: string }[]; model?: string; provider?: string; usage?: Record<string, number>; error?: { message?: string; code?: number; metadata?: { raw?: unknown; provider_name?: string } } }
+    const pedir = async (estrito: boolean) => {
+      const r = await fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pereirasproject.netlify.app', 'X-Title': "Pereira's Project" },
+        body: JSON.stringify({
+          // sem «temperature»: os modelos recentes (ex.: Claude Opus 5.5) não a aceitam e, com require_parameters, nenhum fornecedor servia o pedido
+          // reserva de tokens de resposta (o OpenRouter exige crédito para o máximo pedido); 16 000 chega para encomendas grandes
+          model: modelo, max_tokens: Number(Deno.env.get('OPENROUTER_MAX_TOKENS')) || 16000,
+          messages: [{ role: 'system', content: INSTRUCOES }, { role: 'user', content: partes }],
+          // estrito: o fornecedor garante o esquema; alguns recusam esquemas grandes, por isso há uma 2.ª tentativa sem «strict» (o JSON é validado à mesma aqui e reparado pelo response-healing)
+          response_format: { type: 'json_schema', json_schema: { name: 'email', strict: estrito, schema: ESQUEMA } },
+          plugins: [{ id: 'file-parser', pdf: { engine: Deno.env.get('OPENROUTER_PDF') || 'native' } }, { id: 'response-healing' }],
+          provider: { require_parameters: true, data_collection: 'deny', ...(Deno.env.get('OPENROUTER_ZDR') === '1' ? { zdr: true } : {}) },
+        }),
+      })
+      const corpo = await r.json().catch(() => ({})) as Corpo
+      return { r, corpo }
+    }
+    const falhou = (x: { r: Response; corpo: Corpo }) => !x.r.ok || !!x.corpo.error
+    let tentativa = await pedir(Deno.env.get('OPENROUTER_ESTRITO') !== '0')
+    // erro do fornecedor (não de chave, crédito ou limite): tentar outra vez sem validação estrita do esquema
+    if (falhou(tentativa) && ![401, 402, 429].includes(tentativa.r.status) && Deno.env.get('OPENROUTER_ESTRITO') !== '0') tentativa = await pedir(false)
+    const { r, corpo } = tentativa
+    if (falhou(tentativa)) {
       const msg = corpo.error?.message ?? `HTTP ${r.status}`
+      const meta = corpo.error?.metadata
+      const bruto = meta?.raw == null ? '' : (typeof meta.raw === 'string' ? meta.raw : JSON.stringify(meta.raw)).slice(0, 600)
+      const detalhe = (meta?.provider_name ? ` Fornecedor: ${meta.provider_name}.` : '') + (bruto ? ` Detalhe: ${bruto}` : '')
       const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Falta crédito: carregue crédito no OpenRouter ou aumente o limite da chave (Settings → Keys → editar a chave → limite).' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo aceita todos os parâmetros do pedido (ficheiros, JSON estruturado, sem recolha de dados). Veja https://openrouter.ai/api/v1/models/<modelo>/endpoints ou escolha outro OPENROUTER_MODELO.' : ''
-      return resposta({ erro: `OpenRouter: ${msg}.${dica}` }, 502)
+      console.error('OpenRouter', r.status, msg, meta?.provider_name, bruto)
+      return resposta({ erro: `OpenRouter: ${msg}.${detalhe}${dica}` }, 502)
     }
     const texto = corpo.choices?.[0]?.message?.content ?? ''
     let dados: unknown
