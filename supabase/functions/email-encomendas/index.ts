@@ -1,8 +1,8 @@
 // Supabase Edge Function «email-encomendas» — lê a caixa de correio por IMAP e recolhe os emails de encomendas.
 // SÓ LEITURA na caixa: abre a pasta em modo de leitura e não marca nada como lido, não move nem apaga.
-// Para cada email de encomenda novo: guarda os anexos no bucket «documentos» — PDF, Excel e imagens (a IA lê), os ficheiros
-// de dentro dos zips (abertos aqui, sem o lixo do Mac) e os restantes, como moldes DXF (só para descarregar) —
-// (pasta email/…) e regista o email na tabela «documentos», coleção «emails», para rever na aplicação.
+// Para cada email de encomenda novo: regista o email; os anexos são recolhidos depois, aos poucos (ação «rebuscar»,
+// ver «Recolha dos anexos») — PDF, Excel e imagens (a IA lê), ficheiros de dentro dos zips e moldes DXF (só para descarregar),
+// guardados no bucket «documentos» (pasta email/…). O email fica na tabela «documentos», coleção «emails».
 //
 // Segredos (Supabase → Edge Functions → Secrets), uma série por conta de email:
 //   1.ª conta: EMAIL_IMAP_HOST, EMAIL_USER, EMAIL_PASSWORD  (opcionais: EMAIL_IMAP_PORT, por omissão 993; EMAIL_PASTA, por omissão INBOX)
@@ -21,12 +21,12 @@
 //   palavrasPedidos / palavrasPedidosTexto: pedidos de preço/cotação de produção ou amostra (tipo «pedido», página «Emails de pedidos»;
 //                  não precisam de anexo)
 //   Um email entra se tiver anexo Excel, PDF ou zip E (sem filtros, ou se coincidir com algum remetente ou palavra).
-// Ação «rebuscar»: volta à caixa buscar os anexos de um email já recolhido (botão «Buscar anexos outra vez»).
+// Ação «rebuscar» (emailId, recomecar?): um passo da recolha dos anexos; repetir até «concluido». A aplicação chama-a
+// sozinha para os emails novos e no botão «Buscar anexos outra vez» (recomecar: true).
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { ImapFlow } from 'npm:imapflow@1'
 import nodemailer from 'npm:nodemailer@6'
 import MailComposer from 'npm:nodemailer@6/lib/mail-composer/index.js'
-import { unzipSync } from 'npm:fflate@0.8'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -94,6 +94,46 @@ export function origemZip(nomeZip: string, caminho: string): string {
   if (pastas[0] && pastas[0].toLowerCase() === nomeZip.replace(/\.zip$/i, '').toLowerCase()) pastas.shift()
   return [nomeZip, ...pastas].join(' › ')
 }
+/** Ficheiro dentro de um zip, lido do diretório central (sem descomprimir nada). */
+export type EntradaZip = { caminho: string; metodo: number; comprimido: number; tamanho: number; offset: number }
+
+/** Lê a lista de ficheiros de um zip. Não usa bibliotecas: o servidor tem pouco tempo de processador. */
+export function lerDiretorioZip(b: Uint8Array): EntradaZip[] {
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  let fim = -1
+  for (let i = b.length - 22; i >= Math.max(0, b.length - 65_557); i--) if (v.getUint32(i, true) === 0x06054b50) { fim = i; break }
+  if (fim < 0) throw new Error('não é um zip válido')
+  const total = v.getUint16(fim + 10, true)
+  let p = v.getUint32(fim + 16, true)
+  if (p === 0xffffffff || total === 0xffff) throw new Error('zip64 (maior que 4 GB) não suportado')
+  const r: EntradaZip[] = []
+  for (let k = 0; k < total; k++) {
+    if (p + 46 > b.length || v.getUint32(p, true) !== 0x02014b50) throw new Error('zip danificado')
+    const flags = v.getUint16(p + 8, true), metodo = v.getUint16(p + 10, true)
+    const comprimido = v.getUint32(p + 20, true), tamanho = v.getUint32(p + 24, true)
+    const n = v.getUint16(p + 28, true), extra = v.getUint16(p + 30, true), comentario = v.getUint16(p + 32, true)
+    const offset = v.getUint32(p + 42, true)
+    const bytes = b.subarray(p + 46, p + 46 + n)
+    let caminho: string
+    try { caminho = new TextDecoder('utf-8', { fatal: true }).decode(bytes) } catch { caminho = String.fromCharCode(...bytes) }
+    if (!(flags & 0x800)) caminho = corrigirNomeZip(caminho)
+    r.push({ caminho: caminho.normalize('NFC'), metodo, comprimido, tamanho, offset })
+    p += 46 + n + extra + comentario
+  }
+  return r
+}
+
+/** Tira um ficheiro de um zip (guardado ou deflate), com a descompressão nativa do servidor/browser. */
+export async function extrairDoZip(b: Uint8Array, e: EntradaZip): Promise<Uint8Array> {
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  if (v.getUint32(e.offset, true) !== 0x04034b50) throw new Error(`zip danificado em ${e.caminho}`)
+  const inicio = e.offset + 30 + v.getUint16(e.offset + 26, true) + v.getUint16(e.offset + 28, true)
+  const dados = b.subarray(inicio, inicio + e.comprimido)
+  if (e.metodo === 0) return dados.slice()
+  if (e.metodo !== 8) throw new Error(`compressão não suportada em ${e.caminho}`)
+  const fluxo = new Blob([dados as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+  return new Uint8Array(await new Response(fluxo).arrayBuffer())
+}
 // ==== FIM anexosEmail ====
 const MAX_POR_VEZ = 4 // emails novos tratados por chamada (o resto fica para a seguinte; a aplicação volta a chamar)
 // cada anexo até 30 MB (o email pode ser maior: os anexos descarregam-se um a um); os maiores ficam registados
@@ -154,55 +194,176 @@ const MIME: Record<string, string> = {
 }
 const mimeDe = (nome: string) => MIME[(nome.split('.').pop() ?? '').toLowerCase()] ?? 'application/octet-stream'
 
-/** Descarrega os anexos de um email (um a um, BODY.PEEK) e guarda-os no bucket «documentos» (pasta email/<id>/).
- *  Os zips abrem-se aqui: cada ficheiro lá dentro passa a ser um anexo (com a origem). Os grandes demais ficam registados. */
-async function recolherAnexos(imap: ImapFlow, supabase: SupabaseCliente, uid: number, nos: No[], id: string) {
-  const anexos: AnexoGuardado[] = []
-  const naoGuardados: AnexoNaoGuardado[] = []
-  let i = 0
-  const guardar = async (nome: string, conteudo: Uint8Array, tipo: string, origem?: string) => {
-    const caminho = `email/${id}/${i++}-${nomeFicheiro(nome)}`
-    const { error } = await supabase.storage.from('documentos').upload(caminho, conteudo, { contentType: tipo || undefined, upsert: true })
-    if (error) { naoGuardados.push({ nome, tamanho: conteudo.length, motivo: `não ficou guardado (${error.message})` }); return }
-    anexos.push({ nome, caminho, tipo, tamanho: conteudo.length, ...(origem ? { origem } : {}) })
-  }
-  for (const n of nos) {
-    const nome = nomeDe(n)
-    if (!nome || !n.part) continue
-    const destino = destinoAnexo({ nome, disposicao: n.disposition })
-    if (destino === 'ignorar') continue
-    // o tamanho na estrutura é o codificado (base64 ≈ +37 %)
-    const estimado = Math.round((n.size ?? 0) / 1.37)
-    if (estimado > MAX_PARTE) { naoGuardados.push({ nome, tamanho: estimado, motivo: 'grande demais' }); continue }
-    let conteudo: Uint8Array
+// ---------- Recolha dos anexos, aos poucos ----------
+// O Supabase só dá ~2 s de processador por chamada: descarregar e abrir um zip de vários MB de uma vez passa o limite.
+// Por isso a recolha é feita em passos (a aplicação chama a ação «rebuscar» até vir «concluido»), com o estado guardado
+// no próprio email (campo «recolha»):
+//   · cada anexo do email é uma tarefa; um zip é primeiro guardado inteiro no bucket (pasta email/<id>/tmp/) e depois
+//     cada ficheiro lá dentro é outra tarefa (descompressão nativa, sem bibliotecas);
+//   · cada chamada faz uma tarefa pesada ou várias pequenas (até ORCAMENTO bytes);
+//   · uma tarefa que falha 2 vezes (ex.: tempo de processador) passa a «não guardado», para nunca ficar presa.
+type Tarefa =
+  | { tipo: 'parte'; part: string; nome: string; mime?: string; tamanho: number; disposicao?: string; tentativas?: number }
+  | { tipo: 'zip'; zip: string; nomeZip: string; entrada: EntradaZip; tentativas?: number }
+type Recolha = { uid: number; tarefas: Tarefa[]; total: number; i: number; anexos: AnexoGuardado[]; naoGuardados: AnexoNaoGuardado[]; antigos: string[]; temporarios: string[]; inicio: string }
+const ORCAMENTO = 6 * 1024 * 1024
+const tamanhoTarefa = (t: Tarefa) => (t.tipo === 'parte' ? Math.round(t.tamanho / 1.37) : t.entrada.tamanho)
+
+/** Encontra o email na caixa (pelo número guardado ou pelo Message-ID) e devolve o número e a estrutura. */
+async function encontrarNaCaixa(imap: ImapFlow, c: Conta, emailId: string, messageId?: string | null) {
+  const m = /^c(\d+)-(.*)-(\d+)$/.exec(emailId)
+  const validade = String((imap.mailbox && typeof imap.mailbox === 'object' ? imap.mailbox.uidValidity : '') ?? '')
+  const candidatos: number[] = []
+  if (m && m[2] === validade) candidatos.push(Number(m[3]))
+  if (messageId) {
     try {
-      const d = await imap.download(String(uid), n.part, { uid: true })
-      conteudo = await lerTudo(d.content, MAX_PARTE + 1)
-    } catch (e) {
-      console.error('anexo', uid, nome, e)
-      naoGuardados.push({ nome, tamanho: estimado, motivo: 'não foi possível descarregar' }); continue
-    }
-    if (conteudo.length > MAX_PARTE) { naoGuardados.push({ nome, tamanho: conteudo.length, motivo: 'grande demais' }); continue }
-    if (destino !== 'zip') { await guardar(nome, conteudo, n.type && n.type !== 'application/octet-stream' ? n.type : mimeDe(nome)); continue }
-    // zip: tirar os ficheiros úteis (sem o lixo do Mac); se não abrir, fica guardado inteiro
-    const filtro = filtroZip()
-    let ficheiros: Record<string, Uint8Array>
-    try {
-      ficheiros = unzipSync(conteudo, { filter: (f) => filtro.aceitar(f.name, f.originalSize) })
-    } catch (e) {
-      console.error('zip', nome, e)
-      await guardar(nome, conteudo, 'application/zip')
-      naoGuardados.push({ nome, tamanho: conteudo.length, motivo: 'o zip não abriu (está guardado inteiro)' })
-      continue
-    }
-    conteudo = new Uint8Array(0) // libertar memória
-    for (const [caminho, bytes] of Object.entries(ficheiros)) {
-      const base = corrigirNomeZip(caminho.split('/').pop() ?? caminho)
-      await guardar(base, bytes, mimeDe(base), origemZip(nome, caminho))
-    }
-    naoGuardados.push(...filtro.recusados.map((r) => ({ ...r, motivo: `${r.motivo} (dentro de ${nome})` })))
+      const r = await imap.search({ header: { 'message-id': messageId } }, { uid: true })
+      if (r) candidatos.push(...r)
+    } catch (x) { console.error('pesquisa message-id', x) }
   }
-  return { anexos, naoGuardados }
+  for (const uid of [...new Set(candidatos)]) {
+    const msg = await imap.fetchOne(String(uid), { uid: true, envelope: true, bodyStructure: true }, { uid: true })
+    if (!msg || !msg.bodyStructure) continue
+    if (messageId && msg.envelope?.messageId && msg.envelope.messageId !== messageId) continue // o número foi reutilizado
+    return { uid, nos: folhas(msg.bodyStructure as No) }
+  }
+  throw new Error(`Não encontrei este email na pasta ${c.pasta} da conta ${c.user}: pode ter sido movido ou apagado no Thunderbird.`)
+}
+
+/** Lista de tarefas a partir da estrutura do email (sem descarregar nada). */
+const tarefasDe = (nos: No[]): Tarefa[] => nos
+  .filter((n) => n.part && nomeDe(n) && destinoAnexo({ nome: nomeDe(n), disposicao: n.disposition }) !== 'ignorar')
+  .map((n) => ({ tipo: 'parte', part: n.part!, nome: nomeDe(n), mime: n.type, tamanho: n.size ?? 0, disposicao: n.disposition }))
+
+/** Um passo da recolha dos anexos de um email. Só leitura na caixa de correio. */
+async function passoRecolha(supabase: SupabaseCliente, lista: Conta[], emailId: string, recomecar: boolean) {
+  const t0 = Date.now()
+  const { data: linha, error } = await supabase.from('documentos').select('dados').eq('colecao', 'emails').eq('id', emailId).maybeSingle()
+  if (error || !linha) throw new Error('Não encontrei este email.')
+  let e = linha.dados as Record<string, unknown> & { conta?: string; messageId?: string | null; anexos?: AnexoGuardado[]; recolha?: Recolha }
+  const gravar = async (dados: typeof e) => {
+    const { error: x } = await supabase.from('documentos').upsert({ colecao: 'emails', id: emailId, dados })
+    if (x) throw new Error(`base de dados: ${x.message}`)
+    e = dados
+  }
+  const m = /^c(\d+)-/.exec(emailId)
+  const c = lista.find((x) => (e.conta ?? '').toLowerCase() === x.user.toLowerCase()) ?? lista.find((x) => m && x.n === Number(m[1]))
+  if (!c) throw new Error(`A conta ${e.conta ?? ''} já não está configurada nos segredos do Supabase.`)
+
+  let imap: ImapFlow | null = null
+  let lock: { release: () => void } | null = null
+  const abrirCaixa = async () => {
+    if (imap) return imap
+    imap = cliente(c)
+    await imap.connect()
+    lock = await imap.getMailboxLock(c.pasta, { readOnly: true })
+    return imap
+  }
+  try {
+    // 1.º passo: lista de tarefas (rápido)
+    if (recomecar || !e.recolha) {
+      const caixa = await abrirCaixa()
+      const { uid, nos } = await encontrarNaCaixa(caixa, c, emailId, e.messageId)
+      const tarefas = tarefasDe(nos)
+      const recolha: Recolha = {
+        uid, tarefas, total: tarefas.length, i: 0, anexos: [], naoGuardados: [],
+        antigos: [...(e.anexos ?? []).map((a) => a.caminho), ...(e.recolha?.anexos ?? []).map((a) => a.caminho), ...(e.recolha?.temporarios ?? [])],
+        temporarios: [], inicio: new Date().toISOString(),
+      }
+      await gravar({ ...e, recolha, anexosPendentes: true })
+      console.log('recolha', emailId, 'tarefas', tarefas.length, `${Date.now() - t0}ms`)
+    }
+    const r = e.recolha!
+    const zips = new Map<string, Uint8Array>()
+    const guardar = async (nome: string, conteudo: Uint8Array, tipo: string, origem?: string) => {
+      const caminho = `email/${emailId}/${r.i++}-${nomeFicheiro(nome)}`
+      const { error: x } = await supabase.storage.from('documentos').upload(caminho, conteudo, { contentType: tipo || undefined, upsert: true })
+      if (x) { r.naoGuardados.push({ nome, tamanho: conteudo.length, motivo: `não ficou guardado (${x.message})` }); return }
+      r.anexos.push({ nome, caminho, tipo, tamanho: conteudo.length, ...(origem ? { origem } : {}) })
+    }
+    let gasto = 0
+    while (r.tarefas.length) {
+      const t = r.tarefas[0]
+      const peso = tamanhoTarefa(t)
+      if (gasto > 0 && gasto + peso > ORCAMENTO) break
+      const nomeT = t.tipo === 'parte' ? t.nome : corrigirNomeZip(t.entrada.caminho.split('/').pop() ?? t.entrada.caminho)
+      if ((t.tentativas ?? 0) >= 2) {
+        r.tarefas.shift()
+        r.naoGuardados.push({ nome: nomeT, tamanho: peso, motivo: `o servidor não conseguiu tratar este ficheiro${t.tipo === 'zip' ? ` (dentro de ${t.nomeZip})` : ''}` })
+        continue
+      }
+      if (peso > MAX_PARTE) { r.tarefas.shift(); r.naoGuardados.push({ nome: nomeT, tamanho: peso, motivo: 'grande demais' }); continue }
+      // tarefa pesada: marcar a tentativa antes (se o servidor a cortar a meio, à 2.ª falha passa à frente)
+      if (peso > 1024 * 1024) { t.tentativas = (t.tentativas ?? 0) + 1; await gravar({ ...e, recolha: r }) }
+      const t1 = Date.now()
+      if (t.tipo === 'parte') {
+        let conteudo: Uint8Array
+        try {
+          const caixa = await abrirCaixa()
+          const d = await caixa.download(String(r.uid), t.part, { uid: true })
+          conteudo = await lerTudo(d.content, MAX_PARTE + 1)
+        } catch (x) {
+          console.error('anexo', emailId, t.nome, x)
+          r.tarefas.shift(); r.naoGuardados.push({ nome: t.nome, tamanho: peso, motivo: 'não foi possível descarregar' }); continue
+        }
+        r.tarefas.shift()
+        if (conteudo.length > MAX_PARTE) { r.naoGuardados.push({ nome: t.nome, tamanho: conteudo.length, motivo: 'grande demais' }); continue }
+        if (destinoAnexo({ nome: t.nome, disposicao: t.disposicao }) === 'zip') {
+          // guardar o zip inteiro (temporário) e acrescentar uma tarefa por ficheiro útil lá dentro
+          let entradas: EntradaZip[] = []
+          try { entradas = lerDiretorioZip(conteudo) } catch (x) {
+            await guardar(t.nome, conteudo, 'application/zip')
+            r.naoGuardados.push({ nome: t.nome, tamanho: conteudo.length, motivo: `o zip não abriu (${x instanceof Error ? x.message : x}); está guardado inteiro` })
+            continue
+          }
+          const zip = `email/${emailId}/tmp/${r.i++}-${nomeFicheiro(t.nome)}`
+          const { error: x } = await supabase.storage.from('documentos').upload(zip, conteudo, { contentType: 'application/zip', upsert: true })
+          if (x) { r.naoGuardados.push({ nome: t.nome, tamanho: conteudo.length, motivo: `não ficou guardado (${x.message})` }); continue }
+          r.temporarios.push(zip)
+          zips.set(zip, conteudo)
+          const filtro = filtroZip()
+          const novas: Tarefa[] = entradas.filter((en) => filtro.aceitar(en.caminho, en.tamanho)).map((entrada) => ({ tipo: 'zip', zip, nomeZip: t.nome, entrada }))
+          r.tarefas.unshift(...novas)
+          r.total += novas.length
+          r.naoGuardados.push(...filtro.recusados.map((f) => ({ ...f, motivo: `${f.motivo} (dentro de ${t.nome})` })))
+        } else {
+          await guardar(t.nome, conteudo, t.mime && t.mime !== 'application/octet-stream' ? t.mime : mimeDe(t.nome))
+        }
+      } else {
+        let zip = zips.get(t.zip)
+        if (!zip) {
+          const { data: f, error: x } = await supabase.storage.from('documentos').download(t.zip)
+          if (x || !f) { r.tarefas.shift(); r.naoGuardados.push({ nome: nomeT, tamanho: peso, motivo: `não foi possível reabrir ${t.nomeZip}` }); continue }
+          zip = new Uint8Array(await f.arrayBuffer())
+          zips.set(t.zip, zip)
+        }
+        let conteudo: Uint8Array
+        try { conteudo = await extrairDoZip(zip, t.entrada) } catch (x) {
+          r.tarefas.shift(); r.naoGuardados.push({ nome: nomeT, tamanho: peso, motivo: `${x instanceof Error ? x.message : x} (dentro de ${t.nomeZip})` }); continue
+        }
+        r.tarefas.shift()
+        await guardar(nomeT, conteudo, mimeDe(nomeT), origemZip(t.nomeZip, t.entrada.caminho))
+      }
+      gasto += Math.max(peso, 64 * 1024)
+      console.log('anexo', emailId, nomeT, peso, `${Date.now() - t1}ms`)
+    }
+
+    if (r.tarefas.length) {
+      await gravar({ ...e, recolha: r })
+      return { concluido: false, feitos: r.total - r.tarefas.length, total: r.total }
+    }
+    // fim: trocar a lista de anexos e apagar os ficheiros que deixaram de servir (antigos e zips temporários)
+    const novos = new Set(r.anexos.map((a) => a.caminho))
+    const apagar = [...r.antigos, ...r.temporarios].filter((x) => x && !novos.has(x))
+    if (apagar.length) await supabase.storage.from('documentos').remove(apagar)
+    const { recolha: _feita, ...resto } = e
+    await gravar({ ...resto, anexos: r.anexos, anexosNaoGuardados: r.naoGuardados, anexosPendentes: false, anexosRecolhidosEm: new Date().toISOString() })
+    console.log('recolha concluída', emailId, r.anexos.length, 'anexos', `${Date.now() - t0}ms`)
+    return { concluido: true, feitos: r.total, total: r.total, anexos: r.anexos, naoGuardados: r.naoGuardados }
+  } finally {
+    try { (lock as { release: () => void } | null)?.release() } catch { /* já libertado */ }
+    try { await (imap as ImapFlow | null)?.logout() } catch { /* já fechada */ }
+  }
 }
 
 type Config = { remetentes?: string[]; palavras?: string[]; palavrasTexto?: string[]; palavrasFaturas?: string[]; palavrasFaturasTexto?: string[]; palavrasPedidos?: string[]; palavrasPedidosTexto?: string[]; palavrasPedidosExcluir?: string[]; dias?: number; assinaturas?: Record<string, Assinatura> }
@@ -307,8 +468,8 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: Filt
         } else if (bs?.part === undefined && bs?.type?.startsWith('text/')) {
           try { const d = await imap.download(String(uid), '1', { uid: true, maxBytes: 200_000 }); texto = new TextDecoder('utf-8').decode(await lerTudo(d.content, 200_000)) } catch { /* sem texto */ }
         }
-        // anexos: PDF, Excel e imagens (a IA lê), zips (abertos aqui) e os restantes (moldes DXF…) para descarregar
-        const { anexos, naoGuardados } = await recolherAnexos(imap, supabase, uid, nos, id)
+        // anexos: não se descarregam aqui (limite de processador); ficam por recolher e a aplicação pede a ação «rebuscar»
+        const porRecolher = tarefasDe(nos).length
         // cabeçalhos para responder na mesma conversa
         let references: string[] = [], responderPara: string | null = env.replyTo?.[0]?.address ?? null
         try {
@@ -327,8 +488,8 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: Filt
           assunto: env.subject || '(sem assunto)',
           data: new Date(env.date ?? Date.now()).toISOString(),
           texto: texto.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 4000),
-          anexos,
-          ...(naoGuardados.length ? { anexosNaoGuardados: naoGuardados } : {}),
+          anexos: [],
+          ...(porRecolher ? { anexosPendentes: true } : {}),
           estado: 'nova',
           recebidoEm: new Date().toISOString(),
         }
@@ -336,54 +497,9 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: Filt
         if (error) throw new Error(`base de dados: ${error.message}`)
         jaVistos.add(id)
         if (dados.messageId) jaVistos.add(`mid:${dados.messageId}`)
-        novos.push({ id, conta: c.user, assunto: dados.assunto, de: dados.de, anexos: anexos.length, tipo: dados.tipo })
+        novos.push({ id, conta: c.user, assunto: dados.assunto, de: dados.de, anexos: porRecolher, tipo: dados.tipo })
       }
       return escolhidos.length - agora.length
-    } finally {
-      lock.release()
-    }
-  } finally {
-    try { await imap.logout() } catch { /* já fechada */ }
-  }
-}
-
-/** Volta à caixa de correio buscar os anexos de um email já recolhido (ex.: recolhido antes de a aplicação abrir zips).
- *  Só leitura na caixa. Substitui a lista de anexos do email e apaga do bucket os ficheiros antigos que deixaram de servir. */
-async function rebuscarAnexos(supabase: SupabaseCliente, lista: Conta[], emailId: string) {
-  const { data: linha, error } = await supabase.from('documentos').select('dados').eq('colecao', 'emails').eq('id', emailId).maybeSingle()
-  if (error || !linha) throw new Error('Não encontrei este email.')
-  const e = linha.dados as Record<string, unknown> & { conta?: string; uid?: number; messageId?: string | null; anexos?: AnexoGuardado[] }
-  const m = /^c(\d+)-(.*)-(\d+)$/.exec(emailId)
-  const c = lista.find((x) => (e.conta ?? '').toLowerCase() === x.user.toLowerCase()) ?? lista.find((x) => m && x.n === Number(m[1]))
-  if (!c) throw new Error(`A conta ${e.conta ?? ''} já não está configurada nos segredos do Supabase.`)
-  const imap = cliente(c)
-  await imap.connect()
-  try {
-    const lock = await imap.getMailboxLock(c.pasta, { readOnly: true })
-    try {
-      const validade = String((imap.mailbox && typeof imap.mailbox === 'object' ? imap.mailbox.uidValidity : '') ?? '')
-      const candidatos: number[] = []
-      if (m && m[2] === validade) candidatos.push(Number(m[3]))
-      if (e.messageId) {
-        try {
-          const r = await imap.search({ header: { 'message-id': e.messageId } }, { uid: true })
-          if (r) candidatos.push(...r)
-        } catch (x) { console.error('pesquisa message-id', x) }
-      }
-      for (const uid of [...new Set(candidatos)]) {
-        const msg = await imap.fetchOne(String(uid), { uid: true, envelope: true, bodyStructure: true }, { uid: true })
-        if (!msg || !msg.bodyStructure) continue
-        if (e.messageId && msg.envelope?.messageId && msg.envelope.messageId !== e.messageId) continue // o número foi reutilizado
-        const { anexos, naoGuardados } = await recolherAnexos(imap, supabase, uid, folhas(msg.bodyStructure as No), emailId)
-        const novos = new Set(anexos.map((a) => a.caminho))
-        const antigos = (e.anexos ?? []).map((a) => a.caminho).filter((x) => x && !novos.has(x))
-        if (antigos.length) await supabase.storage.from('documentos').remove(antigos)
-        const dados = { ...e, anexos, anexosNaoGuardados: naoGuardados, anexosRecolhidosEm: new Date().toISOString() }
-        const { error: eGravar } = await supabase.from('documentos').upsert({ colecao: 'emails', id: emailId, dados })
-        if (eGravar) throw new Error(`base de dados: ${eGravar.message}`)
-        return { anexos, naoGuardados }
-      }
-      throw new Error(`Não encontrei este email na pasta ${c.pasta} da conta ${c.user}: pode ter sido movido ou apagado no Thunderbird.`)
     } finally {
       lock.release()
     }
@@ -466,14 +582,14 @@ Deno.serve(async (req) => {
     const { data: quem, error: eSessao } = await supabase.auth.getUser(token)
     if (eSessao || !quem.user) return resposta({ erro: 'Sessão inválida ou expirada. Volte a entrar na aplicação.' }, 401)
 
-    const pedido = await req.json() as { acao: 'testar' | 'verificar' | 'responder' | 'rebuscar'; emailId?: string; texto?: string; reclassificar?: boolean }
+    const pedido = await req.json() as { acao: 'testar' | 'verificar' | 'responder' | 'rebuscar'; emailId?: string; texto?: string; reclassificar?: boolean; recomecar?: boolean }
     const { acao } = pedido
     const lista = contas()
 
     if (acao === 'rebuscar') {
       if (!pedido.emailId) return resposta({ erro: 'Falta o email.' }, 400)
       try {
-        return resposta({ ok: true, ...(await rebuscarAnexos(supabase, lista, pedido.emailId)) })
+        return resposta({ ok: true, ...(await passoRecolha(supabase, lista, pedido.emailId, !!pedido.recomecar)) })
       } catch (e) {
         const c = lista.find((x) => pedido.emailId?.startsWith(`c${x.n}-`)) ?? lista[0]
         return resposta({ erro: amigavel(c, e) }, 500)

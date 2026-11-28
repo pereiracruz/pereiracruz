@@ -128,10 +128,11 @@ export default function EmailsEncomendas({ modo = 'encomenda' }: { modo?: 'encom
   }
 
   const [aBuscar, setABuscar] = useState<string | null>(null)
+  const [progresso, setProgresso] = useState('')
   const buscarAnexos = async (e: EmailEncomenda) => {
-    setABuscar(e.id)
+    setABuscar(e.id); setProgresso('')
     try {
-      const n = await rebuscarAnexos(e)
+      const n = await rebuscarAnexos(e, true, (f, t) => setProgresso(`${f}/${t}`))
       const falta = n.anexosNaoGuardados?.length ? ` ${n.anexosNaoGuardados.length} não ficaram guardados (ver a lista).` : ''
       log('Anexos de email recolhidos outra vez', `${e.assunto} · ${n.anexos.length} anexo(s)${falta ? ` · ${n.anexosNaoGuardados!.length} não guardado(s)` : ''}`)
       aviso(n.anexos.length
@@ -251,7 +252,7 @@ export default function EmailsEncomendas({ modo = 'encomenda' }: { modo?: 'encom
                             title="Volta à caixa de correio buscar os anexos deste email (abre os zips; no Thunderbird não muda nada)"
                             className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-dashed border-linha text-[12px] text-suave hover:bg-fundo hover:text-tinta disabled:opacity-60">
                             <Paperclip size={13} className={clsx(aBuscar === e.id && 'animate-pulse')} />
-                            {aBuscar === e.id ? 'A buscar anexos…' : e.anexos.length ? 'Buscar anexos outra vez' : 'Buscar anexos'}
+                            {aBuscar === e.id ? `A buscar anexos…${progresso ? ` ${progresso}` : ''}` : e.anexosPendentes ? 'Anexos por recolher: buscar' : e.anexos.length ? 'Buscar anexos outra vez' : 'Buscar anexos'}
                           </button>
                         )}
                       </div>

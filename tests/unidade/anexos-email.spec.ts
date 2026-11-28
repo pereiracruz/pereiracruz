@@ -1,6 +1,28 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { ANEXO_LIDO, DOCUMENTO_EMAIL, corrigirNomeZip, destinoAnexo, filtroZip, origemZip } from '../../src/lib/anexosEmail'
+import { deflateRawSync } from 'node:zlib'
+import { ANEXO_LIDO, DOCUMENTO_EMAIL, corrigirNomeZip, destinoAnexo, extrairDoZip, filtroZip, lerDiretorioZip, origemZip } from '../../src/lib/anexosEmail'
+
+/** Zip fictício feito à mão (formato PKZIP): nomes em bytes, guardado (0) ou deflate (8), com ou sem a marca UTF-8. */
+function fazerZip(ficheiros: { nome: Uint8Array; dados: Uint8Array; deflate?: boolean; utf8?: boolean }[]) {
+  const locais: Buffer[] = [], central: Buffer[] = []
+  let offset = 0
+  for (const f of ficheiros) {
+    const corpo = f.deflate ? deflateRawSync(f.dados) : Buffer.from(f.dados)
+    const flags = f.utf8 ? 0x800 : 0, metodo = f.deflate ? 8 : 0
+    const l = Buffer.alloc(30); l.writeUInt32LE(0x04034b50, 0); l.writeUInt16LE(20, 4); l.writeUInt16LE(flags, 6); l.writeUInt16LE(metodo, 8)
+    l.writeUInt32LE(corpo.length, 18); l.writeUInt32LE(f.dados.length, 22); l.writeUInt16LE(f.nome.length, 26)
+    const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(20, 4); c.writeUInt16LE(20, 6); c.writeUInt16LE(flags, 8); c.writeUInt16LE(metodo, 10)
+    c.writeUInt32LE(corpo.length, 20); c.writeUInt32LE(f.dados.length, 24); c.writeUInt16LE(f.nome.length, 28); c.writeUInt32LE(offset, 42)
+    locais.push(l, Buffer.from(f.nome), corpo); central.push(c, Buffer.from(f.nome))
+    offset += 30 + f.nome.length + corpo.length
+  }
+  const dir = Buffer.concat(central)
+  const fim = Buffer.alloc(22); fim.writeUInt32LE(0x06054b50, 0); fim.writeUInt16LE(ficheiros.length, 8); fim.writeUInt16LE(ficheiros.length, 10)
+  fim.writeUInt32LE(dir.length, 12); fim.writeUInt32LE(offset, 16)
+  return new Uint8Array(Buffer.concat([...locais, dir, fim]))
+}
+const bytes = (s: string) => new TextEncoder().encode(s)
 
 // Nomes fictícios; nenhum ficheiro de cliente entra nos testes.
 test.describe('Anexos dos emails (zips, moldes, lixo do Mac)', () => {
@@ -60,6 +82,24 @@ test.describe('Anexos dos emails (zips, moldes, lixo do Mac)', () => {
       { nome: 'grande.DXF', tamanho: 70, motivo: 'grande demais' },
       { nome: 'c.pdf', tamanho: 5, motivo: 'o zip é grande demais' },
     ])
+  })
+
+  test('zips lidos sem bibliotecas: nomes do Mac, guardado e deflate, lixo filtrado', async () => {
+    const pdf = bytes('%PDF-1.4 ficha fictícia '.repeat(200))
+    const zip = fazerZip([
+      { nome: bytes('Projeto/3 CALC\u0327AS/M1.DXF'), dados: bytes('0\nSECTION\n'.repeat(500)), deflate: true }, // Mac: UTF-8 sem marca
+      { nome: bytes('Projeto/Fichas/Ficha A.pdf'), dados: pdf, utf8: true },
+      { nome: bytes('__MACOSX/Projeto/._Ficha A.pdf'), dados: bytes('lixo') },
+    ])
+    const es = lerDiretorioZip(zip)
+    expect(es.map((e) => e.caminho)).toEqual(['Projeto/3 CALÇAS/M1.DXF', 'Projeto/Fichas/Ficha A.pdf', '__MACOSX/Projeto/._Ficha A.pdf'])
+    const f = filtroZip()
+    const uteis = es.filter((e) => f.aceitar(e.caminho, e.tamanho))
+    expect(uteis).toHaveLength(2)
+    expect(new TextDecoder().decode(await extrairDoZip(zip, uteis[0]))).toBe('0\nSECTION\n'.repeat(500))
+    expect(await extrairDoZip(zip, uteis[1])).toEqual(pdf)
+    expect(origemZip('Projeto.zip', uteis[0].caminho)).toBe('Projeto.zip › 3 CALÇAS')
+    expect(() => lerDiretorioZip(bytes('não é zip nenhum'))).toThrow('não é um zip válido')
   })
 
   test('a função do servidor tem a mesma cópia das regras', () => {

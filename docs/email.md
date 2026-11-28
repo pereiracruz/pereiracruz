@@ -19,6 +19,11 @@ não apaga. No Thunderbird fica tudo como estava.
 - **Zips** abrem-se no servidor: cada ficheiro lá dentro passa a ser um anexo, com a origem (ex.: «Projeto.zip › Moldes»).
   O lixo do Mac (`__MACOSX`, `._…`, `.DS_Store`) e os ficheiros dos programas de email (`ATT00001.htm`, `smime.p7s`,
   `winmail.dat`) ficam de fora. Zips dentro de zips ficam inteiros. Nomes com acentos de zips feitos no Mac são corrigidos.
+- **Aos poucos**: o Supabase só dá ~2 s de processador por chamada, por isso os anexos não se descarregam na verificação.
+  O email entra logo (com «Anexos por recolher») e a aplicação chama a ação `rebuscar` várias vezes até terminar: cada
+  chamada trata um ficheiro pesado ou vários pequenos (até 6 MB); um zip é guardado inteiro numa pasta temporária e
+  depois cada ficheiro lá dentro é tirado com a descompressão nativa (sem bibliotecas). Um ficheiro que falhe 2 vezes
+  passa a «não guardado», para a recolha nunca ficar presa. O estado fica no próprio email (campo `recolha`).
 - Limites: 30 MB por ficheiro; por zip, até 300 ficheiros e 150 MB descomprimidos. O que passa disso aparece em
   **«Não guardados (abrir no Thunderbird)»**, com o nome, o tamanho e o motivo — nunca desaparece sem aviso.
 - **Buscar anexos outra vez** (em cada email): volta à caixa de correio (só leitura) e recolhe de novo os anexos com estas
