@@ -88,6 +88,51 @@ Lês um email de um cliente (texto e anexos: PDF, imagens, Excel convertido em t
 6. Não inventes: o que não está no email fica null ou vazio; o que é ambíguo vai para «duvidas».
 7. A linha «Anexos» lista TODOS os ficheiros que vieram no email, incluindo os que vinham dentro de um zip e os que não te foram enviados (ex.: moldes DXF, ficheiros grandes). Nunca digas que não veio anexo quando essa lista tem ficheiros. Os que não leste indica-os em «anexos» com o que se sabe pelo nome (ex.: «molde DXF, não lido») e, se fizerem falta para a cotação, diz em «duvidas» que têm de ser vistos à mão.`
 
+// ---------------- Resposta sem modo estrito: acertar ao esquema (cópia de src/lib/esquemaJson.ts) ----------------
+// ==== INÍCIO ajustarAoEsquema ====
+export type EsquemaJson = { type?: string | readonly string[]; properties?: Record<string, EsquemaJson>; items?: EsquemaJson; enum?: readonly unknown[] }
+
+/** Devolve o valor com a forma exata do esquema: só as propriedades do esquema, todas presentes, nos tipos certos.
+ *  Num enum, o valor em falta ou desconhecido passa ao ÚLTIMO da lista (o mais prudente: «baixa», «outro»). */
+export function ajustarAoEsquema(v: unknown, e: EsquemaJson): unknown {
+  const tipos: readonly string[] = Array.isArray(e.type) ? e.type : e.type ? [e.type as string] : []
+  const tem = (t: string) => tipos.includes(t)
+  const numero = tem('integer') || tem('number')
+  if (v === undefined || v === null) {
+    if (tem('null')) return null
+    if (tem('object')) return ajustarAoEsquema({}, e)
+    if (tem('array')) return []
+    if (e.enum) return e.enum[e.enum.length - 1]
+    if (tem('string')) return ''
+    if (numero) return 0
+    if (tem('boolean')) return false
+    return null
+  }
+  if (tem('object') && e.properties) {
+    if (typeof v !== 'object' || Array.isArray(v)) return tem('null') ? null : ajustarAoEsquema({}, e)
+    const o = v as Record<string, unknown>
+    return Object.fromEntries(Object.entries(e.properties).map(([k, sub]) => [k, ajustarAoEsquema(o[k], sub)]))
+  }
+  if (tem('array')) {
+    if (!Array.isArray(v)) return tem('null') ? null : []
+    return e.items ? v.map((x) => ajustarAoEsquema(x, e.items!)) : v
+  }
+  if (e.enum) {
+    if (e.enum.includes(v)) return v
+    const igual = e.enum.find((x) => typeof x === 'string' && typeof v === 'string' && x.toLowerCase() === v.trim().toLowerCase())
+    return igual ?? e.enum[e.enum.length - 1]
+  }
+  if (numero) {
+    const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v.trim().replace(/\s/g, '').replace(',', '.')) : NaN
+    if (Number.isFinite(n)) return tem('integer') ? Math.round(n) : n
+    return tem('null') ? null : 0
+  }
+  if (tem('string') && typeof v !== 'string') return typeof v === 'object' ? JSON.stringify(v) : String(v)
+  if (tem('boolean') && typeof v !== 'boolean') return v === 'true' || v === 1
+  return v
+}
+// ==== FIM ajustarAoEsquema ====
+
 // ---------------- Anexos ----------------
 const MAX_TOTAL = 18 * 1024 * 1024
 function excelEmTexto(bytes: Uint8Array) {
@@ -164,48 +209,59 @@ Deno.serve(async (req) => {
     // Fornecedores por ordem de preferência. O Google (Vertex) recusa o nosso esquema («compiled grammar is too large»),
     // por isso fica de fora; sem «temperature» (o Claude Opus 5.5 não aceita, e com require_parameters nenhum fornecedor servia).
     const ordem = (Deno.env.get('OPENROUTER_FORNECEDORES') || 'anthropic,claude-on-aws,azure,amazon-bedrock').split(',').map((x) => x.trim()).filter(Boolean)
-    const pedir = async (pdf: string, exigirParametros: boolean) => {
+    // sem modo estrito, o esquema vai nas instruções e a resposta é acertada ao esquema a seguir
+    const INSTRUCOES_SEM_ESTRITO = `${INSTRUCOES}
+
+Responde APENAS com um objeto JSON (sem texto antes ou depois, sem blocos de código) que cumpra exatamente este JSON Schema (todos os campos presentes; null quando não existe):
+${JSON.stringify(ESQUEMA)}`
+    const pedir = async (pdf: string, exigirParametros: boolean, estrito: boolean) => {
       const r = await fetch(`${base}/chat/completions`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pereirasproject.netlify.app', 'X-Title': "Pereira's Project" },
         body: JSON.stringify({
           model: modelo, max_tokens: 32000,
-          messages: [{ role: 'system', content: INSTRUCOES }, { role: 'user', content: partes }],
-          response_format: { type: 'json_schema', json_schema: { name: 'email', strict: true, schema: ESQUEMA } },
+          messages: [{ role: 'system', content: estrito ? INSTRUCOES : INSTRUCOES_SEM_ESTRITO }, { role: 'user', content: partes }],
+          ...(estrito ? { response_format: { type: 'json_schema', json_schema: { name: 'email', strict: true, schema: ESQUEMA } } } : {}),
           plugins: [{ id: 'file-parser', pdf: { engine: pdf } }, { id: 'response-healing' }],
           // sem recolha de dados SEMPRE; «require_parameters» só se puder (ver tentativas abaixo)
           provider: { order: ordem, only: ordem, require_parameters: exigirParametros, data_collection: 'deny', ...(Deno.env.get('OPENROUTER_ZDR') === '1' ? { zdr: true } : {}) },
         }),
       })
       const corpo = await r.json().catch(() => ({})) as Corpo
-      if (!r.ok || corpo.error) console.log('ler-email: OpenRouter', r.status, pdf, exigirParametros, corpo.error?.message, corpo.error?.metadata?.provider_name ?? '', JSON.stringify(corpo.error?.metadata?.raw ?? '').slice(0, 600))
+      if (!r.ok || corpo.error) console.log('ler-email: OpenRouter', r.status, pdf, exigirParametros, estrito ? 'estrito' : 'sem estrito', corpo.error?.message, corpo.error?.metadata?.provider_name ?? '', JSON.stringify(corpo.error?.metadata?.raw ?? '').slice(0, 600))
       return { r, corpo }
     }
     // Tentativas, por ordem (só se o erro for de encaminhamento ou do fornecedor; não em chave, crédito ou limite):
-    //  1. PDF lido pelo próprio modelo, exigindo todos os parâmetros;
-    //  2. o mesmo sem exigir todos os parâmetros (o formato JSON continua pedido e a resposta é validada a seguir);
-    //  3. PDF convertido antes por OCR (Mistral, 2 $/1000 páginas): o fornecedor só recebe texto e imagens.
-    const tentativas: { pdf: string; exigir: boolean; nota?: string }[] = [
-      { pdf: motorPdf, exigir: true },
-      { pdf: motorPdf, exigir: false, nota: 'sem exigir todos os parâmetros ao fornecedor (JSON validado na aplicação)' },
+    //  1. modo estrito (structured outputs), PDF lido pelo próprio modelo;
+    //  2. sem modo estrito: os fornecedores do Claude recusam o nosso esquema por ser grande («compiled grammar is too
+    //     large»), por isso o esquema vai nas instruções e a resposta é acertada ao esquema aqui (ajustarAoEsquema);
+    //  3. o mesmo com os PDF convertidos antes por OCR (Mistral, 2 $/1000 páginas).
+    const tentativas: { pdf: string; exigir: boolean; estrito: boolean; nota?: string }[] = [
+      { pdf: motorPdf, exigir: true, estrito: true },
+      { pdf: motorPdf, exigir: false, estrito: false, nota: 'formato da resposta acertado na aplicação (o esquema é grande demais para o modo estrito do fornecedor)' },
     ]
-    if (temPdf && motorPdf === 'native') tentativas.push({ pdf: 'mistral-ocr', exigir: false, nota: 'PDF lidos por OCR (Mistral): nenhum fornecedor aceitou o PDF diretamente' })
+    if (temPdf && motorPdf === 'native') tentativas.push({ pdf: 'mistral-ocr', exigir: false, estrito: false, nota: 'PDF lidos por OCR (Mistral) e formato da resposta acertado na aplicação' })
     const repetir = (r: Response, c: Corpo) => (!r.ok || !!c.error) && ![401, 402, 429].includes(r.status) && ![401, 402, 429].includes(c.error?.code ?? 0)
-    let { r, corpo } = await pedir(tentativas[0].pdf, tentativas[0].exigir)
+    let { r, corpo } = await pedir(tentativas[0].pdf, tentativas[0].exigir, tentativas[0].estrito)
     for (let k = 1; k < tentativas.length && repetir(r, corpo); k++) {
-      ;({ r, corpo } = await pedir(tentativas[k].pdf, tentativas[k].exigir))
+      ;({ r, corpo } = await pedir(tentativas[k].pdf, tentativas[k].exigir, tentativas[k].estrito))
       if (r.ok && !corpo.error && tentativas[k].nota) ignorados.push(tentativas[k].nota!)
     }
     if (!r.ok || corpo.error) {
       const raw = corpo.error?.metadata?.raw
       const det = raw ? (typeof raw === 'string' ? raw : JSON.stringify(raw)).match(/"message"\s*:\s*"([^"]+)"/)?.[1] ?? '' : ''
       const msg = `${corpo.error?.message ?? `HTTP ${r.status}`}${corpo.error?.metadata?.provider_name ? ` (${corpo.error.metadata.provider_name}${det ? `: ${det}` : ''})` : ''}`
-      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Sem crédito na conta OpenRouter.' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : r.status === 413 || /too large|payload/i.test(msg) ? ' Os anexos são grandes demais para um só pedido.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo aceita este pedido sem recolha de dados (já tentei sem exigir parâmetros e com OCR dos PDF): experimente outro OPENROUTER_MODELO.' : ''
+      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Sem crédito na conta OpenRouter.' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : r.status === 413 || /entity too large|payload too large|request too large/i.test(msg) ? ' Os anexos são grandes demais para um só pedido.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo aceita este pedido sem recolha de dados (já tentei sem modo estrito e com OCR dos PDF): experimente outro OPENROUTER_MODELO.' : ''
       return resposta({ erro: `OpenRouter: ${msg}.${dica}` }, 502)
     }
     const texto = corpo.choices?.[0]?.message?.content ?? ''
     let dados: unknown
-    try { dados = JSON.parse(texto) } catch { return resposta({ erro: `A resposta da IA não é JSON válido (${corpo.choices?.[0]?.finish_reason ?? 'sem motivo'}).` }, 502) }
+    try {
+      // sem modo estrito a IA pode embrulhar o JSON em texto ou num bloco de código: fica só o objeto
+      const limpo = texto.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
+      const i = limpo.indexOf('{'), j = limpo.lastIndexOf('}')
+      dados = ajustarAoEsquema(JSON.parse(i >= 0 && j > i ? limpo.slice(i, j + 1) : limpo), ESQUEMA as unknown as EsquemaJson)
+    } catch { return resposta({ erro: `A resposta da IA não é JSON válido (${corpo.choices?.[0]?.finish_reason ?? 'sem motivo'}).` }, 502) }
 
     const leitura = { em: new Date().toISOString(), modelo: corpo.model ?? modelo, fornecedor: corpo.provider ?? null, uso: corpo.usage ?? null, ignorados, dados }
     // guarda a leitura no próprio email (não se volta a pagar para ver o resultado)

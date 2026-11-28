@@ -22,8 +22,10 @@ imagens; os formatos que não lê nem se descarregam (não gastam o limite de 18
 Fornecedores: por omissão só `anthropic`, `claude-on-aws`, `azure` e `amazon-bedrock`, por esta ordem (segredo opcional
 `OPENROUTER_FORNECEDORES`). O Google (Vertex) fica de fora porque recusa o esquema («compiled grammar is too large»).
 Não se envia `temperature`: o Claude Opus 5.5 não a aceita e, com `require_parameters`, nenhum fornecedor servia.
-Se o pedido falhar por encaminhamento ou erro do fornecedor, a função tenta de novo: sem exigir todos os parâmetros
-(o JSON continua pedido e é validado) e depois com os PDF por OCR (Mistral, 2 $/1000 páginas). Nunca abdica de
+O esquema completo é grande demais para o modo estrito dos fornecedores do Claude («compiled grammar is too large»).
+Quando isso acontece, a função repete **sem modo estrito**: o esquema vai nas instruções e a resposta é acertada ao
+esquema na função (`src/lib/esquemaJson.ts`, copiado na função): campos em falta ficam vazios/null e a confiança em
+falta fica «baixa». Se ainda falhar, repete com os PDF por OCR (Mistral, 2 $/1000 páginas). Nunca abdica de
 `data_collection: 'deny'`. A tentativa usada aparece nas notas da leitura; os erros (com o fornecedor e a mensagem
 original) ficam nos registos da função.
 
