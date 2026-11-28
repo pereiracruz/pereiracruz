@@ -20,7 +20,9 @@ A leitura fica guardada no email (não se volta a pagar para a ver); «Ler outra
    desligar o registo de prompts e a utilização de dados; se quiser, ativar ZDR («Zero Data Retention»).
 2. Supabase → Edge Functions → **Secrets**: `OPENROUTER_API_KEY` (obrigatório). Opcionais: `OPENROUTER_MODELO`
    (omissão `anthropic/claude-opus-5.5`), `OPENROUTER_PDF` (`native` · `mistral-ocr` para digitalizações · `cloudflare-ai`),
-   `OPENROUTER_ZDR=1`, `OPENROUTER_URL=https://eu.openrouter.ai/api/v1` (só planos Business/Enterprise).
+   `OPENROUTER_ZDR=1`, `OPENROUTER_MAX_TOKENS` (omissão 16000), `OPENROUTER_URL=https://eu.openrouter.ai/api/v1` (só planos Business/Enterprise).
+   Primeiro a função pede JSON validado pelo fornecedor (structured outputs). Se o fornecedor o recusar (ex.: Claude na Google Vertex: «The compiled grammar is too large»), tenta outra vez com o esquema nas instruções e extrai e lê o JSON ela própria. `OPENROUTER_ESTRITO=0` salta logo para este segundo modo. Se falhar, a mensagem mostra o fornecedor e o erro original (`metadata.raw`).
+   A chave do OpenRouter pode ter um **limite de gasto**: tem de chegar para a reserva de cada pedido (16 000 tokens ≈ 0,32 $ no Opus 5.5).
 3. Supabase → Edge Functions → nova função **ler-email** → colar `supabase/functions/ler-email/index.ts` → Deploy.
 
 ## Privacidade

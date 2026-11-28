@@ -11,6 +11,7 @@
 //   OPENROUTER_PDF       opcional: native (omissão) | mistral-ocr (PDFs digitalizados) | cloudflare-ai
 //   OPENROUTER_URL       opcional: https://openrouter.ai/api/v1 (omissão) ou https://eu.openrouter.ai/api/v1 (só planos Business/Enterprise: processamento na UE)
 //   OPENROUTER_ZDR       opcional: «1» para só usar fornecedores com retenção zero de dados
+//   OPENROUTER_MAX_TOKENS opcional, por omissão 16000 (máximo de tokens da resposta; o crédito tem de chegar para este máximo)
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { encodeBase64 } from 'jsr:@std/encoding@1/base64'
@@ -61,6 +62,13 @@ const PEDIDO = obj({
   prazo: { ...sn, description: 'AAAA-MM-DD ou texto do prazo pedido' },
   observacoes: { type: 'array', items: s },
 })
+// tira ```json … ``` ou texto à volta e fica do primeiro «{» ao último «}»
+export function extrairJson(texto: string): string {
+  const t = texto.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  const a = t.indexOf('{'), b = t.lastIndexOf('}')
+  return a >= 0 && b > a ? t.slice(a, b + 1) : t
+}
+
 const ESQUEMA = obj({
   classificacao: obj({
     tipo: { type: 'string', enum: ['encomenda', 'pedido_preco', 'tech_pack', 'alteracao', 'fatura', 'outro'],
@@ -138,26 +146,44 @@ Deno.serve(async (req) => {
 
     const base = (Deno.env.get('OPENROUTER_URL') || 'https://openrouter.ai/api/v1').replace(/\/+$/, '')
     const modelo = Deno.env.get('OPENROUTER_MODELO') || 'anthropic/claude-opus-5.5'
-    const r = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pereirasproject.netlify.app', 'X-Title': "Pereira's Project" },
-      body: JSON.stringify({
-        model: modelo, temperature: 0, max_tokens: 32000,
-        messages: [{ role: 'system', content: INSTRUCOES }, { role: 'user', content: partes }],
-        response_format: { type: 'json_schema', json_schema: { name: 'email', strict: true, schema: ESQUEMA } },
-        plugins: [{ id: 'file-parser', pdf: { engine: Deno.env.get('OPENROUTER_PDF') || 'native' } }, { id: 'response-healing' }],
-        provider: { require_parameters: true, data_collection: 'deny', ...(Deno.env.get('OPENROUTER_ZDR') === '1' ? { zdr: true } : {}) },
-      }),
-    })
-    const corpo = await r.json().catch(() => ({})) as { choices?: { message?: { content?: string }; finish_reason?: string }[]; model?: string; provider?: string; usage?: Record<string, number>; error?: { message?: string; code?: number } }
-    if (!r.ok || corpo.error) {
+    type Corpo = { choices?: { message?: { content?: string }; finish_reason?: string }[]; model?: string; provider?: string; usage?: Record<string, number>; error?: { message?: string; code?: number; metadata?: { raw?: unknown; provider_name?: string } } }
+    const pedir = async (modo: 'estrito' | 'livre') => {
+      const r = await fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pereirasproject.netlify.app', 'X-Title': "Pereira's Project" },
+        body: JSON.stringify({
+          // sem «temperature»: os modelos recentes (ex.: Claude Opus 5.5) não a aceitam e, com require_parameters, nenhum fornecedor servia o pedido
+          // reserva de tokens de resposta (o OpenRouter exige crédito para o máximo pedido); 16 000 chega para encomendas grandes
+          model: modelo, max_tokens: Number(Deno.env.get('OPENROUTER_MAX_TOKENS')) || 16000,
+          // estrito: o fornecedor garante o esquema (structured outputs). Alguns (Claude na Vertex/Anthropic) recusam esquemas grandes
+          // («compiled grammar is too large»): então a 2.ª tentativa («livre») manda o esquema nas instruções e o JSON é extraído e lido aqui
+          messages: [{ role: 'system', content: modo === 'estrito' ? INSTRUCOES : `${INSTRUCOES}\n\nResponde APENAS com um objeto JSON (sem texto antes ou depois, sem \`\`\`) que siga exatamente este JSON Schema; todos os campos são obrigatórios, usa null quando não houver valor:\n${JSON.stringify(ESQUEMA)}` }, { role: 'user', content: partes }],
+          ...(modo === 'estrito' ? { response_format: { type: 'json_schema', json_schema: { name: 'email', strict: true, schema: ESQUEMA } } } : {}),
+          plugins: [{ id: 'file-parser', pdf: { engine: Deno.env.get('OPENROUTER_PDF') || 'native' } }, ...(modo === 'estrito' ? [{ id: 'response-healing' }] : [])],
+          provider: { require_parameters: true, data_collection: 'deny', ...(Deno.env.get('OPENROUTER_ZDR') === '1' ? { zdr: true } : {}) },
+        }),
+      })
+      const corpo = await r.json().catch(() => ({})) as Corpo
+      return { r, corpo }
+    }
+    const falhou = (x: { r: Response; corpo: Corpo }) => !x.r.ok || !!x.corpo.error
+    const soLivre = Deno.env.get('OPENROUTER_ESTRITO') === '0'
+    let tentativa = await pedir(soLivre ? 'livre' : 'estrito')
+    // erro do fornecedor (não de chave, crédito ou limite): tentar outra vez com o esquema nas instruções
+    if (!soLivre && falhou(tentativa) && ![401, 402, 429].includes(tentativa.r.status)) tentativa = await pedir('livre')
+    const { r, corpo } = tentativa
+    if (falhou(tentativa)) {
       const msg = corpo.error?.message ?? `HTTP ${r.status}`
-      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Sem crédito na conta OpenRouter.' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo cumpre as regras (ficheiros, JSON, sem retenção de dados): escolha outro OPENROUTER_MODELO.' : ''
-      return resposta({ erro: `OpenRouter: ${msg}.${dica}` }, 502)
+      const meta = corpo.error?.metadata
+      const bruto = meta?.raw == null ? '' : (typeof meta.raw === 'string' ? meta.raw : JSON.stringify(meta.raw)).slice(0, 600)
+      const detalhe = (meta?.provider_name ? ` Fornecedor: ${meta.provider_name}.` : '') + (bruto ? ` Detalhe: ${bruto}` : '')
+      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Falta crédito: carregue crédito no OpenRouter ou aumente o limite da chave (Settings → Keys → editar a chave → limite).' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo aceita todos os parâmetros do pedido (ficheiros, JSON estruturado, sem recolha de dados). Veja https://openrouter.ai/api/v1/models/<modelo>/endpoints ou escolha outro OPENROUTER_MODELO.' : ''
+      console.error('OpenRouter', r.status, msg, meta?.provider_name, bruto)
+      return resposta({ erro: `OpenRouter: ${msg}.${detalhe}${dica}` }, 502)
     }
     const texto = corpo.choices?.[0]?.message?.content ?? ''
     let dados: unknown
-    try { dados = JSON.parse(texto) } catch { return resposta({ erro: `A resposta da IA não é JSON válido (${corpo.choices?.[0]?.finish_reason ?? 'sem motivo'}).` }, 502) }
+    try { dados = JSON.parse(extrairJson(texto)) } catch { return resposta({ erro: `A resposta da IA não é JSON válido (${corpo.choices?.[0]?.finish_reason ?? 'sem motivo'}).` }, 502) }
 
     const leitura = { em: new Date().toISOString(), modelo: corpo.model ?? modelo, fornecedor: corpo.provider ?? null, uso: corpo.usage ?? null, ignorados, dados }
     // guarda a leitura no próprio email (não se volta a pagar para ver o resultado)
