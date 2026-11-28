@@ -19,9 +19,13 @@ A IA recebe a lista de **todos** os anexos (incluindo os que vinham num zip e os
 grandes demais) e não pode dizer que «não veio anexo» quando a lista tem ficheiros. Lê primeiro os PDF, depois Excel e
 imagens; os formatos que não lê nem se descarregam (não gastam o limite de 18 MB por leitura).
 
-Se nenhum fornecedor aceitar o pedido («No endpoints found…»), a função tenta de novo: primeiro com os PDF convertidos
-por OCR (Mistral, 2 $/1000 páginas), depois sem exigir todos os parâmetros ao fornecedor (o JSON continua a ser pedido e
-é validado). Nunca abdica de `data_collection: 'deny'`. A tentativa usada aparece na lista de notas da leitura.
+Fornecedores: por omissão só `anthropic`, `claude-on-aws`, `azure` e `amazon-bedrock`, por esta ordem (segredo opcional
+`OPENROUTER_FORNECEDORES`). O Google (Vertex) fica de fora porque recusa o esquema («compiled grammar is too large»).
+Não se envia `temperature`: o Claude Opus 5.5 não a aceita e, com `require_parameters`, nenhum fornecedor servia.
+Se o pedido falhar por encaminhamento ou erro do fornecedor, a função tenta de novo: sem exigir todos os parâmetros
+(o JSON continua pedido e é validado) e depois com os PDF por OCR (Mistral, 2 $/1000 páginas). Nunca abdica de
+`data_collection: 'deny'`. A tentativa usada aparece nas notas da leitura; os erros (com o fornecedor e a mensagem
+original) ficam nos registos da função.
 
 ## Instalar (uma vez)
 1. Criar conta em openrouter.ai, carregar crédito e criar uma **API key** (Settings → Keys). Em **Settings → Privacy**:
