@@ -84,7 +84,8 @@ Lês um email de um cliente (texto e anexos: PDF, imagens, Excel convertido em t
 3. Se houver encomenda: extrai TODAS as linhas sem resumir; quantidades alinhadas com os tamanhos (célula vazia = 0); sem colunas de tamanhos, «tamanhos» e «quantidades» vazios e o total em «total»; a mesma cor em várias linhas fica em linhas separadas; copia referências e cores exatamente; extrai os totais do documento para conferência.
 4. Se houver tech pack ou OF: por modelo, tecidos (fornecedor, composição, consumo), lavagem/tingimento, bordados/estampados, acessórios, medidas (só se houver tabela) e observações, em português; pedidos à fábrica vão para «pedidos».
 5. Lê texto dentro de imagens e páginas digitalizadas com o máximo cuidado (OCR). Indica a página de cada valor e a confiança; baixa quando duvidoso.
-6. Não inventes: o que não está no email fica null ou vazio; o que é ambíguo vai para «duvidas».`
+6. Não inventes: o que não está no email fica null ou vazio; o que é ambíguo vai para «duvidas».
+7. A linha «Anexos» lista TODOS os ficheiros que vieram no email, incluindo os que vinham dentro de um zip e os que não te foram enviados (ex.: moldes DXF, ficheiros grandes). Nunca digas que não veio anexo quando essa lista tem ficheiros. Os que não leste indica-os em «anexos» com o que se sabe pelo nome (ex.: «molde DXF, não lido») e, se fizerem falta para a cotação, diz em «duvidas» que têm de ser vistos à mão.`
 
 // ---------------- Anexos ----------------
 const MAX_TOTAL = 18 * 1024 * 1024
@@ -114,22 +115,39 @@ Deno.serve(async (req) => {
 
     const { data: linha, error: eEmail } = await supabase.from('documentos').select('dados').eq('colecao', 'emails').eq('id', emailId).maybeSingle()
     if (eEmail || !linha) return resposta({ erro: 'Não encontrei o email.' }, 404)
-    const email = linha.dados as { assunto: string; de: string; deNome?: string; data: string; texto: string; anexos: { nome: string; caminho: string; tipo: string; tamanho: number }[] }
+    const email = linha.dados as { assunto: string; de: string; deNome?: string; data: string; texto: string
+      anexos: { nome: string; caminho: string; tipo: string; tamanho: number; origem?: string }[]
+      anexosNaoGuardados?: { nome: string; tamanho: number; motivo: string }[] }
+    // ordem de leitura: PDF, Excel, imagens; os formatos que a IA não lê (DXF, zips dentro de zips…) nem se descarregam
+    const formato = (a: { nome: string; tipo: string }) => {
+      const tipo = (a.tipo || '').toLowerCase(), nome = a.nome.toLowerCase()
+      if (tipo.includes('pdf') || nome.endsWith('.pdf')) return 'pdf'
+      if (/\.(xlsx|xlsm|xls|csv)$/.test(nome) || tipo.includes('sheet') || tipo.includes('excel') || tipo.includes('csv')) return 'excel'
+      if (tipo.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/.test(nome)) return 'imagem'
+      return null
+    }
+    const ORDEM = { pdf: 0, excel: 1, imagem: 2 } as const
+    const lidos = email.anexos.filter((a) => formato(a)).sort((a, b) => ORDEM[formato(a)!] - ORDEM[formato(b)!])
+    const listaAnexos = [
+      ...email.anexos.map((a) => `${a.nome}${a.origem ? ` (dentro de ${a.origem})` : ''}${formato(a) ? '' : ' — não lido (formato que a IA não abre)'}`),
+      ...(email.anexosNaoGuardados ?? []).map((a) => `${a.nome} — não lido (${a.motivo})`),
+    ]
 
     // conteúdo: texto do email + cada anexo no formato que o OpenRouter aceita
     const partes: unknown[] = [{ type: 'text', text: [
       `Clientes conhecidos: ${(clientes ?? []).join('; ') || '(nenhum)'}`,
       `De: ${email.deNome ? `${email.deNome} <${email.de}>` : email.de}`, `Data: ${email.data}`, `Assunto: ${email.assunto}`,
-      `Anexos: ${email.anexos.map((a) => a.nome).join(', ') || '(nenhum)'}`, '', 'Texto do email:', email.texto || '(sem texto)',
+      `Anexos (${listaAnexos.length}):${listaAnexos.length ? `\n${listaAnexos.map((l) => `- ${l}`).join('\n')}` : ' (nenhum)'}`, '', 'Texto do email:', email.texto || '(sem texto)',
     ].join('\n') }]
     let total = 0
-    const ignorados: string[] = []
-    for (const a of email.anexos) {
+    const ignorados: string[] = email.anexos.filter((a) => !formato(a)).map((a) => `${a.nome} (formato não lido; está guardado no email)`)
+    for (const a of lidos) {
       const { data: f, error } = await supabase.storage.from('documentos').download(a.caminho)
       if (error || !f) { ignorados.push(`${a.nome} (não abriu)`); continue }
       const bytes = new Uint8Array(await f.arrayBuffer())
       if ((total += bytes.length) > MAX_TOTAL) { ignorados.push(`${a.nome} (anexos demasiado grandes)`); continue }
       const tipo = (a.tipo || f.type || '').toLowerCase(), nome = a.nome.toLowerCase()
+      if (a.origem) partes.push({ type: 'text', text: `Anexo seguinte: «${a.nome}» (dentro de ${a.origem})` })
       if (tipo.includes('pdf') || nome.endsWith('.pdf')) partes.push({ type: 'file', file: { filename: a.nome, file_data: `data:application/pdf;base64,${encodeBase64(bytes)}` } })
       else if (tipo.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/.test(nome)) partes.push({ type: 'image_url', image_url: { url: `data:${tipo.startsWith('image/') ? tipo : 'image/jpeg'};base64,${encodeBase64(bytes)}` } })
       else if (/\.(xlsx|xlsm|xls|csv)$/.test(nome) || tipo.includes('sheet') || tipo.includes('excel') || tipo.includes('csv')) partes.push({ type: 'text', text: `Anexo Excel «${a.nome}» convertido em texto:\n${nome.endsWith('.csv') ? new TextDecoder().decode(bytes).slice(0, 80_000) : excelEmTexto(bytes)}` })

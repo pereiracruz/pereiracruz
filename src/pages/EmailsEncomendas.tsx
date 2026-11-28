@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { ChevronDown, CornerUpLeft, FilePlus2, FileSpreadsheet, FileText, ImagePlus, Mail, PlugZap, RefreshCw, RotateCcw, Send, Settings2, X } from 'lucide-react'
+import { ChevronDown, CornerUpLeft, File as FicheiroIcone, FilePlus2, FileSpreadsheet, FileText, ImagePlus, Paperclip, Mail, PlugZap, RefreshCw, RotateCcw, Send, Settings2, X } from 'lucide-react'
 import { Botao, Cabecalho, Campo, Cartao, Entrada, Modal, Pilulas, Vazio, aviso } from '../components/ui'
 import {
-  abrirAnexo, carregarEmails, ehEncomenda, emailDisponivel, guardarConfigEmail, guardarImagemAssinatura, marcarEmail, nomeConta, responderEmail, testarEmail, urlImagem,
+  abrirAnexo, carregarEmails, rebuscarAnexos, ehEncomenda, emailDisponivel, guardarConfigEmail, guardarImagemAssinatura, marcarEmail, nomeConta, responderEmail, testarEmail, urlImagem,
   useEmails, verificarEmails, type EmailEncomenda, type TesteConta,
 } from '../lib/email'
 import { dataHora } from '../lib/format'
 import { useDb } from '../store/db'
 import LeituraEmail from './emails/LeituraEmail'
 import { modoServidor } from '../lib/supabase'
+import { ANEXO_LIDO } from '../lib/anexosEmail'
 
 type Vista = 'nova' | 'tratada' | 'ignorada'
 const lista = (s: string) => s.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean)
@@ -126,6 +127,19 @@ export default function EmailsEncomendas({ modo = 'encomenda' }: { modo?: 'encom
     } catch (e) { aviso(`Não foi possível guardar: ${e instanceof Error ? e.message : String(e)}`) }
   }
 
+  const [aBuscar, setABuscar] = useState<string | null>(null)
+  const buscarAnexos = async (e: EmailEncomenda) => {
+    setABuscar(e.id)
+    try {
+      const n = await rebuscarAnexos(e)
+      const falta = n.anexosNaoGuardados?.length ? ` ${n.anexosNaoGuardados.length} não ficaram guardados (ver a lista).` : ''
+      log('Anexos de email recolhidos outra vez', `${e.assunto} · ${n.anexos.length} anexo(s)${falta ? ` · ${n.anexosNaoGuardados!.length} não guardado(s)` : ''}`)
+      aviso(n.anexos.length
+        ? `${n.anexos.length} anexo(s) recolhido(s).${falta}${e.leituraIA ? ' Carregue em «Ler outra vez» para a IA os ler.' : ''}`
+        : `O email não tem anexos que se possam guardar.${falta}`)
+    } catch (x) { aviso(`Não foi possível buscar os anexos: ${x instanceof Error ? x.message : String(x)}`) } finally { setABuscar(null) }
+  }
+
   const mudar = async (e: EmailEncomenda, estado: EmailEncomenda['estado']) => {
     try { await marcarEmail(e, estado) } catch (x) { aviso(`Não foi possível alterar: ${x instanceof Error ? x.message : String(x)}`) }
   }
@@ -226,12 +240,26 @@ export default function EmailsEncomendas({ modo = 'encomenda' }: { modo?: 'encom
                       <div className="flex gap-2 flex-wrap mt-2">
                         {e.anexos.map((a) => (
                           <button key={a.caminho} onClick={() => abrirAnexo(a).catch((x) => aviso(x.message))}
-                            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-linha text-[12px] hover:bg-fundo">
-                            {/\.(xlsx?|xlsm|csv)$/i.test(a.nome) ? <FileSpreadsheet size={13} /> : <FileText size={13} />}
+                            title={[a.origem && `Dentro de ${a.origem}`, !ANEXO_LIDO.test(a.nome) && 'Guardado para descarregar; a IA não lê este formato'].filter(Boolean).join(' · ') || undefined}
+                            className={clsx('inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-linha text-[12px] hover:bg-fundo', !ANEXO_LIDO.test(a.nome) && 'text-suave')}>
+                            {/\.(xlsx?|xlsm|csv)$/i.test(a.nome) ? <FileSpreadsheet size={13} /> : ANEXO_LIDO.test(a.nome) ? <FileText size={13} /> : <FicheiroIcone size={13} />}
                             {a.nome} <span className="text-tenue">{tamanho(a.tamanho)}</span>
                           </button>
                         ))}
+                        {modoServidor && (
+                          <button onClick={() => buscarAnexos(e)} disabled={aBuscar === e.id}
+                            title="Volta à caixa de correio buscar os anexos deste email (abre os zips; no Thunderbird não muda nada)"
+                            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border border-dashed border-linha text-[12px] text-suave hover:bg-fundo hover:text-tinta disabled:opacity-60">
+                            <Paperclip size={13} className={clsx(aBuscar === e.id && 'animate-pulse')} />
+                            {aBuscar === e.id ? 'A buscar anexos…' : e.anexos.length ? 'Buscar anexos outra vez' : 'Buscar anexos'}
+                          </button>
+                        )}
                       </div>
+                      {!!e.anexosNaoGuardados?.length && (
+                        <p className="mt-1.5 text-[12px] text-suave">
+                          Não guardados (abrir no Thunderbird): {e.anexosNaoGuardados.map((a) => `${a.nome} · ${tamanho(a.tamanho)} · ${a.motivo}`).join(' — ')}
+                        </p>
+                      )}
                       {e.texto && (
                         <button onClick={() => setAberto(aberto === e.id ? null : e.id)} className="mt-2 text-[12px] text-suave hover:text-tinta inline-flex items-center gap-1">
                           <ChevronDown size={13} className={clsx('transition-transform', aberto !== e.id && '-rotate-90')} />Texto do email

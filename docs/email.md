@@ -13,12 +13,26 @@ não apaga. No Thunderbird fica tudo como estava.
   Ao criar, o email passa a **Tratado** e fica ligado à encomenda. **Ignorar** tira-o da lista.
 - Cada chamada trata no máximo 4 emails novos (limites do Supabase); a aplicação repete sozinha até não haver mais.
 
+## Anexos
+- Guardam-se todos os anexos do cliente, um a um (o email pode ter mais de 15 MB): **PDF, Excel e imagens** (a IA lê),
+  os restantes (ex.: **moldes DXF**) só para descarregar — aparecem a cinzento, com a indicação de que a IA não os lê.
+- **Zips** abrem-se no servidor: cada ficheiro lá dentro passa a ser um anexo, com a origem (ex.: «Projeto.zip › Moldes»).
+  O lixo do Mac (`__MACOSX`, `._…`, `.DS_Store`) e os ficheiros dos programas de email (`ATT00001.htm`, `smime.p7s`,
+  `winmail.dat`) ficam de fora. Zips dentro de zips ficam inteiros. Nomes com acentos de zips feitos no Mac são corrigidos.
+- Limites: 30 MB por ficheiro; por zip, até 300 ficheiros e 150 MB descomprimidos. O que passa disso aparece em
+  **«Não guardados (abrir no Thunderbird)»**, com o nome, o tamanho e o motivo — nunca desaparece sem aviso.
+- **Buscar anexos outra vez** (em cada email): volta à caixa de correio (só leitura) e recolhe de novo os anexos com estas
+  regras — para emails recolhidos antes de a aplicação abrir zips, ou se algum falhou. Substitui a lista e apaga do
+  servidor os ficheiros antigos desse email. Depois, «Ler outra vez» para a IA ler os anexos novos. Se o email já foi
+  movido ou apagado no Thunderbird, avisa que não o encontrou.
+- As regras estão em `src/lib/anexosEmail.ts`, copiadas para a função (o teste `anexos-email.spec.ts` garante que são iguais).
+
 ## Filtros (na própria página, «Filtros e ligação»)
 - **Remetentes**: partes do endereço ou do nome (ex.: `whitecotton`, `@cliente.pt`).
 - **Palavras no assunto**: ex.: `encomenda`, `order`, `pedido`.
 - **Palavras no texto da mensagem** (pesquisa feita pelo servidor de email): só as inequívocas, ex.: `encomenda`, `tech pack`. Palavras comuns («pedido», «project» — está no nome Pereira's Project) trazem emails a mais.
 - **Dias**: só procura nos últimos N dias (1 a 90; por omissão 14).
-- Um email entra se tiver anexo útil **e** coincidir com um remetente **ou** uma palavra. Sem filtros, entram todos
+- Um email entra se tiver anexo útil (Excel, PDF ou zip) **e** coincidir com um remetente **ou** uma palavra. Sem filtros, entram todos
   os emails com anexo útil.
 
 ## Instalar (uma vez)
