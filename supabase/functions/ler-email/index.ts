@@ -1,7 +1,10 @@
 // Supabase Edge Function «ler-email» — lê um email guardado (texto + anexos) com IA pelo OpenRouter.
 // Classifica o email (encomenda, pedido de preço, tech pack, fatura, alteração, outro), identifica o cliente e extrai a
 // encomenda e o tech pack nos MESMOS formatos da função «ler-documento» (a aplicação reutiliza a passagem para encomenda
-// e fichas). Saída validada por JSON Schema (structured outputs, strict) com reparação automática (response-healing).
+// e fichas). Saída em JSON segundo o esquema, que vai nas instruções (o modo estrito recusa um esquema deste tamanho) e é
+// acertada ao esquema na função (ajustarAoEsquema), com reparação automática (response-healing).
+// Com mais de um documento (PDF/Excel), a leitura é feita POR PARTES — um documento por chamada e uma leitura final com o
+// texto do email e as imagens — porque cada chamada tem ~150 s; a aplicação repete o pedido até vir «concluido».
 // PDFs: lidos pelo próprio modelo (engine «native», vê as páginas como imagem) ou por OCR Mistral (OPENROUTER_PDF=mistral-ocr).
 // Documentação: https://openrouter.ai/docs/llms.txt (structured-outputs, multimodal/pdfs, routing/provider-selection, zdr).
 //
@@ -133,6 +136,63 @@ export function ajustarAoEsquema(v: unknown, e: EsquemaJson): unknown {
 }
 // ==== FIM ajustarAoEsquema ====
 
+// ---------------- Leitura por partes: juntar (cópia de src/lib/juntarLeituras.ts) ----------------
+// ==== INÍCIO juntarLeituras ====
+type Obj = Record<string, unknown>
+const lista = (x: unknown): Obj[] => (Array.isArray(x) ? (x as Obj[]) : [])
+const chaveTexto = (x: unknown) => String(x ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+const semRepetidos = <T>(xs: T[], chave: (x: T) => string) => {
+  const vistos = new Set<string>()
+  return xs.filter((x) => { const k = chave(x); if (!k || vistos.has(k)) return false; vistos.add(k); return true })
+}
+
+/** Junta a leitura final (texto do email) com as leituras parciais (uma por documento).
+ *  Da final: classificação, idioma, resumo, pedido de preço. Das parciais: tech packs e encomendas (os documentos).
+ *  Cliente: o da final, completado com o das parciais. Anexos e dúvidas: todos, sem repetidos. */
+export function juntarLeituras(final: Obj, parciais: Obj[]): Obj {
+  const todas = [...parciais, final]
+  // tech pack: os modelos de todos os documentos
+  const tps = todas.map((l) => l.techpack as Obj | null).filter((t): t is Obj => !!t)
+  const modelos = semRepetidos(tps.flatMap((t) => lista(t.modelos)), (m) => `${chaveTexto(m.referencia)}|${chaveTexto(m.nome)}`)
+  const techpack = tps.length
+    ? { marca: tps.map((t) => t.marca).find(Boolean) ?? null, colecao: tps.map((t) => t.colecao).find(Boolean) ?? null, modelos }
+    : null
+  // encomenda: a primeira como base, com as linhas, notas e perguntas de todas
+  const encs = todas.map((l) => l.encomenda as Obj | null).filter((e): e is Obj => !!e)
+  const encomenda = encs.length ? {
+    ...encs[0],
+    linhas: encs.flatMap((e) => lista(e.linhas)),
+    notas: semRepetidos(encs.flatMap((e) => (Array.isArray(e.notas) ? (e.notas as string[]) : [])), chaveTexto),
+    perguntas: semRepetidos(encs.flatMap((e) => (Array.isArray(e.perguntas) ? (e.perguntas as string[]) : [])), chaveTexto),
+  } : null
+  // cliente: campos em falta na final vêm das parciais
+  const cliente: Obj = { ...((final.cliente as Obj) ?? {}) }
+  for (const p of parciais) for (const [k, v] of Object.entries((p.cliente as Obj) ?? {})) if (cliente[k] == null && v != null) cliente[k] = v
+  // anexos: a descrição feita ao ler o próprio documento tem prioridade
+  const anexos = semRepetidos([...parciais.flatMap((p) => lista(p.anexos)), ...lista(final.anexos)], (a) => chaveTexto(a.nome))
+  const textos = (l: Obj) => (Array.isArray(l.duvidas) ? (l.duvidas as string[]) : [])
+  const duvidas = semRepetidos([...textos(final), ...parciais.flatMap(textos)], chaveTexto)
+  return {
+    ...final,
+    cliente, anexos, encomenda, techpack,
+    pedidoPreco: final.pedidoPreco ?? parciais.map((p) => p.pedidoPreco).find(Boolean) ?? null,
+    duvidas,
+  }
+}
+
+/** Resumo curto de uma leitura parcial, para a leitura final saber o que os documentos já disseram. */
+export function resumoParcial(nome: string, l: Obj): Obj {
+  const tp = l.techpack as Obj | null
+  return {
+    anexo: nome, resumo: l.resumo ?? '',
+    modelos: lista(tp?.modelos).map((m) => ({ referencia: m.referencia, nome: m.nome, tipoPeca: m.tipoPeca, composicao: m.composicao, tamanhos: m.tamanhos,
+      tecidos: lista(m.tecidos).map((t) => t.descricao), acessorios: lista(m.acessorios).map((a) => a.descricao), lavagem: lista(m.campos).filter((c) => /lavag|wash|tratam/i.test(String(c.campo))).map((c) => c.valor) })),
+    linhasEncomenda: lista((l.encomenda as Obj | null)?.linhas).length,
+    duvidas: Array.isArray(l.duvidas) ? l.duvidas : [],
+  }
+}
+// ==== FIM juntarLeituras ====
+
 // ---------------- Anexos ----------------
 const MAX_TOTAL = 18 * 1024 * 1024
 function excelEmTexto(bytes: Uint8Array) {
@@ -156,14 +216,16 @@ Deno.serve(async (req) => {
 
     const chave = Deno.env.get('OPENROUTER_API_KEY')
     if (!chave) return resposta({ erro: 'Falta o segredo OPENROUTER_API_KEY no Supabase (Edge Functions → Secrets).' }, 500)
-    const { emailId, clientes } = await req.json() as { emailId: string; clientes?: string[] }
+    const { emailId, clientes, recomecar } = await req.json() as { emailId: string; clientes?: string[]; recomecar?: boolean }
     if (!emailId) return resposta({ erro: 'Pedido inválido' }, 400)
 
     const { data: linha, error: eEmail } = await supabase.from('documentos').select('dados').eq('colecao', 'emails').eq('id', emailId).maybeSingle()
     if (eEmail || !linha) return resposta({ erro: 'Não encontrei o email.' }, 404)
-    const email = linha.dados as { assunto: string; de: string; deNome?: string; data: string; texto: string
-      anexos: { nome: string; caminho: string; tipo: string; tamanho: number; origem?: string }[]
-      anexosNaoGuardados?: { nome: string; tamanho: number; motivo: string }[] }
+    type Anexo = { nome: string; caminho: string; tipo: string; tamanho: number; origem?: string }
+    type Uso = { prompt_tokens?: number; completion_tokens?: number; cost?: number }
+    type EmCurso = { partes: string[]; total: number; parciais: { nome: string; dados: Record<string, unknown> }[]; uso: Uso; falhas?: Record<string, number>; notas: string[]; fornecedor: string | null; modelo: string | null; inicio: string }
+    const email = linha.dados as Record<string, unknown> & { assunto: string; de: string; deNome?: string; data: string; texto: string
+      anexos: Anexo[]; anexosNaoGuardados?: { nome: string; tamanho: number; motivo: string }[]; leituraEmCurso?: EmCurso }
     // ordem de leitura: PDF, Excel, imagens; os formatos que a IA não lê (DXF, zips dentro de zips…) nem se descarregam
     const formato = (a: { nome: string; tipo: string }) => {
       const tipo = (a.tipo || '').toLowerCase(), nome = a.nome.toLowerCase()
@@ -172,101 +234,145 @@ Deno.serve(async (req) => {
       if (tipo.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/.test(nome)) return 'imagem'
       return null
     }
-    const ORDEM = { pdf: 0, excel: 1, imagem: 2 } as const
-    const lidos = email.anexos.filter((a) => formato(a)).sort((a, b) => ORDEM[formato(a)!] - ORDEM[formato(b)!])
+    const documentos = email.anexos.filter((a) => formato(a) === 'pdf' || formato(a) === 'excel')
+    const imagens = email.anexos.filter((a) => formato(a) === 'imagem')
     const listaAnexos = [
       ...email.anexos.map((a) => `${a.nome}${a.origem ? ` (dentro de ${a.origem})` : ''}${formato(a) ? '' : ' — não lido (formato que a IA não abre)'}`),
       ...(email.anexosNaoGuardados ?? []).map((a) => `${a.nome} — não lido (${a.motivo})`),
     ]
-
-    // conteúdo: texto do email + cada anexo no formato que o OpenRouter aceita
-    const partes: unknown[] = [{ type: 'text', text: [
+    const cabecalho = [
       `Clientes conhecidos: ${(clientes ?? []).join('; ') || '(nenhum)'}`,
       `De: ${email.deNome ? `${email.deNome} <${email.de}>` : email.de}`, `Data: ${email.data}`, `Assunto: ${email.assunto}`,
       `Anexos (${listaAnexos.length}):${listaAnexos.length ? `\n${listaAnexos.map((l) => `- ${l}`).join('\n')}` : ' (nenhum)'}`, '', 'Texto do email:', email.texto || '(sem texto)',
-    ].join('\n') }]
-    let total = 0
-    const ignorados: string[] = email.anexos.filter((a) => !formato(a)).map((a) => `${a.nome} (formato não lido; está guardado no email)`)
-    for (const a of lidos) {
-      const { data: f, error } = await supabase.storage.from('documentos').download(a.caminho)
-      if (error || !f) { ignorados.push(`${a.nome} (não abriu)`); continue }
-      const bytes = new Uint8Array(await f.arrayBuffer())
-      if ((total += bytes.length) > MAX_TOTAL) { ignorados.push(`${a.nome} (anexos demasiado grandes)`); continue }
-      const tipo = (a.tipo || f.type || '').toLowerCase(), nome = a.nome.toLowerCase()
-      if (a.origem) partes.push({ type: 'text', text: `Anexo seguinte: «${a.nome}» (dentro de ${a.origem})` })
-      if (tipo.includes('pdf') || nome.endsWith('.pdf')) partes.push({ type: 'file', file: { filename: a.nome, file_data: `data:application/pdf;base64,${encodeBase64(bytes)}` } })
-      else if (tipo.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/.test(nome)) partes.push({ type: 'image_url', image_url: { url: `data:${tipo.startsWith('image/') ? tipo : 'image/jpeg'};base64,${encodeBase64(bytes)}` } })
-      else if (/\.(xlsx|xlsm|xls|csv)$/.test(nome) || tipo.includes('sheet') || tipo.includes('excel') || tipo.includes('csv')) partes.push({ type: 'text', text: `Anexo Excel «${a.nome}» convertido em texto:\n${nome.endsWith('.csv') ? new TextDecoder().decode(bytes).slice(0, 80_000) : excelEmTexto(bytes)}` })
-      else ignorados.push(`${a.nome} (formato não lido)`)
+    ].join('\n')
+
+    /** Acrescenta anexos ao conteúdo do pedido, no formato que o OpenRouter aceita. */
+    const juntarAnexos = async (partes: unknown[], anexos: Anexo[], notas: string[]) => {
+      let total = 0
+      for (const a of anexos) {
+        const { data: f, error } = await supabase.storage.from('documentos').download(a.caminho)
+        if (error || !f) { notas.push(`${a.nome} (não abriu)`); continue }
+        const bytes = new Uint8Array(await f.arrayBuffer())
+        if ((total += bytes.length) > MAX_TOTAL) { notas.push(`${a.nome} (anexos demasiado grandes)`); continue }
+        const tipo = (a.tipo || f.type || '').toLowerCase(), nome = a.nome.toLowerCase()
+        partes.push({ type: 'text', text: `Anexo seguinte: «${a.nome}»${a.origem ? ` (dentro de ${a.origem})` : ''}` })
+        if (formato(a) === 'pdf') partes.push({ type: 'file', file: { filename: a.nome, file_data: `data:application/pdf;base64,${encodeBase64(bytes)}` } })
+        else if (formato(a) === 'imagem') partes.push({ type: 'image_url', image_url: { url: `data:${tipo.startsWith('image/') ? tipo : 'image/jpeg'};base64,${encodeBase64(bytes)}` } })
+        else partes.push({ type: 'text', text: `Anexo Excel «${a.nome}» convertido em texto:\n${nome.endsWith('.csv') ? new TextDecoder().decode(bytes).slice(0, 80_000) : excelEmTexto(bytes)}` })
+      }
     }
 
     const base = (Deno.env.get('OPENROUTER_URL') || 'https://openrouter.ai/api/v1').replace(/\/+$/, '')
     const modelo = Deno.env.get('OPENROUTER_MODELO') || 'anthropic/claude-opus-5.5'
     const motorPdf = Deno.env.get('OPENROUTER_PDF') || 'native'
-    const temPdf = partes.some((p) => (p as { type?: string }).type === 'file')
-    type Corpo = { choices?: { message?: { content?: string }; finish_reason?: string }[]; model?: string; provider?: string; usage?: Record<string, number>
+    type Corpo = { choices?: { message?: { content?: string }; finish_reason?: string }[]; model?: string; provider?: string; usage?: Uso
       error?: { message?: string; code?: number; metadata?: { provider_name?: string; raw?: unknown } } }
-    // Fornecedores por ordem de preferência. O Google (Vertex) recusa o nosso esquema («compiled grammar is too large»),
-    // por isso fica de fora; sem «temperature» (o Claude Opus 5.5 não aceita, e com require_parameters nenhum fornecedor servia).
+    // Fornecedores do Claude por ordem; o Google (Vertex) fica de fora. Sem «temperature» (o Claude Opus 5.5 não aceita).
     const ordem = (Deno.env.get('OPENROUTER_FORNECEDORES') || 'anthropic,claude-on-aws,azure,amazon-bedrock').split(',').map((x) => x.trim()).filter(Boolean)
-    // sem modo estrito, o esquema vai nas instruções e a resposta é acertada ao esquema a seguir
-    const INSTRUCOES_SEM_ESTRITO = `${INSTRUCOES}
+    // Sem modo estrito: o esquema completo é grande demais para os fornecedores do Claude («compiled grammar is too large»);
+    // vai nas instruções e a resposta é acertada ao esquema aqui (ajustarAoEsquema).
+    const sistema = (extra: string) => `${INSTRUCOES}${extra ? `\n\n${extra}` : ''}
 
 Responde APENAS com um objeto JSON (sem texto antes ou depois, sem blocos de código) que cumpra exatamente este JSON Schema (todos os campos presentes; null quando não existe):
 ${JSON.stringify(ESQUEMA)}`
-    const pedir = async (pdf: string, exigirParametros: boolean, estrito: boolean) => {
-      const r = await fetch(`${base}/chat/completions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pereirasproject.netlify.app', 'X-Title': "Pereira's Project" },
-        body: JSON.stringify({
-          model: modelo, max_tokens: 32000,
-          messages: [{ role: 'system', content: estrito ? INSTRUCOES : INSTRUCOES_SEM_ESTRITO }, { role: 'user', content: partes }],
-          ...(estrito ? { response_format: { type: 'json_schema', json_schema: { name: 'email', strict: true, schema: ESQUEMA } } } : {}),
-          plugins: [{ id: 'file-parser', pdf: { engine: pdf } }, { id: 'response-healing' }],
-          // sem recolha de dados SEMPRE; «require_parameters» só se puder (ver tentativas abaixo)
-          provider: { order: ordem, only: ordem, require_parameters: exigirParametros, data_collection: 'deny', ...(Deno.env.get('OPENROUTER_ZDR') === '1' ? { zdr: true } : {}) },
-        }),
-      })
-      const corpo = await r.json().catch(() => ({})) as Corpo
-      if (!r.ok || corpo.error) console.log('ler-email: OpenRouter', r.status, pdf, exigirParametros, estrito ? 'estrito' : 'sem estrito', corpo.error?.message, corpo.error?.metadata?.provider_name ?? '', JSON.stringify(corpo.error?.metadata?.raw ?? '').slice(0, 600))
-      return { r, corpo }
-    }
-    // Tentativas, por ordem (só se o erro for de encaminhamento ou do fornecedor; não em chave, crédito ou limite):
-    //  1. modo estrito (structured outputs), PDF lido pelo próprio modelo;
-    //  2. sem modo estrito: os fornecedores do Claude recusam o nosso esquema por ser grande («compiled grammar is too
-    //     large»), por isso o esquema vai nas instruções e a resposta é acertada ao esquema aqui (ajustarAoEsquema);
-    //  3. o mesmo com os PDF convertidos antes por OCR (Mistral, 2 $/1000 páginas).
-    const tentativas: { pdf: string; exigir: boolean; estrito: boolean; nota?: string }[] = [
-      { pdf: motorPdf, exigir: true, estrito: true },
-      { pdf: motorPdf, exigir: false, estrito: false, nota: 'formato da resposta acertado na aplicação (o esquema é grande demais para o modo estrito do fornecedor)' },
-    ]
-    if (temPdf && motorPdf === 'native') tentativas.push({ pdf: 'mistral-ocr', exigir: false, estrito: false, nota: 'PDF lidos por OCR (Mistral) e formato da resposta acertado na aplicação' })
-    const repetir = (r: Response, c: Corpo) => (!r.ok || !!c.error) && ![401, 402, 429].includes(r.status) && ![401, 402, 429].includes(c.error?.code ?? 0)
-    let { r, corpo } = await pedir(tentativas[0].pdf, tentativas[0].exigir, tentativas[0].estrito)
-    for (let k = 1; k < tentativas.length && repetir(r, corpo); k++) {
-      ;({ r, corpo } = await pedir(tentativas[k].pdf, tentativas[k].exigir, tentativas[k].estrito))
-      if (r.ok && !corpo.error && tentativas[k].nota) ignorados.push(tentativas[k].nota!)
-    }
-    if (!r.ok || corpo.error) {
-      const raw = corpo.error?.metadata?.raw
-      const det = raw ? (typeof raw === 'string' ? raw : JSON.stringify(raw)).match(/"message"\s*:\s*"([^"]+)"/)?.[1] ?? '' : ''
-      const msg = `${corpo.error?.message ?? `HTTP ${r.status}`}${corpo.error?.metadata?.provider_name ? ` (${corpo.error.metadata.provider_name}${det ? `: ${det}` : ''})` : ''}`
-      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Sem crédito na conta OpenRouter.' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : r.status === 413 || /entity too large|payload too large|request too large/i.test(msg) ? ' Os anexos são grandes demais para um só pedido.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo aceita este pedido sem recolha de dados (já tentei sem modo estrito e com OCR dos PDF): experimente outro OPENROUTER_MODELO.' : ''
-      return resposta({ erro: `OpenRouter: ${msg}.${dica}` }, 502)
-    }
-    const texto = corpo.choices?.[0]?.message?.content ?? ''
-    let dados: unknown
-    try {
-      // sem modo estrito a IA pode embrulhar o JSON em texto ou num bloco de código: fica só o objeto
-      const limpo = texto.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
-      const i = limpo.indexOf('{'), j = limpo.lastIndexOf('}')
-      dados = ajustarAoEsquema(JSON.parse(i >= 0 && j > i ? limpo.slice(i, j + 1) : limpo), ESQUEMA as unknown as EsquemaJson)
-    } catch { return resposta({ erro: `A resposta da IA não é JSON válido (${corpo.choices?.[0]?.finish_reason ?? 'sem motivo'}).` }, 502) }
 
-    const leitura = { em: new Date().toISOString(), modelo: corpo.model ?? modelo, fornecedor: corpo.provider ?? null, uso: corpo.usage ?? null, ignorados, dados }
-    // guarda a leitura no próprio email (não se volta a pagar para ver o resultado)
-    await supabase.from('documentos').upsert({ colecao: 'emails', id: emailId, dados: { ...(linha.dados as object), leituraIA: leitura } })
-    return resposta(leitura)
+    /** Um pedido ao OpenRouter, com nova tentativa por OCR dos PDF se o fornecedor recusar. Devolve os dados já acertados ao esquema. */
+    const lerComIA = async (extra: string, partes: unknown[], notas: string[]) => {
+      const temPdf = partes.some((p) => (p as { type?: string }).type === 'file')
+      const pedir = async (pdf: string) => {
+        const r = await fetch(`${base}/chat/completions`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pereirasproject.netlify.app', 'X-Title': "Pereira's Project" },
+          body: JSON.stringify({
+            model: modelo, max_tokens: 32000,
+            messages: [{ role: 'system', content: sistema(extra) }, { role: 'user', content: partes }],
+            plugins: [{ id: 'file-parser', pdf: { engine: pdf } }, { id: 'response-healing' }],
+            provider: { order: ordem, only: ordem, data_collection: 'deny', ...(Deno.env.get('OPENROUTER_ZDR') === '1' ? { zdr: true } : {}) },
+          }),
+        })
+        const corpo = await r.json().catch(() => ({})) as Corpo
+        if (!r.ok || corpo.error) console.log('ler-email: OpenRouter', r.status, pdf, corpo.error?.message, corpo.error?.metadata?.provider_name ?? '', JSON.stringify(corpo.error?.metadata?.raw ?? '').slice(0, 600))
+        return { r, corpo }
+      }
+      let { r, corpo } = await pedir(motorPdf)
+      const repetir = (!r.ok || !!corpo.error) && ![401, 402, 429].includes(r.status) && ![401, 402, 429].includes(corpo.error?.code ?? 0)
+      if (repetir && temPdf && motorPdf === 'native') {
+        ;({ r, corpo } = await pedir('mistral-ocr'))
+        if (r.ok && !corpo.error) notas.push('PDF lidos por OCR (Mistral): o fornecedor não aceitou o PDF diretamente')
+      }
+      if (!r.ok || corpo.error) {
+        const raw = corpo.error?.metadata?.raw
+        const det = raw ? (typeof raw === 'string' ? raw : JSON.stringify(raw)).match(/"message"\s*:\s*"([^"]+)"/)?.[1] ?? '' : ''
+        const msg = `${corpo.error?.message ?? `HTTP ${r.status}`}${corpo.error?.metadata?.provider_name ? ` (${corpo.error.metadata.provider_name}${det ? `: ${det}` : ''})` : ''}`
+        const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Sem crédito na conta OpenRouter.' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : r.status === 413 || /entity too large|payload too large|request too large/i.test(msg) ? ' Os anexos são grandes demais para um só pedido.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo aceita este pedido sem recolha de dados: experimente outro OPENROUTER_MODELO.' : ''
+        throw new Error(`OpenRouter: ${msg}.${dica}`)
+      }
+      const texto = corpo.choices?.[0]?.message?.content ?? ''
+      try {
+        // a IA pode embrulhar o JSON em texto ou num bloco de código: fica só o objeto
+        const limpo = texto.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
+        const i = limpo.indexOf('{'), j = limpo.lastIndexOf('}')
+        const dados = ajustarAoEsquema(JSON.parse(i >= 0 && j > i ? limpo.slice(i, j + 1) : limpo), ESQUEMA as unknown as EsquemaJson) as Record<string, unknown>
+        return { dados, uso: corpo.usage ?? {}, fornecedor: corpo.provider ?? null, modelo: corpo.model ?? modelo }
+      } catch { throw new Error(`A resposta da IA não é JSON válido (${corpo.choices?.[0]?.finish_reason === 'length' ? 'resposta cortada por ser longa demais' : corpo.choices?.[0]?.finish_reason ?? 'sem motivo'}).`) }
+    }
+    const somar = (a: Uso, b: Uso): Uso => ({ prompt_tokens: (a.prompt_tokens ?? 0) + (b.prompt_tokens ?? 0), completion_tokens: (a.completion_tokens ?? 0) + (b.completion_tokens ?? 0), cost: (a.cost ?? 0) + (b.cost ?? 0) })
+    const notasBase = email.anexos.filter((a) => !formato(a)).map((a) => `${a.nome} (formato não lido; está guardado no email)`)
+    const guardar = async (dados: Record<string, unknown>) => {
+      const { error } = await supabase.from('documentos').upsert({ colecao: 'emails', id: emailId, dados })
+      if (error) throw new Error(`base de dados: ${error.message}`)
+    }
+
+    // Até 1 documento: tudo numa só leitura. Com mais: uma leitura por documento e uma final (cada chamada tem ~150 s).
+    let curso = recomecar ? undefined : email.leituraEmCurso
+    if (!curso && documentos.length <= 1) {
+      const notas = [...notasBase]
+      const partes: unknown[] = [{ type: 'text', text: cabecalho }]
+      await juntarAnexos(partes, [...documentos, ...imagens], notas)
+      const l = await lerComIA('', partes, notas)
+      const { leituraEmCurso: _x, ...resto } = email
+      const leitura = { em: new Date().toISOString(), modelo: l.modelo, fornecedor: l.fornecedor, uso: l.uso, ignorados: notas, dados: l.dados }
+      await guardar({ ...resto, leituraIA: leitura })
+      return resposta({ ...leitura, concluido: true })
+    }
+    if (!curso) {
+      curso = { partes: documentos.map((a) => a.caminho), total: documentos.length + 1, parciais: [], uso: {}, notas: [...notasBase], fornecedor: null, modelo: null, inicio: new Date().toISOString() }
+      await guardar({ ...email, leituraEmCurso: curso })
+      return resposta({ concluido: false, feitos: 0, total: curso.total })
+    }
+    if (curso.partes.length) {
+      // um documento de cada vez
+      const caminho = curso.partes[0]
+      const doc = email.anexos.find((a) => a.caminho === caminho)
+      // se o servidor cortar a leitura a meio (tempo), à 2.ª falha este documento passa à frente
+      curso.falhas ??= {}
+      const falhou = (curso.falhas[caminho] ?? 0) >= 2
+      if (doc && !falhou) { curso.falhas[caminho] = (curso.falhas[caminho] ?? 0) + 1; await guardar({ ...email, leituraEmCurso: curso }) }
+      curso.partes.shift()
+      if (doc && falhou) curso.notas.push(`${doc.nome} (não foi possível ler: demorou demais ou o fornecedor recusou duas vezes)`)
+      else if (doc) {
+        const partes: unknown[] = [{ type: 'text', text: cabecalho }]
+        await juntarAnexos(partes, [doc], curso.notas)
+        const l = await lerComIA(`ESTA LEITURA É SÓ DO ANEXO «${doc.nome}». Os outros anexos são lidos à parte e juntos depois. Extrai tudo deste anexo para «encomenda» e/ou «techpack» (sem resumir). Em «anexos» descreve só este anexo; em «duvidas» só o que falta neste anexo.`, partes, curso.notas)
+        curso.parciais.push({ nome: doc.nome, dados: l.dados })
+        curso.uso = somar(curso.uso, l.uso); curso.fornecedor = l.fornecedor; curso.modelo = l.modelo
+      }
+      await guardar({ ...email, leituraEmCurso: curso })
+      return resposta({ concluido: false, feitos: curso.total - curso.partes.length - 1, total: curso.total })
+    }
+    // leitura final: texto do email + imagens + o que os documentos já disseram; depois junta tudo
+    const partes: unknown[] = [{ type: 'text', text: cabecalho }]
+    await juntarAnexos(partes, imagens, curso.notas)
+    const extra = `Os documentos (PDF/Excel) deste email JÁ FORAM LIDOS À PARTE. Resumo do que se extraiu de cada um:
+${JSON.stringify(curso.parciais.map((p) => resumoParcial(p.nome, p.dados))).slice(0, 30_000)}
+Na tua resposta deixa «techpack» a null e «encomenda» a null (exceto se o próprio texto do email tiver uma encomenda com quantidades). Usa o que os documentos disseram para classificar, para o pedido de preço (uma peça por modelo, com a referência e o nome dos documentos) e para as dúvidas: não perguntes o que os documentos já respondem.`
+    const l = await lerComIA(extra, partes, curso.notas)
+    const dados = juntarLeituras(l.dados, curso.parciais.map((p) => p.dados))
+    const uso = somar(curso.uso, l.uso)
+    const { leituraEmCurso: _x, ...resto } = email
+    const leitura = { em: new Date().toISOString(), modelo: l.modelo, fornecedor: l.fornecedor, uso, ignorados: [...curso.notas, `lido por partes: ${curso.parciais.length} documento(s) + texto do email`], dados }
+    await guardar({ ...resto, leituraIA: leitura })
+    return resposta({ ...leitura, concluido: true })
   } catch (e) {
     console.error(e)
     return resposta({ erro: e instanceof Error ? e.message : String(e) }, 500)

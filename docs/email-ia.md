@@ -22,12 +22,18 @@ imagens; os formatos que não lê nem se descarregam (não gastam o limite de 18
 Fornecedores: por omissão só `anthropic`, `claude-on-aws`, `azure` e `amazon-bedrock`, por esta ordem (segredo opcional
 `OPENROUTER_FORNECEDORES`). O Google (Vertex) fica de fora porque recusa o esquema («compiled grammar is too large»).
 Não se envia `temperature`: o Claude Opus 5.5 não a aceita e, com `require_parameters`, nenhum fornecedor servia.
-O esquema completo é grande demais para o modo estrito dos fornecedores do Claude («compiled grammar is too large»).
-Quando isso acontece, a função repete **sem modo estrito**: o esquema vai nas instruções e a resposta é acertada ao
-esquema na função (`src/lib/esquemaJson.ts`, copiado na função): campos em falta ficam vazios/null e a confiança em
-falta fica «baixa». Se ainda falhar, repete com os PDF por OCR (Mistral, 2 $/1000 páginas). Nunca abdica de
-`data_collection: 'deny'`. A tentativa usada aparece nas notas da leitura; os erros (com o fornecedor e a mensagem
-original) ficam nos registos da função.
+O esquema completo é grande demais para o modo estrito dos fornecedores do Claude («compiled grammar is too large»),
+por isso **não se usa o modo estrito**: o esquema vai nas instruções e a resposta é acertada ao esquema na função
+(`src/lib/esquemaJson.ts`, copiado na função): campos em falta ficam vazios/null e a confiança em falta fica «baixa».
+Se o fornecedor recusar o PDF, repete com os PDF por OCR (Mistral, 2 $/1000 páginas).
+
+**Leitura por partes.** Cada chamada ao servidor tem ~150 s, e a resposta para vários tech packs não cabe nesse tempo.
+Com mais de um documento (PDF/Excel), a leitura é feita **um documento por chamada** e, no fim, uma leitura com o texto do
+email e as imagens, que recebe um resumo do que os documentos disseram (para não perguntar o que já está respondido).
+A função junta tudo (`src/lib/juntarLeituras.ts`, copiado na função): modelos e linhas de todos os documentos;
+classificação, resumo e pedido de preço da leitura final; cliente completado; anexos e dúvidas sem repetidos.
+O estado fica no email (`leituraEmCurso`) e a aplicação repete o pedido até terminar (o botão mostra «2/4»).
+Um documento que falhe 2 vezes passa à frente, com uma nota. O custo mostrado é a soma de todas as chamadas.
 
 ## Instalar (uma vez)
 1. Criar conta em openrouter.ai, carregar crédito e criar uma **API key** (Settings → Keys). Em **Settings → Privacy**:
