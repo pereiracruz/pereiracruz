@@ -205,7 +205,9 @@ const mimeDe = (nome: string) => MIME[(nome.split('.').pop() ?? '').toLowerCase(
 type Tarefa =
   | { tipo: 'parte'; part: string; nome: string; mime?: string; tamanho: number; disposicao?: string; tentativas?: number }
   | { tipo: 'zip'; zip: string; nomeZip: string; entrada: EntradaZip; tentativas?: number }
-type Recolha = { uid: number; tarefas: Tarefa[]; total: number; i: number; anexos: AnexoGuardado[]; naoGuardados: AnexoNaoGuardado[]; antigos: string[]; temporarios: string[]; inicio: string }
+type Recolha = { uid: number; tarefas: Tarefa[]; total: number; i: number; anexos: AnexoGuardado[]; naoGuardados: AnexoNaoGuardado[]; antigos: string[]; temporarios: string[]; inicio: string
+  /** pasta própria desta recolha (email/<id>/<pasta>/): nunca se regrava um ficheiro que já existe — o bucket não deixa (RLS) */
+  pasta?: string }
 const ORCAMENTO = 6 * 1024 * 1024
 const tamanhoTarefa = (t: Tarefa) => (t.tipo === 'parte' ? Math.round(t.tamanho / 1.37) : t.entrada.tamanho)
 
@@ -268,16 +270,22 @@ async function passoRecolha(supabase: SupabaseCliente, lista: Conta[], emailId: 
       const recolha: Recolha = {
         uid, tarefas, total: tarefas.length, i: 0, anexos: [], naoGuardados: [],
         antigos: [...(e.anexos ?? []).map((a) => a.caminho), ...(e.recolha?.anexos ?? []).map((a) => a.caminho), ...(e.recolha?.temporarios ?? [])],
-        temporarios: [], inicio: new Date().toISOString(),
+        temporarios: [], inicio: new Date().toISOString(), pasta: Date.now().toString(36),
       }
       await gravar({ ...e, recolha, anexosPendentes: true })
       console.log('recolha', emailId, 'tarefas', tarefas.length, `${Date.now() - t0}ms`)
     }
     const r = e.recolha!
+    r.pasta ??= Date.now().toString(36) // recolhas começadas antes desta versão
     const zips = new Map<string, Uint8Array>()
+    // sem regravar (o bucket só deixa criar): se já existe, é o mesmo ficheiro de um passo cortado a meio
+    const carregar = async (caminho: string, conteudo: Uint8Array, tipo: string) => {
+      const { error: x } = await supabase.storage.from('documentos').upload(caminho, conteudo, { contentType: tipo || undefined, upsert: false })
+      return x && !/already exists|duplicate|409/i.test(`${x.message} ${(x as { statusCode?: string }).statusCode ?? ''}`) ? x : null
+    }
     const guardar = async (nome: string, conteudo: Uint8Array, tipo: string, origem?: string) => {
-      const caminho = `email/${emailId}/${r.i++}-${nomeFicheiro(nome)}`
-      const { error: x } = await supabase.storage.from('documentos').upload(caminho, conteudo, { contentType: tipo || undefined, upsert: true })
+      const caminho = `email/${emailId}/${r.pasta}/${r.i++}-${nomeFicheiro(nome)}`
+      const x = await carregar(caminho, conteudo, tipo)
       if (x) { r.naoGuardados.push({ nome, tamanho: conteudo.length, motivo: `não ficou guardado (${x.message})` }); return }
       r.anexos.push({ nome, caminho, tipo, tamanho: conteudo.length, ...(origem ? { origem } : {}) })
     }
@@ -316,8 +324,8 @@ async function passoRecolha(supabase: SupabaseCliente, lista: Conta[], emailId: 
             r.naoGuardados.push({ nome: t.nome, tamanho: conteudo.length, motivo: `o zip não abriu (${x instanceof Error ? x.message : x}); está guardado inteiro` })
             continue
           }
-          const zip = `email/${emailId}/tmp/${r.i++}-${nomeFicheiro(t.nome)}`
-          const { error: x } = await supabase.storage.from('documentos').upload(zip, conteudo, { contentType: 'application/zip', upsert: true })
+          const zip = `email/${emailId}/${r.pasta}/tmp/${r.i++}-${nomeFicheiro(t.nome)}`
+          const x = await carregar(zip, conteudo, 'application/zip')
           if (x) { r.naoGuardados.push({ nome: t.nome, tamanho: conteudo.length, motivo: `não ficou guardado (${x.message})` }); continue }
           r.temporarios.push(zip)
           zips.set(zip, conteudo)
