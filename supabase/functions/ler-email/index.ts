@@ -11,6 +11,7 @@
 //   OPENROUTER_PDF       opcional: native (omissão) | mistral-ocr (PDFs digitalizados) | cloudflare-ai
 //   OPENROUTER_URL       opcional: https://openrouter.ai/api/v1 (omissão) ou https://eu.openrouter.ai/api/v1 (só planos Business/Enterprise: processamento na UE)
 //   OPENROUTER_ZDR       opcional: «1» para só usar fornecedores com retenção zero de dados
+//   OPENROUTER_FORNECEDORES opcional: fornecedores por ordem (omissão anthropic,claude-on-aws,azure,amazon-bedrock; o Google recusa o esquema)
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { encodeBase64 } from 'jsr:@std/encoding@1/base64'
@@ -158,38 +159,48 @@ Deno.serve(async (req) => {
     const modelo = Deno.env.get('OPENROUTER_MODELO') || 'anthropic/claude-opus-5.5'
     const motorPdf = Deno.env.get('OPENROUTER_PDF') || 'native'
     const temPdf = partes.some((p) => (p as { type?: string }).type === 'file')
-    type Corpo = { choices?: { message?: { content?: string }; finish_reason?: string }[]; model?: string; provider?: string; usage?: Record<string, number>; error?: { message?: string; code?: number } }
+    type Corpo = { choices?: { message?: { content?: string }; finish_reason?: string }[]; model?: string; provider?: string; usage?: Record<string, number>
+      error?: { message?: string; code?: number; metadata?: { provider_name?: string; raw?: unknown } } }
+    // Fornecedores por ordem de preferência. O Google (Vertex) recusa o nosso esquema («compiled grammar is too large»),
+    // por isso fica de fora; sem «temperature» (o Claude Opus 5.5 não aceita, e com require_parameters nenhum fornecedor servia).
+    const ordem = (Deno.env.get('OPENROUTER_FORNECEDORES') || 'anthropic,claude-on-aws,azure,amazon-bedrock').split(',').map((x) => x.trim()).filter(Boolean)
     const pedir = async (pdf: string, exigirParametros: boolean) => {
       const r = await fetch(`${base}/chat/completions`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pereirasproject.netlify.app', 'X-Title': "Pereira's Project" },
         body: JSON.stringify({
-          model: modelo, temperature: 0, max_tokens: 32000,
+          model: modelo, max_tokens: 32000,
           messages: [{ role: 'system', content: INSTRUCOES }, { role: 'user', content: partes }],
           response_format: { type: 'json_schema', json_schema: { name: 'email', strict: true, schema: ESQUEMA } },
           plugins: [{ id: 'file-parser', pdf: { engine: pdf } }, { id: 'response-healing' }],
           // sem recolha de dados SEMPRE; «require_parameters» só se puder (ver tentativas abaixo)
-          provider: { require_parameters: exigirParametros, data_collection: 'deny', ...(Deno.env.get('OPENROUTER_ZDR') === '1' ? { zdr: true } : {}) },
+          provider: { order: ordem, only: ordem, require_parameters: exigirParametros, data_collection: 'deny', ...(Deno.env.get('OPENROUTER_ZDR') === '1' ? { zdr: true } : {}) },
         }),
       })
-      return { r, corpo: await r.json().catch(() => ({})) as Corpo }
+      const corpo = await r.json().catch(() => ({})) as Corpo
+      if (!r.ok || corpo.error) console.log('ler-email: OpenRouter', r.status, pdf, exigirParametros, corpo.error?.message, corpo.error?.metadata?.provider_name ?? '', JSON.stringify(corpo.error?.metadata?.raw ?? '').slice(0, 600))
+      return { r, corpo }
     }
-    // Tentativas quando nenhum fornecedor aceita o pedido («No endpoints found…»), por ordem:
-    //  1. como configurado (PDF lido pelo próprio modelo);
-    //  2. PDF convertido antes por OCR (Mistral, 2 $/1000 páginas): o fornecedor só recebe texto e imagens;
-    //  3. o mesmo sem «require_parameters» (o formato JSON continua preferido e a resposta é validada a seguir).
-    const tentativas: { pdf: string; exigir: boolean; nota?: string }[] = [{ pdf: motorPdf, exigir: true }]
-    if (temPdf && motorPdf === 'native') tentativas.push({ pdf: 'mistral-ocr', exigir: true, nota: 'PDF lidos por OCR (Mistral): nenhum fornecedor sem recolha de dados aceitava o PDF diretamente' })
-    tentativas.push({ pdf: temPdf && motorPdf === 'native' ? 'mistral-ocr' : motorPdf, exigir: false, nota: 'sem exigir todos os parâmetros ao fornecedor (JSON validado na aplicação)' })
+    // Tentativas, por ordem (só se o erro for de encaminhamento ou do fornecedor; não em chave, crédito ou limite):
+    //  1. PDF lido pelo próprio modelo, exigindo todos os parâmetros;
+    //  2. o mesmo sem exigir todos os parâmetros (o formato JSON continua pedido e a resposta é validada a seguir);
+    //  3. PDF convertido antes por OCR (Mistral, 2 $/1000 páginas): o fornecedor só recebe texto e imagens.
+    const tentativas: { pdf: string; exigir: boolean; nota?: string }[] = [
+      { pdf: motorPdf, exigir: true },
+      { pdf: motorPdf, exigir: false, nota: 'sem exigir todos os parâmetros ao fornecedor (JSON validado na aplicação)' },
+    ]
+    if (temPdf && motorPdf === 'native') tentativas.push({ pdf: 'mistral-ocr', exigir: false, nota: 'PDF lidos por OCR (Mistral): nenhum fornecedor aceitou o PDF diretamente' })
+    const repetir = (r: Response, c: Corpo) => (!r.ok || !!c.error) && ![401, 402, 429].includes(r.status) && ![401, 402, 429].includes(c.error?.code ?? 0)
     let { r, corpo } = await pedir(tentativas[0].pdf, tentativas[0].exigir)
-    for (let k = 1; k < tentativas.length && (!r.ok || corpo.error) && /no endpoints|require/i.test(corpo.error?.message ?? ''); k++) {
-      console.log('ler-email: nova tentativa', tentativas[k], corpo.error?.message)
+    for (let k = 1; k < tentativas.length && repetir(r, corpo); k++) {
       ;({ r, corpo } = await pedir(tentativas[k].pdf, tentativas[k].exigir))
       if (r.ok && !corpo.error && tentativas[k].nota) ignorados.push(tentativas[k].nota!)
     }
     if (!r.ok || corpo.error) {
-      const msg = corpo.error?.message ?? `HTTP ${r.status}`
-      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Sem crédito na conta OpenRouter.' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : r.status === 413 || /too large|payload/i.test(msg) ? ' Os anexos são grandes demais para um só pedido.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo aceita este pedido sem recolha de dados (já tentei com OCR dos PDF): experimente outro OPENROUTER_MODELO.' : ''
+      const raw = corpo.error?.metadata?.raw
+      const det = raw ? (typeof raw === 'string' ? raw : JSON.stringify(raw)).match(/"message"\s*:\s*"([^"]+)"/)?.[1] ?? '' : ''
+      const msg = `${corpo.error?.message ?? `HTTP ${r.status}`}${corpo.error?.metadata?.provider_name ? ` (${corpo.error.metadata.provider_name}${det ? `: ${det}` : ''})` : ''}`
+      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Sem crédito na conta OpenRouter.' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : r.status === 413 || /too large|payload/i.test(msg) ? ' Os anexos são grandes demais para um só pedido.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo aceita este pedido sem recolha de dados (já tentei sem exigir parâmetros e com OCR dos PDF): experimente outro OPENROUTER_MODELO.' : ''
       return resposta({ erro: `OpenRouter: ${msg}.${dica}` }, 502)
     }
     const texto = corpo.choices?.[0]?.message?.content ?? ''
