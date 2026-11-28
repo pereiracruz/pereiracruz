@@ -142,7 +142,8 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pereirasproject.netlify.app', 'X-Title': "Pereira's Project" },
       body: JSON.stringify({
-        model: modelo, temperature: 0, max_tokens: 32000,
+        // sem «temperature»: os modelos recentes (ex.: Claude Opus 5.5) não a aceitam e, com require_parameters, nenhum fornecedor servia o pedido
+        model: modelo, max_tokens: 32000,
         messages: [{ role: 'system', content: INSTRUCOES }, { role: 'user', content: partes }],
         response_format: { type: 'json_schema', json_schema: { name: 'email', strict: true, schema: ESQUEMA } },
         plugins: [{ id: 'file-parser', pdf: { engine: Deno.env.get('OPENROUTER_PDF') || 'native' } }, { id: 'response-healing' }],
@@ -152,7 +153,7 @@ Deno.serve(async (req) => {
     const corpo = await r.json().catch(() => ({})) as { choices?: { message?: { content?: string }; finish_reason?: string }[]; model?: string; provider?: string; usage?: Record<string, number>; error?: { message?: string; code?: number } }
     if (!r.ok || corpo.error) {
       const msg = corpo.error?.message ?? `HTTP ${r.status}`
-      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Sem crédito na conta OpenRouter.' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo cumpre as regras (ficheiros, JSON, sem retenção de dados): escolha outro OPENROUTER_MODELO.' : ''
+      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Sem crédito na conta OpenRouter.' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo aceita todos os parâmetros do pedido (ficheiros, JSON estruturado, sem recolha de dados). Veja https://openrouter.ai/api/v1/models/<modelo>/endpoints ou escolha outro OPENROUTER_MODELO.' : ''
       return resposta({ erro: `OpenRouter: ${msg}.${dica}` }, 502)
     }
     const texto = corpo.choices?.[0]?.message?.content ?? ''

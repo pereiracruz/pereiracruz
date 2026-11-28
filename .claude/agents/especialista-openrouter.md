@@ -31,7 +31,9 @@ Qualquer página: acrescentar `.md` ao URL. Citar na resposta as páginas usadas
     Excel convertido em CSV de texto;
   - `plugins: [{ id: 'file-parser', pdf: { engine } }, { id: 'response-healing' }]` (engine `native` = o modelo vê as páginas;
     `mistral-ocr` = melhor para digitalizações, 2 $/1000 páginas, máx. 8 imagens por PDF; `cloudflare-ai` = grátis, só texto);
-  - `provider: { require_parameters: true, data_collection: 'deny', zdr? }`; `temperature: 0`.
+  - `provider: { require_parameters: true, data_collection: 'deny', zdr? }`. **Sem `temperature`**: os modelos recentes
+    (ex.: Claude Opus 5.5) não a aceitam e, com `require_parameters`, o pedido fica sem fornecedores («No endpoints found»).
+    Antes de acrescentar um parâmetro, confirmar em `GET /api/v1/models/<modelo>/endpoints` (`supported_parameters` de cada fornecedor).
   Guarda a leitura no email (`leituraIA`) para não voltar a pagar.
 - `src/lib/emailIA.ts` — tipos `EmailLido`, chamada, e passagem para a app: `clienteDoEmail`, `encomendaDoEmail`
   (reutiliza `leituraDaIA`, `encomendaDaLeitura`, `ligarTechPack`, `gerarFichaDoTechPack`), `pedidosDoEmail`.
