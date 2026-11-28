@@ -23,7 +23,8 @@ não apaga. No Thunderbird fica tudo como estava.
   O email entra logo (com «Anexos por recolher») e a aplicação chama a ação `rebuscar` várias vezes até terminar: cada
   chamada trata um ficheiro pesado ou vários pequenos (até 6 MB); um zip é guardado inteiro numa pasta temporária e
   depois cada ficheiro lá dentro é tirado com a descompressão nativa (sem bibliotecas). Um ficheiro que falhe 2 vezes
-  passa a «não guardado», para a recolha nunca ficar presa. O estado fica no próprio email (campo `recolha`).
+  passa a «não guardado», para a recolha nunca ficar presa. Cada recolha grava numa pasta própria (`email/<id>/<pasta>/`)
+  e nunca regrava ficheiros (o bucket só deixa criar). O estado fica no próprio email (campo `recolha`).
 - Limites: 30 MB por ficheiro; por zip, até 300 ficheiros e 150 MB descomprimidos. O que passa disso aparece em
   **«Não guardados (abrir no Thunderbird)»**, com o nome, o tamanho e o motivo — nunca desaparece sem aviso.
 - **Buscar anexos outra vez** (em cada email): volta à caixa de correio (só leitura) e recolhe de novo os anexos com estas

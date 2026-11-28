@@ -156,21 +156,40 @@ Deno.serve(async (req) => {
 
     const base = (Deno.env.get('OPENROUTER_URL') || 'https://openrouter.ai/api/v1').replace(/\/+$/, '')
     const modelo = Deno.env.get('OPENROUTER_MODELO') || 'anthropic/claude-opus-5.5'
-    const r = await fetch(`${base}/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pereirasproject.netlify.app', 'X-Title': "Pereira's Project" },
-      body: JSON.stringify({
-        model: modelo, temperature: 0, max_tokens: 32000,
-        messages: [{ role: 'system', content: INSTRUCOES }, { role: 'user', content: partes }],
-        response_format: { type: 'json_schema', json_schema: { name: 'email', strict: true, schema: ESQUEMA } },
-        plugins: [{ id: 'file-parser', pdf: { engine: Deno.env.get('OPENROUTER_PDF') || 'native' } }, { id: 'response-healing' }],
-        provider: { require_parameters: true, data_collection: 'deny', ...(Deno.env.get('OPENROUTER_ZDR') === '1' ? { zdr: true } : {}) },
-      }),
-    })
-    const corpo = await r.json().catch(() => ({})) as { choices?: { message?: { content?: string }; finish_reason?: string }[]; model?: string; provider?: string; usage?: Record<string, number>; error?: { message?: string; code?: number } }
+    const motorPdf = Deno.env.get('OPENROUTER_PDF') || 'native'
+    const temPdf = partes.some((p) => (p as { type?: string }).type === 'file')
+    type Corpo = { choices?: { message?: { content?: string }; finish_reason?: string }[]; model?: string; provider?: string; usage?: Record<string, number>; error?: { message?: string; code?: number } }
+    const pedir = async (pdf: string, exigirParametros: boolean) => {
+      const r = await fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pereirasproject.netlify.app', 'X-Title': "Pereira's Project" },
+        body: JSON.stringify({
+          model: modelo, temperature: 0, max_tokens: 32000,
+          messages: [{ role: 'system', content: INSTRUCOES }, { role: 'user', content: partes }],
+          response_format: { type: 'json_schema', json_schema: { name: 'email', strict: true, schema: ESQUEMA } },
+          plugins: [{ id: 'file-parser', pdf: { engine: pdf } }, { id: 'response-healing' }],
+          // sem recolha de dados SEMPRE; «require_parameters» só se puder (ver tentativas abaixo)
+          provider: { require_parameters: exigirParametros, data_collection: 'deny', ...(Deno.env.get('OPENROUTER_ZDR') === '1' ? { zdr: true } : {}) },
+        }),
+      })
+      return { r, corpo: await r.json().catch(() => ({})) as Corpo }
+    }
+    // Tentativas quando nenhum fornecedor aceita o pedido («No endpoints found…»), por ordem:
+    //  1. como configurado (PDF lido pelo próprio modelo);
+    //  2. PDF convertido antes por OCR (Mistral, 2 $/1000 páginas): o fornecedor só recebe texto e imagens;
+    //  3. o mesmo sem «require_parameters» (o formato JSON continua preferido e a resposta é validada a seguir).
+    const tentativas: { pdf: string; exigir: boolean; nota?: string }[] = [{ pdf: motorPdf, exigir: true }]
+    if (temPdf && motorPdf === 'native') tentativas.push({ pdf: 'mistral-ocr', exigir: true, nota: 'PDF lidos por OCR (Mistral): nenhum fornecedor sem recolha de dados aceitava o PDF diretamente' })
+    tentativas.push({ pdf: temPdf && motorPdf === 'native' ? 'mistral-ocr' : motorPdf, exigir: false, nota: 'sem exigir todos os parâmetros ao fornecedor (JSON validado na aplicação)' })
+    let { r, corpo } = await pedir(tentativas[0].pdf, tentativas[0].exigir)
+    for (let k = 1; k < tentativas.length && (!r.ok || corpo.error) && /no endpoints|require/i.test(corpo.error?.message ?? ''); k++) {
+      console.log('ler-email: nova tentativa', tentativas[k], corpo.error?.message)
+      ;({ r, corpo } = await pedir(tentativas[k].pdf, tentativas[k].exigir))
+      if (r.ok && !corpo.error && tentativas[k].nota) ignorados.push(tentativas[k].nota!)
+    }
     if (!r.ok || corpo.error) {
       const msg = corpo.error?.message ?? `HTTP ${r.status}`
-      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Sem crédito na conta OpenRouter.' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo cumpre as regras (ficheiros, JSON, sem retenção de dados): escolha outro OPENROUTER_MODELO.' : ''
+      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Sem crédito na conta OpenRouter.' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : r.status === 413 || /too large|payload/i.test(msg) ? ' Os anexos são grandes demais para um só pedido.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo aceita este pedido sem recolha de dados (já tentei com OCR dos PDF): experimente outro OPENROUTER_MODELO.' : ''
       return resposta({ erro: `OpenRouter: ${msg}.${dica}` }, 502)
     }
     const texto = corpo.choices?.[0]?.message?.content ?? ''
