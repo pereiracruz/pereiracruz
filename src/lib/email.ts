@@ -1,9 +1,11 @@
 import type { LeituraEmailIA } from './emailIA'
+import type { AnexoNaoGuardado } from './anexosEmail'
 import { create } from 'zustand'
 import { supabase } from './supabase'
 
 /** Emails de encomendas recolhidos pela função do servidor «email-encomendas» (IMAP, só leitura na caixa). */
-export interface AnexoEmail { nome: string; caminho: string; tipo: string; tamanho: number }
+/** origem: zip (e pasta) de onde o ficheiro saiu, ex.: «Breedys.zip › 3 CALÇAS (1)» */
+export interface AnexoEmail { nome: string; caminho: string; tipo: string; tamanho: number; origem?: string }
 export interface EmailEncomenda {
   id: string; uid: number; messageId: string | null
   /** conta de email onde chegou (há várias caixas) */
@@ -12,6 +14,10 @@ export interface EmailEncomenda {
   tipo?: 'encomenda' | 'fatura' | 'pedido'
   de: string; deNome: string; assunto: string; data: string; texto: string
   anexos: AnexoEmail[]
+  /** anexos que vieram no email mas não ficaram guardados (grandes demais, não descarregaram…) */
+  anexosNaoGuardados?: AnexoNaoGuardado[]
+  /** última vez que se foi à caixa buscar os anexos outra vez */
+  anexosRecolhidosEm?: string
   estado: 'nova' | 'tratada' | 'ignorada'
   encomendaId?: string
   recebidoEm: string
@@ -137,6 +143,14 @@ export async function abrirAnexo(a: AnexoEmail) {
   const { data, error } = await supabase.storage.from('documentos').createSignedUrl(a.caminho, 300)
   if (error || !data) throw new Error(`Não consegui abrir o anexo ${a.nome}.`)
   window.open(data.signedUrl, '_blank', 'noopener')
+}
+
+/** Volta à caixa de correio buscar os anexos deste email (zips abertos, moldes guardados) e atualiza a lista. */
+export async function rebuscarAnexos(email: EmailEncomenda): Promise<EmailEncomenda> {
+  const r = await chamar<{ anexos: AnexoEmail[]; naoGuardados: AnexoNaoGuardado[] }>({ acao: 'rebuscar', emailId: email.id })
+  const novo: EmailEncomenda = { ...email, anexos: r.anexos, anexosNaoGuardados: r.naoGuardados, anexosRecolhidosEm: new Date().toISOString() }
+  useEmails.setState((s) => ({ emails: s.emails.map((e) => (e.id === email.id ? novo : e)) }))
+  return novo
 }
 
 /** Envia a resposta pela conta onde o email chegou (com a assinatura dessa conta) e guarda cópia em Enviados. */

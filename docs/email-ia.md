@@ -15,6 +15,10 @@ Com a leitura:
 - **Criar cliente** quando não existe (margem 20 % por omissão, a rever em Dados mestre).
 A leitura fica guardada no email (não se volta a pagar para a ver); «Ler outra vez» repete.
 
+A IA recebe a lista de **todos** os anexos (incluindo os que vinham num zip e os que não lê, como moldes DXF ou ficheiros
+grandes demais) e não pode dizer que «não veio anexo» quando a lista tem ficheiros. Lê primeiro os PDF, depois Excel e
+imagens; os formatos que não lê nem se descarregam (não gastam o limite de 18 MB por leitura).
+
 ## Instalar (uma vez)
 1. Criar conta em openrouter.ai, carregar crédito e criar uma **API key** (Settings → Keys). Em **Settings → Privacy**:
    desligar o registo de prompts e a utilização de dados; se quiser, ativar ZDR («Zero Data Retention»).

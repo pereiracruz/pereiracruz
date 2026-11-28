@@ -1,6 +1,7 @@
 // Supabase Edge Function «email-encomendas» — lê a caixa de correio por IMAP e recolhe os emails de encomendas.
 // SÓ LEITURA na caixa: abre a pasta em modo de leitura e não marca nada como lido, não move nem apaga.
-// Para cada email de encomenda novo: guarda os anexos (Excel, PDF, imagens) no bucket «documentos»
+// Para cada email de encomenda novo: guarda os anexos no bucket «documentos» — PDF, Excel e imagens (a IA lê), os ficheiros
+// de dentro dos zips (abertos aqui, sem o lixo do Mac) e os restantes, como moldes DXF (só para descarregar) —
 // (pasta email/…) e regista o email na tabela «documentos», coleção «emails», para rever na aplicação.
 //
 // Segredos (Supabase → Edge Functions → Secrets), uma série por conta de email:
@@ -19,11 +20,13 @@
 //   palavrasFaturas / palavrasFaturasTexto: o mesmo para faturas e recibos verdes de fornecedores (tipo «fatura»)
 //   palavrasPedidos / palavrasPedidosTexto: pedidos de preço/cotação de produção ou amostra (tipo «pedido», página «Emails de pedidos»;
 //                  não precisam de anexo)
-//   Um email entra se tiver anexo Excel ou PDF E (sem filtros, ou se coincidir com algum remetente ou palavra).
+//   Um email entra se tiver anexo Excel, PDF ou zip E (sem filtros, ou se coincidir com algum remetente ou palavra).
+// Ação «rebuscar»: volta à caixa buscar os anexos de um email já recolhido (botão «Buscar anexos outra vez»).
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { ImapFlow } from 'npm:imapflow@1'
 import nodemailer from 'npm:nodemailer@6'
 import MailComposer from 'npm:nodemailer@6/lib/mail-composer/index.js'
+import { unzipSync } from 'npm:fflate@0.8'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -34,14 +37,68 @@ const resposta = (corpo: unknown, status = 200) =>
   new Response(JSON.stringify(corpo), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 
 const env = (k: string) => (Deno.env.get(k) ?? '').trim()
-const ANEXO_UTIL = /\.(xlsx|xlsm|xls|csv|pdf|png|jpe?g|webp)$/i
-const DOCUMENTO = /\.(xlsx|xlsm|xls|csv|pdf)$/i
 const IMAGEM = /\.(png|jpe?g|webp|gif)$/i
-// imagens da assinatura / do corpo do email (image001.png, logótipos…) não são anexos da encomenda
-const imagemDoCorpo = (a: { filename?: string; contentDisposition?: string; related?: boolean; cid?: string }) =>
-  IMAGEM.test(a.filename ?? '') && (a.related || a.contentDisposition !== 'attachment' || /^image\d{3}\.|assinatura|signature|logo/i.test(a.filename ?? ''))
+// Regras dos anexos — cópia de src/lib/anexosEmail.ts (o teste anexos-email.spec.ts confirma que são iguais).
+// ==== INÍCIO anexosEmail ====
+/** ler = a IA lê (PDF, Excel, imagens) · zip = abre-se e trata-se cada ficheiro · guardar = fica para descarregar (moldes DXF…) · ignorar */
+export type DestinoAnexo = 'ler' | 'zip' | 'guardar' | 'ignorar'
+export type AnexoNaoGuardado = { nome: string; tamanho: number; motivo: string }
+/** formatos que a IA lê */
+export const ANEXO_LIDO = /\.(xlsx|xlsm|xls|csv|pdf|png|jpe?g|webp|gif)$/i
+/** anexos que contam como «documento» para uma encomenda ou fatura entrar (os zips podem trazer os PDFs) */
+export const DOCUMENTO_EMAIL = /\.(xlsx|xlsm|xls|csv|pdf|zip)$/i
+const IMAGEM_ANEXO = /\.(png|jpe?g|webp|gif)$/i
+/** lixo do Mac e do Windows, dentro e fora de zips */
+export const LIXO_ANEXO = /(^|\/)(__MACOSX\/|\._[^/]*$|\.DS_Store$|Thumbs\.db$|desktop\.ini$)/i
+/** ficheiros que os programas de email acrescentam e que não são do cliente */
+const RUIDO_EMAIL = /^(ATT\d+\.(htm|html|txt)|smime\.p7s|winmail\.dat)$|\.(p7s|vcf|ics)$/i
+
+/** O que fazer com um anexo. Fora de zips, imagens no corpo do email (assinaturas, logótipos) não são anexos. */
+export function destinoAnexo(a: { nome: string; disposicao?: string; relacionado?: boolean; dentroDeZip?: boolean }): DestinoAnexo {
+  const caminho = (a.nome ?? '').trim()
+  const nome = caminho.split('/').pop() ?? ''
+  if (!nome || caminho.endsWith('/') || LIXO_ANEXO.test(caminho) || RUIDO_EMAIL.test(nome)) return 'ignorar'
+  if (!a.dentroDeZip && IMAGEM_ANEXO.test(nome)
+    && (a.relacionado || (a.disposicao ?? '').toLowerCase() !== 'attachment' || /^image\d{3}\.|assinatura|signature|logo/i.test(nome))) return 'ignorar'
+  if (/\.zip$/i.test(nome)) return a.dentroDeZip ? 'guardar' : 'zip' // zips dentro de zips ficam inteiros
+  return ANEXO_LIDO.test(nome) ? 'ler' : 'guardar'
+}
+
+/** Zips feitos no Mac guardam os nomes em UTF-8 sem o indicar: o leitor mostra «CALÃ\u0087AS» em vez de «CALÇAS». */
+export function corrigirNomeZip(nome: string): string {
+  if (!/[\u0080-ÿ]/.test(nome) || /[^\u0000-ÿ]/.test(nome)) return nome.normalize('NFC')
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(nome, (c) => c.charCodeAt(0))).normalize('NFC')
+  } catch { return nome.normalize('NFC') }
+}
+
+/** Decide, ficheiro a ficheiro, o que se tira de um zip (sem rebentar com a memória do servidor). */
+export function filtroZip(limites = { entradas: 300, total: 150 * 1024 * 1024, parte: 30 * 1024 * 1024 }) {
+  const recusados: AnexoNaoGuardado[] = []
+  let n = 0, total = 0
+  const aceitar = (caminho: string, tamanho: number) => {
+    if (destinoAnexo({ nome: caminho, dentroDeZip: true }) === 'ignorar') return false
+    const nome = corrigirNomeZip(caminho.split('/').pop() ?? caminho)
+    if (tamanho > limites.parte) { recusados.push({ nome, tamanho, motivo: 'grande demais' }); return false }
+    if (n >= limites.entradas || total + tamanho > limites.total) { recusados.push({ nome, tamanho, motivo: 'o zip é grande demais' }); return false }
+    n++; total += tamanho
+    return true
+  }
+  return { aceitar, recusados }
+}
+
+/** Pasta de origem de um ficheiro tirado de um zip, para mostrar: «Breedys.zip › 3 CALÇAS (1)». */
+export function origemZip(nomeZip: string, caminho: string): string {
+  const pastas = corrigirNomeZip(caminho).split('/').slice(0, -1).filter(Boolean)
+  // a pasta com o mesmo nome do zip (o Mac cria-a sempre) não acrescenta nada
+  if (pastas[0] && pastas[0].toLowerCase() === nomeZip.replace(/\.zip$/i, '').toLowerCase()) pastas.shift()
+  return [nomeZip, ...pastas].join(' › ')
+}
+// ==== FIM anexosEmail ====
 const MAX_POR_VEZ = 4 // emails novos tratados por chamada (o resto fica para a seguinte; a aplicação volta a chamar)
-const MAX_BYTES = 15 * 1024 * 1024
+// cada anexo até 30 MB (o email pode ser maior: os anexos descarregam-se um a um); os maiores ficam registados
+// com o nome e o tamanho, para abrir no Thunderbird
+const MAX_PARTE = 30 * 1024 * 1024
 
 type Conta = { n: number; host: string; port: number; user: string; pass: string; pasta: string; smtpHost: string; smtpPort: number }
 function contas(): Conta[] {
@@ -87,6 +144,65 @@ async function lerTudo(stream: AsyncIterable<Uint8Array>, max: number): Promise<
   const r = new Uint8Array(Math.min(total, max)); let o = 0
   for (const p of partes) { const q = p.subarray(0, Math.max(0, r.length - o)); r.set(q, o); o += q.length; if (o >= r.length) break }
   return r
+}
+
+type AnexoGuardado = { nome: string; caminho: string; tipo: string; tamanho: number; origem?: string }
+const MIME: Record<string, string> = {
+  pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', csv: 'text/csv',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', xlsm: 'application/vnd.ms-excel.sheet.macroEnabled.12', xls: 'application/vnd.ms-excel',
+  zip: 'application/zip',
+}
+const mimeDe = (nome: string) => MIME[(nome.split('.').pop() ?? '').toLowerCase()] ?? 'application/octet-stream'
+
+/** Descarrega os anexos de um email (um a um, BODY.PEEK) e guarda-os no bucket «documentos» (pasta email/<id>/).
+ *  Os zips abrem-se aqui: cada ficheiro lá dentro passa a ser um anexo (com a origem). Os grandes demais ficam registados. */
+async function recolherAnexos(imap: ImapFlow, supabase: SupabaseCliente, uid: number, nos: No[], id: string) {
+  const anexos: AnexoGuardado[] = []
+  const naoGuardados: AnexoNaoGuardado[] = []
+  let i = 0
+  const guardar = async (nome: string, conteudo: Uint8Array, tipo: string, origem?: string) => {
+    const caminho = `email/${id}/${i++}-${nomeFicheiro(nome)}`
+    const { error } = await supabase.storage.from('documentos').upload(caminho, conteudo, { contentType: tipo || undefined, upsert: true })
+    if (error) { naoGuardados.push({ nome, tamanho: conteudo.length, motivo: `não ficou guardado (${error.message})` }); return }
+    anexos.push({ nome, caminho, tipo, tamanho: conteudo.length, ...(origem ? { origem } : {}) })
+  }
+  for (const n of nos) {
+    const nome = nomeDe(n)
+    if (!nome || !n.part) continue
+    const destino = destinoAnexo({ nome, disposicao: n.disposition })
+    if (destino === 'ignorar') continue
+    // o tamanho na estrutura é o codificado (base64 ≈ +37 %)
+    const estimado = Math.round((n.size ?? 0) / 1.37)
+    if (estimado > MAX_PARTE) { naoGuardados.push({ nome, tamanho: estimado, motivo: 'grande demais' }); continue }
+    let conteudo: Uint8Array
+    try {
+      const d = await imap.download(String(uid), n.part, { uid: true })
+      conteudo = await lerTudo(d.content, MAX_PARTE + 1)
+    } catch (e) {
+      console.error('anexo', uid, nome, e)
+      naoGuardados.push({ nome, tamanho: estimado, motivo: 'não foi possível descarregar' }); continue
+    }
+    if (conteudo.length > MAX_PARTE) { naoGuardados.push({ nome, tamanho: conteudo.length, motivo: 'grande demais' }); continue }
+    if (destino !== 'zip') { await guardar(nome, conteudo, n.type && n.type !== 'application/octet-stream' ? n.type : mimeDe(nome)); continue }
+    // zip: tirar os ficheiros úteis (sem o lixo do Mac); se não abrir, fica guardado inteiro
+    const filtro = filtroZip()
+    let ficheiros: Record<string, Uint8Array>
+    try {
+      ficheiros = unzipSync(conteudo, { filter: (f) => filtro.aceitar(f.name, f.originalSize) })
+    } catch (e) {
+      console.error('zip', nome, e)
+      await guardar(nome, conteudo, 'application/zip')
+      naoGuardados.push({ nome, tamanho: conteudo.length, motivo: 'o zip não abriu (está guardado inteiro)' })
+      continue
+    }
+    conteudo = new Uint8Array(0) // libertar memória
+    for (const [caminho, bytes] of Object.entries(ficheiros)) {
+      const base = corrigirNomeZip(caminho.split('/').pop() ?? caminho)
+      await guardar(base, bytes, mimeDe(base), origemZip(nome, caminho))
+    }
+    naoGuardados.push(...filtro.recusados.map((r) => ({ ...r, motivo: `${r.motivo} (dentro de ${nome})` })))
+  }
+  return { anexos, naoGuardados }
 }
 
 type Config = { remetentes?: string[]; palavras?: string[]; palavrasTexto?: string[]; palavrasFaturas?: string[]; palavrasFaturasTexto?: string[]; palavrasPedidos?: string[]; palavrasPedidosTexto?: string[]; palavrasPedidosExcluir?: string[]; dias?: number; assinaturas?: Record<string, Assinatura> }
@@ -150,7 +266,7 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: Filt
           for (const f of (n.childNodes ?? []) as typeof n[]) percorrer(f)
         }
         percorrer(m.bodyStructure as Parameters<typeof percorrer>[0])
-        const temDocumento = nomes.some((n) => DOCUMENTO.test(n))
+        const temDocumento = nomes.some((n) => DOCUMENTO_EMAIL.test(n))
         const ehPedido = (comPedido.has(m.uid) || filtros.palavrasPedidos.some((p) => assunto.includes(p))) && !filtros.palavrasPedidosExcluir.some((p) => assunto.includes(p))
         // encomendas e faturas têm de trazer Excel ou PDF (as imagens sozinhas costumam ser assinaturas); pedidos de preço não
         if (!temDocumento && !ehPedido) continue
@@ -165,7 +281,6 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: Filt
         const tipo: Tipo = ehFatura && ((!ehEncomenda && !ehPedido) || filtros.palavrasFaturas.some((p) => assunto.includes(p))) ? 'fatura'
           : ehPedido && !encomendaForte ? 'pedido' : ehEncomenda ? 'encomenda' : 'pedido'
         tipos.set(m.uid, tipo)
-        if ((m.size ?? 0) > MAX_BYTES) continue
         escolhidos.push(m.uid)
         estrutura.set(m.uid, { bs: m.bodyStructure as No, env: (m.envelope ?? {}) as never })
       }
@@ -192,21 +307,8 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: Filt
         } else if (bs?.part === undefined && bs?.type?.startsWith('text/')) {
           try { const d = await imap.download(String(uid), '1', { uid: true, maxBytes: 200_000 }); texto = new TextDecoder('utf-8').decode(await lerTudo(d.content, 200_000)) } catch { /* sem texto */ }
         }
-        // anexos úteis (Excel, PDF; imagens só se forem anexo a sério)
-        const anexos: { nome: string; caminho: string; tipo: string; tamanho: number }[] = []
-        let i = 0
-        for (const n of nos) {
-          const nome = nomeDe(n)
-          if (!nome || !n.part || !ANEXO_UTIL.test(nome)) continue
-          if (IMAGEM.test(nome) && ((n.disposition ?? '').toLowerCase() !== 'attachment' || /^image\d{3}\.|assinatura|signature|logo/i.test(nome))) continue
-          if ((n.size ?? 0) > MAX_BYTES * 1.4) continue // tamanho em base64
-          const d = await imap.download(String(uid), n.part, { uid: true })
-          const conteudo = await lerTudo(d.content, MAX_BYTES)
-          const caminho = `email/${id}/${i++}-${nomeFicheiro(nome)}`
-          const { error } = await supabase.storage.from('documentos').upload(caminho, conteudo, { contentType: n.type || undefined, upsert: true })
-          if (error) throw new Error(`não consegui guardar o anexo ${nome}: ${error.message}`)
-          anexos.push({ nome, caminho, tipo: n.type ?? '', tamanho: conteudo.length })
-        }
+        // anexos: PDF, Excel e imagens (a IA lê), zips (abertos aqui) e os restantes (moldes DXF…) para descarregar
+        const { anexos, naoGuardados } = await recolherAnexos(imap, supabase, uid, nos, id)
         // cabeçalhos para responder na mesma conversa
         let references: string[] = [], responderPara: string | null = env.replyTo?.[0]?.address ?? null
         try {
@@ -226,6 +328,7 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: Filt
           data: new Date(env.date ?? Date.now()).toISOString(),
           texto: texto.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 4000),
           anexos,
+          ...(naoGuardados.length ? { anexosNaoGuardados: naoGuardados } : {}),
           estado: 'nova',
           recebidoEm: new Date().toISOString(),
         }
@@ -236,6 +339,51 @@ async function verificarConta(c: Conta, supabase: SupabaseCliente, filtros: Filt
         novos.push({ id, conta: c.user, assunto: dados.assunto, de: dados.de, anexos: anexos.length, tipo: dados.tipo })
       }
       return escolhidos.length - agora.length
+    } finally {
+      lock.release()
+    }
+  } finally {
+    try { await imap.logout() } catch { /* já fechada */ }
+  }
+}
+
+/** Volta à caixa de correio buscar os anexos de um email já recolhido (ex.: recolhido antes de a aplicação abrir zips).
+ *  Só leitura na caixa. Substitui a lista de anexos do email e apaga do bucket os ficheiros antigos que deixaram de servir. */
+async function rebuscarAnexos(supabase: SupabaseCliente, lista: Conta[], emailId: string) {
+  const { data: linha, error } = await supabase.from('documentos').select('dados').eq('colecao', 'emails').eq('id', emailId).maybeSingle()
+  if (error || !linha) throw new Error('Não encontrei este email.')
+  const e = linha.dados as Record<string, unknown> & { conta?: string; uid?: number; messageId?: string | null; anexos?: AnexoGuardado[] }
+  const m = /^c(\d+)-(.*)-(\d+)$/.exec(emailId)
+  const c = lista.find((x) => (e.conta ?? '').toLowerCase() === x.user.toLowerCase()) ?? lista.find((x) => m && x.n === Number(m[1]))
+  if (!c) throw new Error(`A conta ${e.conta ?? ''} já não está configurada nos segredos do Supabase.`)
+  const imap = cliente(c)
+  await imap.connect()
+  try {
+    const lock = await imap.getMailboxLock(c.pasta, { readOnly: true })
+    try {
+      const validade = String((imap.mailbox && typeof imap.mailbox === 'object' ? imap.mailbox.uidValidity : '') ?? '')
+      const candidatos: number[] = []
+      if (m && m[2] === validade) candidatos.push(Number(m[3]))
+      if (e.messageId) {
+        try {
+          const r = await imap.search({ header: { 'message-id': e.messageId } }, { uid: true })
+          if (r) candidatos.push(...r)
+        } catch (x) { console.error('pesquisa message-id', x) }
+      }
+      for (const uid of [...new Set(candidatos)]) {
+        const msg = await imap.fetchOne(String(uid), { uid: true, envelope: true, bodyStructure: true }, { uid: true })
+        if (!msg || !msg.bodyStructure) continue
+        if (e.messageId && msg.envelope?.messageId && msg.envelope.messageId !== e.messageId) continue // o número foi reutilizado
+        const { anexos, naoGuardados } = await recolherAnexos(imap, supabase, uid, folhas(msg.bodyStructure as No), emailId)
+        const novos = new Set(anexos.map((a) => a.caminho))
+        const antigos = (e.anexos ?? []).map((a) => a.caminho).filter((x) => x && !novos.has(x))
+        if (antigos.length) await supabase.storage.from('documentos').remove(antigos)
+        const dados = { ...e, anexos, anexosNaoGuardados: naoGuardados, anexosRecolhidosEm: new Date().toISOString() }
+        const { error: eGravar } = await supabase.from('documentos').upsert({ colecao: 'emails', id: emailId, dados })
+        if (eGravar) throw new Error(`base de dados: ${eGravar.message}`)
+        return { anexos, naoGuardados }
+      }
+      throw new Error(`Não encontrei este email na pasta ${c.pasta} da conta ${c.user}: pode ter sido movido ou apagado no Thunderbird.`)
     } finally {
       lock.release()
     }
@@ -318,10 +466,19 @@ Deno.serve(async (req) => {
     const { data: quem, error: eSessao } = await supabase.auth.getUser(token)
     if (eSessao || !quem.user) return resposta({ erro: 'Sessão inválida ou expirada. Volte a entrar na aplicação.' }, 401)
 
-    const pedido = await req.json() as { acao: 'testar' | 'verificar' | 'responder'; emailId?: string; texto?: string; reclassificar?: boolean }
+    const pedido = await req.json() as { acao: 'testar' | 'verificar' | 'responder' | 'rebuscar'; emailId?: string; texto?: string; reclassificar?: boolean }
     const { acao } = pedido
     const lista = contas()
 
+    if (acao === 'rebuscar') {
+      if (!pedido.emailId) return resposta({ erro: 'Falta o email.' }, 400)
+      try {
+        return resposta({ ok: true, ...(await rebuscarAnexos(supabase, lista, pedido.emailId)) })
+      } catch (e) {
+        const c = lista.find((x) => pedido.emailId?.startsWith(`c${x.n}-`)) ?? lista[0]
+        return resposta({ erro: amigavel(c, e) }, 500)
+      }
+    }
     if (acao === 'responder') {
       if (!pedido.emailId || !pedido.texto?.trim()) return resposta({ erro: 'Falta o texto da resposta.' }, 400)
       const r = await responder(supabase, lista, pedido.emailId, pedido.texto.trim(), quem.user.email ?? quem.user.id)
