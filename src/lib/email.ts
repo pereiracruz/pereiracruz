@@ -18,6 +18,8 @@ export interface EmailEncomenda {
   anexosNaoGuardados?: AnexoNaoGuardado[]
   /** última vez que se foi à caixa buscar os anexos outra vez */
   anexosRecolhidosEm?: string
+  /** os anexos ainda estão a ser recolhidos pelo servidor (aos poucos) */
+  anexosPendentes?: boolean
   estado: 'nova' | 'tratada' | 'ignorada'
   encomendaId?: string
   recebidoEm: string
@@ -106,6 +108,7 @@ export async function verificarEmails(reclassificar = false): Promise<ResultadoV
     }
     await carregarEmails()
     useEmails.setState({ ultimaVerificacao: new Date().toISOString(), erro: (r.erros ?? []).map((e) => `${e.conta}: ${e.erro}`).join(' · ') })
+    await recolherPendentes()
     return r
   } catch (e) {
     useEmails.setState({ erro: e instanceof Error ? e.message : String(e) })
@@ -145,12 +148,33 @@ export async function abrirAnexo(a: AnexoEmail) {
   window.open(data.signedUrl, '_blank', 'noopener')
 }
 
-/** Volta à caixa de correio buscar os anexos deste email (zips abertos, moldes guardados) e atualiza a lista. */
-export async function rebuscarAnexos(email: EmailEncomenda): Promise<EmailEncomenda> {
-  const r = await chamar<{ anexos: AnexoEmail[]; naoGuardados: AnexoNaoGuardado[] }>({ acao: 'rebuscar', emailId: email.id })
-  const novo: EmailEncomenda = { ...email, anexos: r.anexos, anexosNaoGuardados: r.naoGuardados, anexosRecolhidosEm: new Date().toISOString() }
+type PassoRecolha = { concluido: boolean; feitos: number; total: number; anexos?: AnexoEmail[]; naoGuardados?: AnexoNaoGuardado[] }
+
+/** Recolhe os anexos de um email no servidor, aos poucos (o Supabase só dá ~2 s de processador por chamada):
+ *  repete a ação «rebuscar» até vir «concluido». recomecar = voltar à caixa de correio e refazer a lista. */
+export async function rebuscarAnexos(email: EmailEncomenda, recomecar = true, progresso?: (feitos: number, total: number) => void): Promise<EmailEncomenda> {
+  let r = await chamar<PassoRecolha>({ acao: 'rebuscar', emailId: email.id, recomecar })
+  let falhas = 0
+  for (let i = 0; i < 200 && !r.concluido; i++) {
+    progresso?.(r.feitos, r.total)
+    try { r = await chamar<PassoRecolha>({ acao: 'rebuscar', emailId: email.id }); falhas = 0 } catch (e) {
+      // um ficheiro pesado pode passar o limite do servidor: à 2.ª falha o servidor passa-o à frente
+      if (++falhas >= 4) throw e
+    }
+  }
+  if (!r.concluido) throw new Error('A recolha dos anexos não terminou. Carregue outra vez para continuar.')
+  const novo: EmailEncomenda = { ...email, anexos: r.anexos ?? [], anexosNaoGuardados: r.naoGuardados ?? [], anexosPendentes: false, anexosRecolhidosEm: new Date().toISOString() }
   useEmails.setState((s) => ({ emails: s.emails.map((e) => (e.id === email.id ? novo : e)) }))
   return novo
+}
+
+/** Recolhe os anexos dos emails que chegaram com anexos por recolher (um de cada vez). */
+async function recolherPendentes() {
+  for (const e of useEmails.getState().emails.filter((x) => x.anexosPendentes && x.estado === 'nova')) {
+    try { await rebuscarAnexos(e, false) } catch (x) {
+      useEmails.setState({ erro: `Anexos de «${e.assunto}»: ${x instanceof Error ? x.message : String(x)}` })
+    }
+  }
 }
 
 /** Envia a resposta pela conta onde o email chegou (com a assinatura dessa conta) e guarda cópia em Enviados. */

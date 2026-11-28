@@ -58,4 +58,44 @@ export function origemZip(nomeZip: string, caminho: string): string {
   if (pastas[0] && pastas[0].toLowerCase() === nomeZip.replace(/\.zip$/i, '').toLowerCase()) pastas.shift()
   return [nomeZip, ...pastas].join(' › ')
 }
+/** Ficheiro dentro de um zip, lido do diretório central (sem descomprimir nada). */
+export type EntradaZip = { caminho: string; metodo: number; comprimido: number; tamanho: number; offset: number }
+
+/** Lê a lista de ficheiros de um zip. Não usa bibliotecas: o servidor tem pouco tempo de processador. */
+export function lerDiretorioZip(b: Uint8Array): EntradaZip[] {
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  let fim = -1
+  for (let i = b.length - 22; i >= Math.max(0, b.length - 65_557); i--) if (v.getUint32(i, true) === 0x06054b50) { fim = i; break }
+  if (fim < 0) throw new Error('não é um zip válido')
+  const total = v.getUint16(fim + 10, true)
+  let p = v.getUint32(fim + 16, true)
+  if (p === 0xffffffff || total === 0xffff) throw new Error('zip64 (maior que 4 GB) não suportado')
+  const r: EntradaZip[] = []
+  for (let k = 0; k < total; k++) {
+    if (p + 46 > b.length || v.getUint32(p, true) !== 0x02014b50) throw new Error('zip danificado')
+    const flags = v.getUint16(p + 8, true), metodo = v.getUint16(p + 10, true)
+    const comprimido = v.getUint32(p + 20, true), tamanho = v.getUint32(p + 24, true)
+    const n = v.getUint16(p + 28, true), extra = v.getUint16(p + 30, true), comentario = v.getUint16(p + 32, true)
+    const offset = v.getUint32(p + 42, true)
+    const bytes = b.subarray(p + 46, p + 46 + n)
+    let caminho: string
+    try { caminho = new TextDecoder('utf-8', { fatal: true }).decode(bytes) } catch { caminho = String.fromCharCode(...bytes) }
+    if (!(flags & 0x800)) caminho = corrigirNomeZip(caminho)
+    r.push({ caminho: caminho.normalize('NFC'), metodo, comprimido, tamanho, offset })
+    p += 46 + n + extra + comentario
+  }
+  return r
+}
+
+/** Tira um ficheiro de um zip (guardado ou deflate), com a descompressão nativa do servidor/browser. */
+export async function extrairDoZip(b: Uint8Array, e: EntradaZip): Promise<Uint8Array> {
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  if (v.getUint32(e.offset, true) !== 0x04034b50) throw new Error(`zip danificado em ${e.caminho}`)
+  const inicio = e.offset + 30 + v.getUint16(e.offset + 26, true) + v.getUint16(e.offset + 28, true)
+  const dados = b.subarray(inicio, inicio + e.comprimido)
+  if (e.metodo === 0) return dados.slice()
+  if (e.metodo !== 8) throw new Error(`compressão não suportada em ${e.caminho}`)
+  const fluxo = new Blob([dados as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+  return new Uint8Array(await new Response(fluxo).arrayBuffer())
+}
 // ==== FIM anexosEmail ====
