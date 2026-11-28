@@ -11,6 +11,7 @@
 //   OPENROUTER_PDF       opcional: native (omissão) | mistral-ocr (PDFs digitalizados) | cloudflare-ai
 //   OPENROUTER_URL       opcional: https://openrouter.ai/api/v1 (omissão) ou https://eu.openrouter.ai/api/v1 (só planos Business/Enterprise: processamento na UE)
 //   OPENROUTER_ZDR       opcional: «1» para só usar fornecedores com retenção zero de dados
+//   OPENROUTER_MAX_TOKENS opcional, por omissão 16000 (máximo de tokens da resposta; o crédito tem de chegar para este máximo)
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { encodeBase64 } from 'jsr:@std/encoding@1/base64'
@@ -143,7 +144,8 @@ Deno.serve(async (req) => {
       headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://pereirasproject.netlify.app', 'X-Title': "Pereira's Project" },
       body: JSON.stringify({
         // sem «temperature»: os modelos recentes (ex.: Claude Opus 5.5) não a aceitam e, com require_parameters, nenhum fornecedor servia o pedido
-        model: modelo, max_tokens: 32000,
+        // reserva de tokens de resposta (o OpenRouter exige crédito para o máximo pedido); 16 000 chega para encomendas grandes
+        model: modelo, max_tokens: Number(Deno.env.get('OPENROUTER_MAX_TOKENS')) || 16000,
         messages: [{ role: 'system', content: INSTRUCOES }, { role: 'user', content: partes }],
         response_format: { type: 'json_schema', json_schema: { name: 'email', strict: true, schema: ESQUEMA } },
         plugins: [{ id: 'file-parser', pdf: { engine: Deno.env.get('OPENROUTER_PDF') || 'native' } }, { id: 'response-healing' }],
@@ -153,7 +155,7 @@ Deno.serve(async (req) => {
     const corpo = await r.json().catch(() => ({})) as { choices?: { message?: { content?: string }; finish_reason?: string }[]; model?: string; provider?: string; usage?: Record<string, number>; error?: { message?: string; code?: number } }
     if (!r.ok || corpo.error) {
       const msg = corpo.error?.message ?? `HTTP ${r.status}`
-      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Sem crédito na conta OpenRouter.' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo aceita todos os parâmetros do pedido (ficheiros, JSON estruturado, sem recolha de dados). Veja https://openrouter.ai/api/v1/models/<modelo>/endpoints ou escolha outro OPENROUTER_MODELO.' : ''
+      const dica = r.status === 401 ? ' Confirme a chave OPENROUTER_API_KEY.' : r.status === 402 ? ' Falta crédito: carregue crédito no OpenRouter ou aumente o limite da chave (Settings → Keys → editar a chave → limite).' : r.status === 429 ? ' Limite de pedidos: tente daqui a pouco.' : /no endpoints|require/i.test(msg) ? ' Nenhum fornecedor do modelo aceita todos os parâmetros do pedido (ficheiros, JSON estruturado, sem recolha de dados). Veja https://openrouter.ai/api/v1/models/<modelo>/endpoints ou escolha outro OPENROUTER_MODELO.' : ''
       return resposta({ erro: `OpenRouter: ${msg}.${dica}` }, 502)
     }
     const texto = corpo.choices?.[0]?.message?.content ?? ''
